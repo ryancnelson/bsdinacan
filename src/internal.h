@@ -120,11 +120,17 @@ struct cb_vfs_node {
     struct cb_vfs_mount *mount;
 };
 
+enum cb_poll_event {
+    CB_POLL_READ = 0x01,
+    CB_POLL_WRITE = 0x02
+};
+
 struct cb_file_ops {
     cb_ssize_t (*read)(struct cb_open_file *, struct cb_task *, void *, size_t);
     cb_ssize_t (*write)(struct cb_open_file *, struct cb_task *,
                         const void *, size_t);
     cb_off_t (*lseek)(struct cb_open_file *, struct cb_task *, cb_off_t, int);
+    int (*poll)(struct cb_open_file *, int events);
     int (*stat)(struct cb_open_file *, struct cb_stat_v1 *);
     void (*last_close)(struct cb_open_file *);
 };
@@ -262,5 +268,6 @@ extern const struct cb_program_v1 cb_shell_builtin_program;
 int cb_test_path_normalize(const char *cwd, const char *path,
                            char *output, size_t output_size);
 enum cb_wake_reason cb_test_current_wake_reason(void);
+int cb_test_current_descriptor_poll(int descriptor, int events);
 
 #endif

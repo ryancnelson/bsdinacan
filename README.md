@@ -42,11 +42,21 @@ $ cat /tmp/result
 HELLO
 ```
 
-That demonstration requires native executable loading, scheduling, pipes,
+That demonstration requires native program execution, scheduling, pipes,
 descriptor inheritance, redirection, and a filesystem to work together. A
 small shell and base utilities come before Bash, GCC, Python, Perl, or X11.
 
 ## Build and run the Linux prototype
+
+The normal Linux build needs a C99 compiler, `make`, Bash, and `ripgrep`; the
+one-process integration check also reads Linux `/proc`. The full gate additionally
+needs Git, GCC's `-fanalyzer`, and a compiler/runtime with ASan and UBSan. On
+Alpine, install `build-base bash clang20 compiler-rt git libucontext-dev
+python3 ripgrep` and pass `LDLIBS=-lucontext SANITIZE_CC=clang` to `make`.
+
+```sh
+make LDLIBS=-lucontext SANITIZE_CC=clang ci
+```
 
 ```sh
 make clean test
@@ -65,6 +75,42 @@ sanitizer-linked artifact.
 
 `make ci` is the canonical pre-push and Woodpecker gate. See
 [CI.md](CI.md) for its exact stages and safety constraints.
+
+## Add a native command
+
+A v0.1 command is a C function that receives only the versioned cannedBSD API,
+its copied argument vector, and its copied environment. It returns an
+eight-bit-style exit status and must use `api->open`, `api->read`,
+`api->write`, and the other callbacks instead of host system calls or host file
+descriptors. For example:
+
+```c
+static int hello_main(const struct cb_api_v1 *api, int argc,
+                      char *const argv[], char *const envp[])
+{
+    static const char message[] = "hello\n";
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    return api->write(1, message, sizeof(message) - 1) < 0 ? 1 : 0;
+}
+
+static const struct cb_program_v1 hello_program = {
+    CB_ABI_VERSION_V1,
+    sizeof(struct cb_program_v1),
+    "hello",
+    0,
+    64 * 1024,
+    hello_main
+};
+```
+
+Add the descriptor to the array in `cb_register_base_programs()` in
+`src/programs.c`. Registration copies the descriptor and name into a generic
+runtime-owned program object, so execution goes through the native-executor
+lifecycle rather than directly through the registry. Add a black-box command
+case to `tests/test_core.c`, then run `make ci`. Command code may retain neither
+the API's internal state nor argv/environment pointers after its invocation.
 
 Likely early design choices:
 

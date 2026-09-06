@@ -32,6 +32,7 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
                              const void *buffer, size_t count);
 static cb_off_t node_lseek(struct cb_open_file *file, struct cb_task *task,
                            cb_off_t offset, int whence);
+static int node_poll(struct cb_open_file *file, int events);
 static int open_file_stat(struct cb_open_file *file,
                           struct cb_stat_v1 *stat_buffer);
 static void node_last_close(struct cb_open_file *file);
@@ -57,6 +58,7 @@ static const struct cb_file_ops node_file_ops = {
     node_read,
     node_write,
     node_lseek,
+    node_poll,
     open_file_stat,
     node_last_close
 };
@@ -420,6 +422,18 @@ static int open_file_stat(struct cb_open_file *file,
                           struct cb_stat_v1 *stat_buffer)
 {
     return ramfs_stat(file->object.node, stat_buffer);
+}
+
+static int node_poll(struct cb_open_file *file, int events)
+{
+    int ready = 0;
+    if ((events & CB_POLL_READ) != 0 &&
+        (file->flags & CB_O_ACCMODE) != CB_O_WRONLY)
+        ready |= CB_POLL_READ;
+    if ((events & CB_POLL_WRITE) != 0 &&
+        (file->flags & CB_O_ACCMODE) != CB_O_RDONLY)
+        ready |= CB_POLL_WRITE;
+    return ready;
 }
 
 static void node_last_close(struct cb_open_file *file)

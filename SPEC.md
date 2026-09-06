@@ -1,6 +1,6 @@
 # cannedBSD v0.1 MVP specification
 
-Status: proposed normative specification
+Status: implemented and verified normative specification
 
 ## 1. Purpose
 
@@ -27,7 +27,7 @@ This specification uses **MUST**, **SHOULD**, and **MAY** normatively.
 ## 2. Design principles
 
 1. **One host application, one inner Unix system.** Linux sees one
-   `cannedbsd` process. cannedBSD sees a shell and child processes.
+   `bsdinacan` process. cannedBSD sees a shell and child processes.
 2. **Native execution first.** v0.1 commands contain code for the real host
    CPU. No instruction emulator is involved.
 3. **Runtime-owned semantics.** A host facility may implement a mechanism, but
@@ -96,6 +96,11 @@ contains only mechanisms unavailable in portable code:
   epoch. A zero clock result reports that the host could not supply a value.
 - Sleep or yield the enclosing application.
 - Report a fatal runtime error.
+
+Allocated memory may contain arbitrary bytes; the portable runtime clears new
+objects before use. Resize preserves the existing prefix on success and leaves
+the original allocation valid on failure. This keeps zero-fill assumptions out
+of classic-host allocators.
 
 No Unix process operation belongs in this table. In particular, it MUST NOT
 contain host `fork`, `exec`, `waitpid`, or a facility for delegating command
@@ -270,6 +275,10 @@ Each process owns a descriptor-number table. A descriptor points to a shared,
 reference-counted open-file object containing status flags, current offset when
 applicable, and operations for reading, writing, seeking, polling, and closing.
 
+The internal poll operation reports whether a requested read or write can
+complete without blocking, including EOF and broken-pipe outcomes. It is an
+open-file/scheduler seam; a public `poll(2)` API is deferred.
+
 v0.1 descriptor types are:
 
 - RAM filesystem regular file.
@@ -378,7 +387,8 @@ The small initial `tr` is not claimed to be a complete NetBSD `tr` port.
 
 - API integers and structures use explicitly sized types where representation
   crosses an ABI boundary.
-- Byte counts and offsets must detect overflow.
+- Byte counts and offsets must detect overflow. A read or write count that
+  cannot fit in `cb_ssize_t` fails with `EINVAL` before reaching a backend.
 - Errors use stable cannedBSD/POSIX-style symbolic values such as `ENOENT`,
   `EBADF`, `EPIPE`, `ECHILD`, and `ENOMEM`.
 - Errno is per internal process, never a naked host-global value.

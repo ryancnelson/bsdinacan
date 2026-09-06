@@ -13,7 +13,7 @@ non-goal rather than unfinished v0.1 work.
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| One host application; commands are not host processes | Partial | `make check-architecture` rejects host process-launch APIs outside the backend. Add a Linux `/proc` integration check around a blocked multi-task workload. |
+| One host application; commands are not host processes | Proven | `tests/test_one_process.sh` holds `echo READY; cat | cat` active, then reads Linux `/proc` and requires one host thread and zero host children. The architecture gate separately rejects host process-launch calls. |
 | Native execution with no CPU emulator | Proven | Native C modules are linked into `bsdinacan`; architecture scan finds no emulator boundary. |
 | Versioned host-operations table | Proven | `test_host_contract` checks version, exact size, every required callback, monotonic behavior, nonzero wall time, and clean rejection of null, wrong-version, undersized, or callback-incomplete tables. |
 | Versioned program API and descriptors | Proven | `abiprobe` checks the complete `cb_api_v1`; `test_registration_contract` covers wrong version/size, null and empty names, unknown flags, null entry points, duplicates, valid entries, and capacity. |
@@ -38,7 +38,7 @@ non-goal rather than unfinished v0.1 work.
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| Per-task descriptor tables and runtime-owned open-file objects | Partial | Architecture and pipeline tests support the design. Direct independence and cleanup tests are missing. |
+| Per-task descriptor tables and runtime-owned open-file objects | Proven | `descriptorprobe` proves child-table independence and shared open-file offsets; readiness checks cover RAM files, terminals, pipe EOF and `EPIPE`. `test_allocation_cleanup` returns the full acceptance workload's runtime allocation ledger to zero. |
 | `dup`/`dup2` share offsets; CLOEXEC; allocation/error behavior | Proven | `descriptorprobe`, `execprobe`, and `pipeallocprobe` cover shared offsets, replacement, same-fd behavior, CLOEXEC, inheritance, invalid fds, and exhaustion. |
 | Pipe construction is atomic | Proven | `pipeallocprobe` fails all three allocations and the one-slot descriptor case, verifying errno and unchanged outputs under ASan/UBSan. |
 | Pipe zero-byte I/O never yields | Proven | `pipezeroprobe` observes peer scheduling and covers read/write. |
@@ -74,13 +74,13 @@ non-goal rather than unfinished v0.1 work.
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
 | Stable error numbers and per-task errno | Proven | `abiprobe` checks a non-unknown string for every declared error, unknown-error fallback, and distinct errno values across interleaved parent and child tasks. |
-| Overflow and pointer/vector ownership rules | Partial | Several bounds exist, copied argv/environment are directly verified, and sanitizers pass current paths. Allocation-failure coverage remains narrow. |
+| Overflow and pointer/vector ownership rules | Proven | `overflowprobe` checks oversized byte counts and signed-offset overflow; vector and string allocation arithmetic is guarded. `processprobe` proves argv/env copies, the executor test mutates its registration source after prepare, and `test_allocation_cleanup` proves complete runtime teardown. |
 | No internal pointer crosses program ABI | Proven | Public header contains scalar values, opaque behavior through function tables, strings/vectors, and versioned value structs; internal types are absent. |
 | Capability record reports exact v0.1 truth | Proven | `abiprobe` checks version, exact structure size, every enabled field as one, and every excluded or deferred field as zero. |
 | Required integrations and exact acceptance output | Proven | `make test` checks all §11.2 commands and exact `HELLO`; `tests/test_launcher.sh` verifies the selected executable. |
 | Normal and ASan/UBSan suites | Proven | `make test`, `make sanitize`, and `make check-build-modes`; ASan documents its `ucontext` support warning. |
-| README build/run/test instructions | Partial | Build/run/test are present. Adding a native command is not documented. |
-| Known deviations resolved or accepted | Missing | This table is the open deviation list. v0.1 cannot be tagged while any `Missing` row remains. |
+| README build/run/test/native-command instructions | Proven | `README.md` documents Linux prerequisites, normal and Alpine commands, interactive and `-c` launch, all verification entry points, the native descriptor/entry contract, registration, tests, and ownership restrictions. |
+| Known deviations resolved or accepted | Proven | This table has no `Partial` or `Missing` rows. The bounded shell/`tr`, absent executable filesystem objects, explicit exclusions, and ASan `ucontext` warning are documented rather than presented as full NetBSD compatibility. |
 
 ## Explicit v0.1 exclusions
 

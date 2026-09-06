@@ -11,7 +11,10 @@ static void initialize_api(struct cb_kernel *kernel);
 
 void *cb_allocate(struct cb_kernel *kernel, size_t size)
 {
-    return kernel->host->allocate(size);
+    void *pointer = kernel->host->allocate(size);
+    if (pointer != NULL)
+        memset(pointer, 0, size);
+    return pointer;
 }
 
 void *cb_resize(struct cb_kernel *kernel, void *pointer, size_t size)
@@ -31,7 +34,10 @@ char *cb_string_duplicate(struct cb_kernel *kernel, const char *text)
     char *copy;
     if (text == NULL)
         return NULL;
-    length = strlen(text) + 1;
+    length = strlen(text);
+    if (length == SIZE_MAX)
+        return NULL;
+    ++length;
     copy = cb_allocate(kernel, length);
     if (copy != NULL)
         memcpy(copy, text, length);
@@ -50,12 +56,29 @@ enum cb_wake_reason cb_test_current_wake_reason(void)
            CB_WAKE_NONE : active_kernel->current->wake_reason;
 }
 
+int cb_test_current_descriptor_poll(int descriptor, int events)
+{
+    struct cb_task *task;
+    struct cb_open_file *file;
+    if (active_kernel == NULL || active_kernel->current == NULL)
+        return -CB_EINVAL;
+    task = active_kernel->current;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL)
+        return -CB_EBADF;
+    return file->ops->poll(file, events);
+}
+
 static size_t string_vector_count(char *const vector[])
 {
     size_t count = 0;
-    if (vector != NULL)
-        while (vector[count] != NULL)
+    if (vector != NULL) {
+        while (vector[count] != NULL) {
+            if (count == SIZE_MAX / sizeof(*vector) - 1)
+                return SIZE_MAX;
             ++count;
+        }
+    }
     return count;
 }
 
@@ -64,7 +87,10 @@ static char **string_vector_copy(struct cb_kernel *kernel,
 {
     size_t count = string_vector_count(vector);
     size_t index;
-    char **copy = cb_allocate(kernel, (count + 1) * sizeof(*copy));
+    char **copy;
+    if (count == SIZE_MAX)
+        return NULL;
+    copy = cb_allocate(kernel, (count + 1) * sizeof(*copy));
     if (copy == NULL)
         return NULL;
     for (index = 0; index < count; ++index) {
@@ -94,7 +120,11 @@ struct cb_open_file *cb_open_file_create(struct cb_kernel *kernel,
                                           const struct cb_file_ops *ops,
                                           int flags)
 {
-    struct cb_open_file *file = cb_allocate(kernel, sizeof(*file));
+    struct cb_open_file *file;
+    if (kernel == NULL || ops == NULL || ops->poll == NULL ||
+        ops->stat == NULL)
+        return NULL;
+    file = cb_allocate(kernel, sizeof(*file));
     if (file == NULL)
         return NULL;
     file->references = 1;
@@ -235,6 +265,20 @@ static cb_off_t no_seek(struct cb_open_file *file, struct cb_task *task,
     return -1;
 }
 
+static int console_input_poll(struct cb_open_file *file, int events)
+{
+    if ((events & CB_POLL_READ) != 0 &&
+        file->kernel->host->console_poll(0) > 0)
+        return CB_POLL_READ;
+    return 0;
+}
+
+static int console_output_poll(struct cb_open_file *file, int events)
+{
+    (void)file;
+    return events & CB_POLL_WRITE;
+}
+
 static int terminal_stat(struct cb_open_file *file,
                          struct cb_stat_v1 *stat_buffer)
 {
@@ -250,11 +294,11 @@ static int terminal_stat(struct cb_open_file *file,
 }
 
 static const struct cb_file_ops console_input_ops = {
-    console_read, NULL, no_seek, terminal_stat, NULL
+    console_read, NULL, no_seek, console_input_poll, terminal_stat, NULL
 };
 
 static const struct cb_file_ops console_output_ops = {
-    NULL, console_write, no_seek, terminal_stat, NULL
+    NULL, console_write, no_seek, console_output_poll, terminal_stat, NULL
 };
 
 void cb_wake_pipe_tasks(struct cb_kernel *kernel)
@@ -349,6 +393,24 @@ static int pipe_stat(struct cb_open_file *file,
     return 0;
 }
 
+static int pipe_read_poll(struct cb_open_file *file, int events)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    if ((events & CB_POLL_READ) != 0 &&
+        (pipe->used != 0 || pipe->writers == 0))
+        return CB_POLL_READ;
+    return 0;
+}
+
+static int pipe_write_poll(struct cb_open_file *file, int events)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    if ((events & CB_POLL_WRITE) != 0 &&
+        (pipe->used < sizeof(pipe->data) || pipe->readers == 0))
+        return CB_POLL_WRITE;
+    return 0;
+}
+
 static void pipe_read_close(struct cb_open_file *file)
 {
     struct cb_pipe *pipe = file->object.pipe;
@@ -368,11 +430,11 @@ static void pipe_write_close(struct cb_open_file *file)
 }
 
 static const struct cb_file_ops pipe_read_ops = {
-    pipe_read, NULL, no_seek, pipe_stat, pipe_read_close
+    pipe_read, NULL, no_seek, pipe_read_poll, pipe_stat, pipe_read_close
 };
 
 static const struct cb_file_ops pipe_write_ops = {
-    NULL, pipe_write, no_seek, pipe_stat, pipe_write_close
+    NULL, pipe_write, no_seek, pipe_write_poll, pipe_stat, pipe_write_close
 };
 
 void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
@@ -444,8 +506,12 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
                                    const struct cb_spawn_action_v1 *actions,
                                    size_t action_count)
 {
-    struct cb_task *task = cb_allocate(kernel, sizeof(*task));
+    size_t argument_count = string_vector_count(argv);
+    struct cb_task *task;
     int descriptor;
+    if (argument_count == SIZE_MAX || argument_count > INT_MAX)
+        return NULL;
+    task = cb_allocate(kernel, sizeof(*task));
     if (task == NULL)
         return NULL;
     task->kernel = kernel;
@@ -453,7 +519,7 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
     task->ppid = parent == NULL ? 0 : parent->pid;
     task->program = program;
     task->argv = string_vector_copy(kernel, argv);
-    task->argc = (int)string_vector_count(argv);
+    task->argc = (int)argument_count;
     task->environment = string_vector_copy(kernel,
         envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
     if (task->argv == NULL || task->environment == NULL)
@@ -592,6 +658,10 @@ static int api_spawn(const char *program_name, char *const argv[],
         cb_task_set_error(parent, CB_EINVAL);
         return -1;
     }
+    if (string_vector_count(argv) > INT_MAX) {
+        cb_task_set_error(parent, CB_EINVAL);
+        return -1;
+    }
     program = program_find(kernel, program_name);
     if (program == NULL) {
         cb_task_set_error(parent, CB_ENOENT);
@@ -616,7 +686,13 @@ static int api_exec(const char *program_name, char *const argv[],
     struct cb_program *program;
     char **new_argv;
     char **new_environment;
+    size_t argument_count;
     if (program_name == NULL || argv == NULL || argv[0] == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    argument_count = string_vector_count(argv);
+    if (argument_count == SIZE_MAX || argument_count > INT_MAX) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
@@ -636,7 +712,7 @@ static int api_exec(const char *program_name, char *const argv[],
     }
     task->pending_program = program;
     task->pending_argv = new_argv;
-    task->pending_argc = (int)string_vector_count(argv);
+    task->pending_argc = (int)argument_count;
     task->pending_environment = new_environment;
     cb_task_yield_as(task, CB_TASK_EXEC_PENDING);
     task->kernel->host->fatal("successful exec returned");
@@ -747,6 +823,10 @@ static cb_ssize_t api_read(int descriptor, void *buffer, size_t count)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+    if (count > INT64_MAX) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
     if (count != 0 && buffer == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
@@ -762,6 +842,10 @@ static cb_ssize_t api_write(int descriptor, const void *buffer, size_t count)
         (file = task->descriptors[descriptor].file) == NULL ||
         file->ops->write == NULL) {
         cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (count > INT64_MAX) {
+        cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
     if (count != 0 && buffer == NULL) {
@@ -964,6 +1048,7 @@ static int api_setenv(const char *name, const char *value, int overwrite)
     size_t count;
     size_t index;
     size_t name_length;
+    size_t value_length;
     char *entry;
     char **resized;
     if (!valid_environment_name(name) || value == NULL) {
@@ -971,7 +1056,17 @@ static int api_setenv(const char *name, const char *value, int overwrite)
         return -1;
     }
     name_length = strlen(name);
+    value_length = strlen(value);
+    if (value_length > SIZE_MAX - 2 ||
+        name_length > SIZE_MAX - value_length - 2) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
     count = string_vector_count(task->environment);
+    if (count == SIZE_MAX) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
     for (index = 0; index < count; ++index) {
         if (strncmp(task->environment[index], name, name_length) == 0 &&
             task->environment[index][name_length] == '=') {
@@ -980,7 +1075,7 @@ static int api_setenv(const char *name, const char *value, int overwrite)
             break;
         }
     }
-    entry = cb_allocate(task->kernel, name_length + strlen(value) + 2);
+    entry = cb_allocate(task->kernel, name_length + value_length + 2);
     if (entry == NULL) {
         cb_task_set_error(task, CB_ENOMEM);
         return -1;
@@ -1130,6 +1225,7 @@ struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host)
     kernel = host->allocate(sizeof(*kernel));
     if (kernel == NULL)
         return NULL;
+    memset(kernel, 0, sizeof(*kernel));
     kernel->host = host;
     kernel->scheduler_context = host->context_root();
     if (kernel->scheduler_context == NULL) {

@@ -54,6 +54,11 @@ runtime model before the human-facing demo grows.
 - [x] **Iteration 15: explicit VFS boundary.** Route pathname and lifecycle
   operations through versioned mount/node operation tables rather than calling
   RAMFS entry points directly from the program API.
+- [x] **Iteration 16: release evidence and portability audit.** Prove the
+  one-process model through Linux `/proc`, total runtime allocation cleanup,
+  dirty host-allocation independence, descriptor readiness, signed byte-count
+  and offset overflow handling, registration-source ownership, complete README
+  instructions, and the exact Alpine Woodpecker command.
 
 ## Priority 2 — usable-system demo
 
@@ -83,6 +88,11 @@ runtime model before the human-facing demo grows.
 
 ## Friction log
 
+- 2026-09-06 (resolved): Woodpecker pipeline #3 caught a Clang-only
+  maybe-uninitialized warning in `test_vfs_contract`; initializing the test
+  pointer made GCC and Clang agree. A pre-push run in the exact agent image then
+  caught GNU `find -printf` in the new `/proc` test; a Bash pathname glob now
+  works under Alpine BusyBox as well as Ubuntu.
 - 2026-09-06 (resolved): `.gitignore` used `core.*` for crash dumps, which also
   excluded the essential `src/core.c`; it was absent from the initial commit.
   Dump patterns are now root-anchored as `/core` and `/core.*`, and `src/core.c`
@@ -99,6 +109,17 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 16 (2026-09-06): release evidence and portability audit.**
+  `tests/test_one_process.sh` holds a three-task internal pipeline active while
+  `/proc` reports one host thread and no host children. An allocation ledger
+  returns to zero after the complete acceptance workload. A host allocator that
+  fills new memory with `0xa5` first crashed the runtime; the core now clears
+  every new object independently of the backend. `overflowprobe` first returned
+  status 192; oversized read/write counts now fail before backend dispatch, and
+  signed seek overflow is verified. Tests also cover open-file readiness and
+  mutation of a descriptor source after registration. README and CI guidance
+  now describe prerequisites, native commands, and the one-process gate. The
+  exact Alpine agent image passed the complete canonical command.
 - [x] **Iteration 15 (2026-09-06): explicit VFS boundary.** The architecture
   test first failed because there were no mount or node operation tables. Path
   normalization, traversal, cwd rendering, task errno translation, and root

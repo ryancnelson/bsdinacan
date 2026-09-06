@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 15 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 16 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -180,11 +180,22 @@ files retain generic node handles, preserving open-after-unlink lifetime. All
 prior filesystem and process probes pass without direct RAMFS access in the
 portable core.
 
+Iteration 16 closed the release-evidence gaps. A live `/proc` test holds
+`echo READY; cat | cat` active and observes one Linux thread with no host child
+processes. An allocator ledger proves complete runtime cleanup; a deliberately
+dirty host allocator first crashed and now proves core objects are explicitly
+initialized. `overflowprobe` first returned status 192 and now verifies
+oversized byte-count rejection plus signed seek overflow. Internal readiness
+operations cover RAM files, terminals, pipe blocking, EOF, and broken-pipe
+outcomes. Registration-source mutation proves program preparation ownership.
+README instructions now include prerequisites and a native-command example.
+The complete current tree passed inside the exact Alpine Woodpecker agent image.
+
 ## What's next
 
-See `COMPLIANCE.md`. The next release work is a requirement-by-requirement audit,
-including the Linux `/proc` one-process proof, allocation/overflow review, and
-README native-command documentation.
+The normative v0.1 rows in `COMPLIANCE.md` now have direct evidence. Remaining
+items in `BACKLOG.md` are post-v0.1 usability and portability work rather than
+release blockers.
 
 ## Key files and commands
 
@@ -212,6 +223,6 @@ README native-command documentation.
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,
   not an implemented capability.
-- The public GitHub repository and Woodpecker project are active. Pipeline #1
-  proved the GitHub webhook, Alpine agent, and canonical gate end to end for
-  commit `5e971e6`.
+- The public GitHub repository and Woodpecker project are active. Successful
+  pipelines prove the GitHub webhook, Alpine agent, and canonical gate end to
+  end. Every push remains subject to that gate.

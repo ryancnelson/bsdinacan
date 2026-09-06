@@ -59,6 +59,7 @@ check-publication:
 test: $(PROGRAM) $(TEST_PROGRAM) check-architecture
 	$(TEST_PROGRAM)
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'

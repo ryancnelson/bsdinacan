@@ -9,7 +9,10 @@ static size_t captured_size;
 static char captured_streams[3][32768];
 static size_t captured_stream_sizes[3];
 static void *(*base_allocate)(size_t);
+static void *(*base_resize)(void *, size_t);
+static void (*base_release)(void *);
 static int allocation_failure_countdown = -1;
+static long allocation_balance;
 static const unsigned char *console_input;
 static size_t console_input_size;
 static size_t console_input_position;
@@ -35,6 +38,7 @@ static unsigned executor_suspend_count;
 static unsigned executor_terminate_count;
 static unsigned executor_instance_destroy_count;
 static unsigned executor_program_destroy_count;
+static void fail(const char *message);
 
 static int registration_stub_main(const struct cb_api_v1 *api, int argc,
                                   char *const argv[], char *const envp[])
@@ -118,6 +122,40 @@ static void *controlled_allocate(size_t size)
     return base_allocate(size);
 }
 
+static void *tracked_allocate(size_t size)
+{
+    void *pointer = base_allocate(size);
+    if (pointer != NULL)
+        ++allocation_balance;
+    return pointer;
+}
+
+static void *dirty_allocate(size_t size)
+{
+    void *pointer = base_allocate(size);
+    if (pointer != NULL)
+        memset(pointer, 0xa5, size);
+    return pointer;
+}
+
+static void *tracked_resize(void *pointer, size_t size)
+{
+    void *resized = base_resize(pointer, size);
+    if (pointer == NULL && resized != NULL)
+        ++allocation_balance;
+    return resized;
+}
+
+static void tracked_release(void *pointer)
+{
+    if (pointer != NULL) {
+        if (allocation_balance <= 0)
+            fail("allocation tracker underflow");
+        --allocation_balance;
+    }
+    base_release(pointer);
+}
+
 static cb_ssize_t capture_write(int stream, const void *buffer, size_t count)
 {
     if (count > sizeof(captured) - captured_size - 1)
@@ -190,6 +228,61 @@ static void expect_path(const char *cwd, const char *path,
                 cwd, path, expected, actual);
         exit(1);
     }
+}
+
+static void test_allocation_cleanup(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+    base_allocate = host.allocate;
+    base_resize = host.resize;
+    base_release = host.release;
+    allocation_balance = 0;
+    host.allocate = tracked_allocate;
+    host.resize = tracked_resize;
+    host.release = tracked_release;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("allocation cleanup kernel creation");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_boot(kernel,
+            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result") < 0)
+        fail("allocation cleanup boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0 || strcmp(captured, "HELLO\n") != 0)
+        fail("allocation cleanup acceptance behavior");
+    cb_kernel_destroy(kernel);
+    if (allocation_balance != 0)
+        fail("runtime allocation cleanup");
+}
+
+static void test_uninitialized_host_memory(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+    base_allocate = host.allocate;
+    host.allocate = dirty_allocate;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("dirty-memory kernel creation");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_boot(kernel,
+            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result") < 0)
+        fail("dirty-memory boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0 || strcmp(captured, "HELLO\n") != 0)
+        fail("dirty-memory acceptance behavior");
+    cb_kernel_destroy(kernel);
 }
 
 static void expect_invalid_host(const struct cb_host_ops_v1 *host,
@@ -282,7 +375,7 @@ static void test_vfs_contract(void)
     struct cb_kernel other_kernel;
     struct cb_vfs_mount *mount;
     struct cb_vfs_node *root;
-    struct cb_vfs_node *tmp;
+    struct cb_vfs_node *tmp = NULL;
     const struct cb_vfs_mount_ops *mount_ops;
     const struct cb_vfs_node_ops *node_ops;
     struct cb_vfs_mount_ops mount_copy;
@@ -459,8 +552,9 @@ static void test_executor_contract(void)
         lifecycle_instance_destroy,
         lifecycle_program_destroy
     };
+    char source_name[] = "sh";
     struct cb_program_v1 source = {
-        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "sh", 0,
+        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), source_name, 0,
         64 * 1024, executor_lifecycle_main
     };
     struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
@@ -517,9 +611,12 @@ static void test_executor_contract(void)
     executor_terminate_count = 0;
     executor_instance_destroy_count = 0;
     executor_program_destroy_count = 0;
-    if (cb_kernel_register_executor(kernel, &executor, &source) < 0 ||
-        cb_kernel_boot(kernel, NULL) < 0)
+    if (cb_kernel_register_executor(kernel, &executor, &source) < 0)
         fail("executor lifecycle setup");
+    strcpy(source_name, "xx");
+    source.start = NULL;
+    if (cb_kernel_boot(kernel, NULL) < 0)
+        fail("prepared program source ownership");
     status = cb_kernel_run(kernel);
     if (status != 0 || executor_prepare_count != 1 ||
         executor_create_count != 1 || executor_resume_count != 2 ||
@@ -743,6 +840,9 @@ static int pipeedgepeer_main(const struct cb_api_v1 *api, int argc,
     count = api->read(pipe_edge_read_fd, &byte, 1);
     if (count != 0)
         return 70;
+    if (cb_test_current_descriptor_poll(pipe_edge_read_fd, CB_POLL_READ) !=
+        CB_POLL_READ)
+        return 201;
     if (cb_test_current_wake_reason() != CB_WAKE_PIPE_CHANGED)
         return 82;
     pipe_edge_peer_state = 2;
@@ -763,8 +863,15 @@ static int pipeedgeprobe_main(const struct cb_api_v1 *api, int argc,
 
     if (api->pipe(descriptors) < 0)
         return 71;
+    if (cb_test_current_descriptor_poll(descriptors[0], CB_POLL_READ) != 0 ||
+        cb_test_current_descriptor_poll(descriptors[1], CB_POLL_WRITE) !=
+            CB_POLL_WRITE)
+        return 196;
     if (api->close(descriptors[0]) < 0)
         return 72;
+    if (cb_test_current_descriptor_poll(descriptors[1], CB_POLL_WRITE) !=
+        CB_POLL_WRITE)
+        return 197;
     if (api->write(descriptors[1], &byte, 1) != -1 ||
         api->get_errno() != CB_EPIPE)
         return 73;
@@ -906,6 +1013,15 @@ static int terminalprobe_main(const struct cb_api_v1 *api, int argc,
             stat_buffer.type != CB_NODE_TERMINAL || stat_buffer.mode != 0600)
             return 110 + descriptor;
     }
+    console_poll_ready = 0;
+    if (cb_test_current_descriptor_poll(0, CB_POLL_READ) != 0 ||
+        cb_test_current_descriptor_poll(1, CB_POLL_READ | CB_POLL_WRITE) !=
+            CB_POLL_WRITE ||
+        cb_test_current_descriptor_poll(63, CB_POLL_READ) != -CB_EBADF)
+        return 198;
+    console_poll_ready = 1;
+    if (cb_test_current_descriptor_poll(0, CB_POLL_READ) != CB_POLL_READ)
+        return 199;
     if (api->read(1, &byte, 1) != -1 || api->get_errno() != CB_EBADF)
         return 113;
     if (api->write(0, &byte, 1) != -1 || api->get_errno() != CB_EBADF)
@@ -974,6 +1090,10 @@ static int descriptorprobe_main(const struct cb_api_v1 *api, int argc,
                            0600);
     if (descriptor < 0 || api->write(descriptor, "ab", 2) != 2)
         return 125;
+    if (cb_test_current_descriptor_poll(
+            descriptor, CB_POLL_READ | CB_POLL_WRITE) !=
+        (CB_POLL_READ | CB_POLL_WRITE))
+        return 200;
     duplicate = api->dup(descriptor);
     if (duplicate < 0 || api->lseek(descriptor, 0, CB_SEEK_SET) != 0)
         return 126;
@@ -1181,6 +1301,33 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->waitpid(child, &status) != child || status != 0 ||
         api->get_errno() != 0)
         return 188;
+    return 0;
+}
+
+static int overflowprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    unsigned char byte = 0;
+    int descriptor;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    descriptor = api->open("/tmp/overflow",
+                           CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0600);
+    if (descriptor < 0)
+        return 191;
+    if (api->read(descriptor, &byte, SIZE_MAX) != -1 ||
+        api->get_errno() != CB_EINVAL)
+        return 192;
+    if (api->write(descriptor, &byte, SIZE_MAX) != -1 ||
+        api->get_errno() != CB_EINVAL)
+        return 193;
+    if (api->lseek(descriptor, INT64_MAX, CB_SEEK_SET) != INT64_MAX ||
+        api->lseek(descriptor, 1, CB_SEEK_CUR) != -1 ||
+        api->get_errno() != CB_EINVAL)
+        return 194;
+    if (api->close(descriptor) < 0)
+        return 195;
     return 0;
 }
 
@@ -1425,6 +1572,11 @@ static const struct cb_program_v1 abiprobe_program = {
     64 * 1024, abiprobe_main
 };
 
+static const struct cb_program_v1 overflowprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "overflowprobe", 0,
+    64 * 1024, overflowprobe_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -1461,7 +1613,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &processprobe_program) < 0 ||
             cb_kernel_register(kernel, &ramfsprobe_program) < 0 ||
             cb_kernel_register(kernel, &errnochild_program) < 0 ||
-            cb_kernel_register(kernel, &abiprobe_program) < 0)
+            cb_kernel_register(kernel, &abiprobe_program) < 0 ||
+            cb_kernel_register(kernel, &overflowprobe_program) < 0)
             fail("test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
@@ -1531,6 +1684,8 @@ int main(void)
     test_vfs_contract();
     test_registration_contract();
     test_executor_contract();
+    test_allocation_cleanup();
+    test_uninitialized_host_memory();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
@@ -1622,6 +1777,7 @@ int main(void)
     run_case("processprobe", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
+    run_case("overflowprobe", "", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||

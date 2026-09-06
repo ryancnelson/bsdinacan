@@ -19,6 +19,7 @@ require_pattern '\(\*request_termination\)' src/internal.h 'executor termination
 require_pattern '\(\*instance_destroy\)' src/internal.h 'executor instance-destroy operation'
 require_pattern 'struct cb_vfs_mount_ops' src/internal.h 'VFS mount operation table'
 require_pattern 'struct cb_vfs_node_ops' src/internal.h 'VFS node operation table'
+require_pattern '\(\*poll\)' src/internal.h 'open-file readiness operation'
 
 if rg -n -- 'task->program->start|program->requested_stack_size|task->context' \
         src/core.c; then

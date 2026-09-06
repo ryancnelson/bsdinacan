@@ -21,6 +21,10 @@ secret-dependent steps.
 5. A second clean optimized suite.
 6. GCC's static analyzer and the architecture boundary scan.
 
+The complete suite includes a Linux `/proc` integration: it holds an internal
+three-task shell pipeline open, then proves the running `bsdinacan` application
+has one host thread and no host child processes.
+
 The Woodpecker local runner is an Alpine Linux 3.22 image with its build
 dependencies baked in: `bash`, `build-base`, `clang20`, `compiler-rt`, `git`,
 `libucontext-dev`, `python3`, and `ripgrep`. The project workflow performs no
@@ -39,6 +43,5 @@ Linux backend remains the only source file allowed to use `ucontext`.
   explicitly.
 - A failing gate blocks release; it is not retried with a different command.
 
-Woodpecker repository activation is an external administrative step. Before
-activation, inspect `.woodpecker/ci.yml`, run a harmless push proof, and verify
-that the only webhook receiver is the intended current Woodpecker service.
+The repository is active in Woodpecker. Pipeline #1 established the GitHub
+webhook-to-agent path; every subsequent push must pass the same canonical gate.
