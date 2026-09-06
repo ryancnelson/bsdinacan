@@ -1,0 +1,9 @@
+when:
+  - event: push
+  - event: pull_request
+
+steps:
+  - name: verify-cannedbsd
+    image: bash
+    commands:
+      - make LDLIBS=-lucontext SANITIZE_CC=clang ci

@@ -1,0 +1,161 @@
+# cannedBSD Backlog
+
+The ordering is intentional. Priority 1 contains one-loop tasks that protect the
+runtime model before the human-facing demo grows.
+
+## Priority 1 — ready
+
+- [x] **Iteration 1: preserve open RAMFS files across unlink.** Hypothesis: the
+  directory unlink path frees a node still referenced by an open-file object.
+  Falsifying test: a native probe opens and writes a file, unlinks its path,
+  seeks and reads through the still-open descriptor, verifies the pathname is
+  absent, then closes the descriptor under ASan/UBSan. Define the intended Unix
+  lifetime semantics in `SPEC.md` before making the implementation pass.
+- [x] **Iteration 2: make pipe construction failure atomic.** Introduce a
+  deterministic allocation-failure seam, fail each allocation in `pipe()`, and
+  prove there is no null dereference, leak, or partially installed descriptor.
+- [x] **Iteration 3: install a fresh-build test discipline.** Prevent `make test`
+  from silently reusing sanitizer-built artifacts with different flags; make
+  normal and sanitizer configurations distinguishable or force correct rebuilds.
+- [x] **Iteration 4: expose the agreed `bsdinacan` launcher.** Test that
+  `build/bsdinacan -c 'echo ok'` works, then rename the artifact and diagnostics
+  without changing the internal project name.
+- [x] **Iteration 5: zero-length pipe I/O must not block.** Spawn a peer that can
+  be observed if scheduled; prove `read(pipefd, buffer, 0)` and
+  `write(pipefd, buffer, 0)` return immediately without yielding, even when an
+  ordinary nonempty read would block.
+- [x] **Iteration 6: explicit pipe EOF and broken-pipe tests.** Prove the final
+  writer close wakes readers to EOF and the final reader close makes writes fail
+  with `EPIPE`.
+- [x] **Iteration 7: pipe capacity and wakeup.** Move more than 4096 bytes through
+  two tasks and prove a full-buffer writer blocks, a reader wakes it, byte order
+  is preserved across ring wrap, and neither task starves.
+- [x] **Iteration 8: terminal descriptor and interactive-I/O gate.** Prove fd
+  0/1/2 types and directionality, stdout/stderr separation, zero-byte input,
+  host-read error translation, prompt/line/EOF behavior, and interactive exit
+  status with a deterministic console backend.
+- [x] **Iteration 9: descriptor sharing and inheritance.** Prove `dup`/`dup2`
+  shared offsets and replacement, spawn inheritance and isolation, CLOEXEC
+  retention/closure, invalid descriptor errors, and cleanup.
+- [x] **Iteration 10: process and scheduler contract.** Prove PID 1, unique PIDs,
+  PPID, copied argv/environment, cwd/environment independence, blocking wait,
+  zombie collection, `ECHILD`, explicit yield order, and wake reasons.
+- [ ] **Iteration 11: RAMFS contract.** Cover the initial hierarchy, live path
+  resolution, creation modes, independent contents, holes, stat/inode
+  stability, mkdir/unlink error cases, and per-task cwd.
+- [ ] **Iteration 12: shell and base-command contract.** Cover quotes, escapes,
+  empty words, braced and quote-dependent expansion, syntax errors, every
+  built-in, native command status/errors, redirection failures, and cleanup.
+- [ ] **Iteration 13: ABI and capability contract.** Test wrong versions/sizes,
+  exact capabilities, host-clock operations, and program-registration limits.
+
+## Priority 2 — usable-system demo
+
+- [ ] Represent `/bin/sh` and native commands as real runtime-visible executable
+  objects instead of treating the registry as an invisible path oracle.
+- [ ] Choose a deliberately bounded route to `sed` and write its compatibility
+  tests before importing or implementing regex machinery.
+- [ ] Choose a deliberately bounded route to `awk` and test scripts, fields,
+  variables, stdin, and pipelines before implementation.
+- [ ] Add terminal capability and size APIs, followed by a small curses/dialog
+  demonstration. Do not import ncurses until the terminal contract is tested.
+- [ ] Add a tiny vi-like editor only after filesystem update, terminal mode,
+  resize, and signal/cancellation semantics have explicit tests.
+
+## Priority 3 — portability and extensions
+
+- [ ] Split and test a classic-host adapter contract for Mac OS 7/9, NeXTSTEP,
+  AmigaOS, OS/2, Solaris 9/sun4m, and other targets in `TARGETS.md`.
+- [ ] Prototype outbound TCP through a host-provided SOCKS service. Specify it as
+  a narrow capability, not as a general network stack.
+- [ ] Prototype a common in-can IP stack plus virtual NIC; evaluate libslirp only
+  below that NIC boundary.
+- [ ] Define dynamic native command modules.
+- [ ] Define the portable `.cbwasm` executor as a secondary ABI.
+- [ ] Add persistent and mounted filesystems, PTYs, compilers/interpreters, and
+  eventually an X11 server/window integration.
+
+## Friction log
+
+- 2026-09-06 (resolved): `.gitignore` used `core.*` for crash dumps, which also
+  excluded the essential `src/core.c`; it was absent from the initial commit.
+  Dump patterns are now root-anchored as `/core` and `/core.*`, and `src/core.c`
+  is included in Iteration 8's commit.
+- 2026-09-06: `make test` reused binaries produced by `make sanitize`; Make does
+  not encode `CFLAGS`/`LDFLAGS` in target freshness. This can confuse evidence
+  about which build was tested. Tracked as Priority 1, Iteration 3.
+- 2026-09-06 (resolved): no git metadata was present. A local repository was
+  initialized after the first five documented loops; future loops can produce
+  one reviewable commit each. No remote is configured.
+- 2026-09-06: the current test harness is a single raw-C executable. That is
+  sufficient for now; adding a framework would be ceremony until isolation,
+  diagnostics, or selective execution becomes painful.
+
+## Completed
+
+- [x] **Iteration 10 (2026-09-06): process and scheduler contract.** The first
+  focused run returned status 152 because a parent resumed from blocking wait
+  without a recorded cause. Tasks now record pipe-change, console-ready, and
+  child-exit wake reasons, while voluntary yield records none. Tests prove PID
+  1 parentage, monotonic child PIDs, copied argv/environment, cwd/environment
+  isolation, blocking wait, exit status, zombie collection, `ECHILD`, and exec
+  preservation/replacement rules.
+- [x] **CI infrastructure (2026-09-06): canonical Woodpecker gate.** `make ci`
+  is the single local and remote entry point. A live Alpine 3.22 agent run proved
+  the GCC optimized suite, Clang ASan/UBSan suite, build-mode isolation,
+  architecture checks, publication hygiene, and GCC static analysis. The
+  runner image owns tool installation; the project workflow does not mutate its
+  environment.
+- [x] **Iteration 9 (2026-09-06): descriptor and exec semantics.** The extended
+  exec test first returned status 22 because same-fd `dup2` cleared CLOEXEC and
+  leaked the descriptor. The fix preserves flags on the no-op path. Direct
+  tests also cover shared offsets, replacement, spawn inheritance and table
+  isolation, retained descriptors across exec, invalid fds, and cleanup.
+- [x] **Iteration 8 (2026-09-06): terminal and interactive I/O.** A deterministic
+  host console exposed that zero-length terminal reads polled the host. The core
+  now returns immediately and normalizes host read errors to `-1`/task errno.
+  Tests cover fd 0/1/2 metadata/direction, console blocking and wakeup, stream
+  separation, prompt/input/EOF, and interactive exit status.
+- [x] **Iteration 7 (2026-09-06): pipe capacity, wakeup, and ring wrap.** A
+  10,000-byte deterministic pattern forces the 4,096-byte writer buffer full;
+  a reader using 777-byte chunks wakes it repeatedly and verifies byte order
+  through multiple wraps and EOF. The existing implementation passed under
+  normal and sanitizer builds.
+- [x] **Iteration 6 (2026-09-06): pipe EOF and `EPIPE` characterization.** The
+  focused test passed against the existing implementation. It observes a child
+  blocked on an empty pipe, closes the final writer, and proves wakeup to EOF;
+  it separately proves writing after final-reader close returns `EPIPE`. No
+  behavior change was needed.
+- [x] **Iteration 5 (2026-09-06): nonblocking zero-length pipe I/O.** A peer-task
+  probe first returned status 66, proving zero-length `read` yielded while the
+  pipe was empty. `pipe_read` now returns before examining endpoint state; both
+  zero-byte read and write are verified not to schedule the peer. All normal,
+  sanitizer, build-mode, analyzer, and architecture checks pass.
+- [x] **Iteration 4 (2026-09-06): `bsdinacan` launcher.** The launcher test first
+  failed because only `build/cannedbsd` existed. Normal and sanitizer products
+  are now named `bsdinacan`; the launcher test runs against the selected build
+  variant, and the normative acceptance command uses the public name. cannedBSD
+  remains the project and runtime name.
+- [x] **Iteration 3 (2026-09-06): isolate build modes.** The black-box regression
+  test first proved that `make test` reused an ASan-linked artifact after
+  `make sanitize`. Sanitizer products now live in `build/sanitize/`; ordinary
+  products retain the `build/` path. `make check-build-modes` verifies the
+  selected normal executable does not link `libasan`.
+- [x] **Iteration 2 (2026-09-06): atomic pipe construction.** A deterministic
+  allocation-failure probe first reproduced a null dereference in
+  `pipe_read_close`. `pipe()` now constructs the pipe and endpoints in ownership
+  order. All three allocation failures return `ENOMEM`; a one-slot descriptor
+  table failure returns `EMFILE`; neither case changes the output array or
+  leaks a descriptor. Sanitizer and clean optimized suites pass.
+- [x] **Iteration 1 (2026-09-06): open-file lifetime after unlink.** The new
+  `unlinkprobe` first produced an ASan heap-use-after-free in `node_read`.
+  RAMFS nodes now count open-file-object references; unlink detaches the name
+  and final close reclaims the nameless node. The same probe and full test suite
+  pass under ASan/UBSan and a clean optimized build. The spec now states the
+  lifetime contract.
+- [x] Pre-loop prototype: versioned host and native-program interfaces, internal
+  tasks, scheduler, descriptors, pipes, RAMFS, shell, base commands, Linux host
+  adapter, acceptance test, sanitizer target, and architecture grep checks.
+- [x] 2026-09-06: read the canonical Gilfoyle and Iterate Bot documents; adopted
+  evidence-only claims, falsifying tests, immediate notes, and the
+  `CURRENT-STATE.md`/`BACKLOG.md` handoff loop.

@@ -1,0 +1,1255 @@
+#include "internal.h"
+
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+
+static struct cb_kernel *active_kernel;
+
+static void task_entry(void *argument);
+static void initialize_api(struct cb_kernel *kernel);
+
+void *cb_allocate(struct cb_kernel *kernel, size_t size)
+{
+    return kernel->host->allocate(size);
+}
+
+void *cb_resize(struct cb_kernel *kernel, void *pointer, size_t size)
+{
+    return kernel->host->resize(pointer, size);
+}
+
+void cb_release(struct cb_kernel *kernel, void *pointer)
+{
+    if (pointer != NULL)
+        kernel->host->release(pointer);
+}
+
+char *cb_string_duplicate(struct cb_kernel *kernel, const char *text)
+{
+    size_t length;
+    char *copy;
+    if (text == NULL)
+        return NULL;
+    length = strlen(text) + 1;
+    copy = cb_allocate(kernel, length);
+    if (copy != NULL)
+        memcpy(copy, text, length);
+    return copy;
+}
+
+void cb_task_set_error(struct cb_task *task, int error)
+{
+    if (task != NULL)
+        task->error = error;
+}
+
+enum cb_wake_reason cb_test_current_wake_reason(void)
+{
+    return active_kernel == NULL || active_kernel->current == NULL ?
+           CB_WAKE_NONE : active_kernel->current->wake_reason;
+}
+
+static size_t string_vector_count(char *const vector[])
+{
+    size_t count = 0;
+    if (vector != NULL)
+        while (vector[count] != NULL)
+            ++count;
+    return count;
+}
+
+static char **string_vector_copy(struct cb_kernel *kernel,
+                                 char *const vector[])
+{
+    size_t count = string_vector_count(vector);
+    size_t index;
+    char **copy = cb_allocate(kernel, (count + 1) * sizeof(*copy));
+    if (copy == NULL)
+        return NULL;
+    for (index = 0; index < count; ++index) {
+        copy[index] = cb_string_duplicate(kernel, vector[index]);
+        if (copy[index] == NULL) {
+            while (index > 0)
+                cb_release(kernel, copy[--index]);
+            cb_release(kernel, copy);
+            return NULL;
+        }
+    }
+    copy[count] = NULL;
+    return copy;
+}
+
+static void string_vector_destroy(struct cb_kernel *kernel, char **vector)
+{
+    size_t index;
+    if (vector == NULL)
+        return;
+    for (index = 0; vector[index] != NULL; ++index)
+        cb_release(kernel, vector[index]);
+    cb_release(kernel, vector);
+}
+
+struct cb_open_file *cb_open_file_create(struct cb_kernel *kernel,
+                                          const struct cb_file_ops *ops,
+                                          int flags)
+{
+    struct cb_open_file *file = cb_allocate(kernel, sizeof(*file));
+    if (file == NULL)
+        return NULL;
+    file->references = 1;
+    file->flags = flags;
+    file->ops = ops;
+    file->kernel = kernel;
+    return file;
+}
+
+void cb_open_file_retain(struct cb_open_file *file)
+{
+    ++file->references;
+}
+
+void cb_open_file_release(struct cb_open_file *file)
+{
+    struct cb_kernel *kernel;
+    if (file == NULL)
+        return;
+    if (--file->references != 0)
+        return;
+    kernel = file->kernel;
+    if (file->ops->last_close != NULL)
+        file->ops->last_close(file);
+    cb_release(kernel, file);
+}
+
+static int fd_install_at(struct cb_task *task, struct cb_open_file *file,
+                         int descriptor, int retain)
+{
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (task->descriptors[descriptor].file != NULL)
+        cb_open_file_release(task->descriptors[descriptor].file);
+    task->descriptors[descriptor].file = file;
+    task->descriptors[descriptor].close_on_exec = 0;
+    if (retain)
+        cb_open_file_retain(file);
+    return descriptor;
+}
+
+static int fd_install(struct cb_task *task, struct cb_open_file *file,
+                      int minimum)
+{
+    int descriptor;
+    for (descriptor = minimum; descriptor < CB_MAX_FDS; ++descriptor) {
+        if (task->descriptors[descriptor].file == NULL) {
+            task->descriptors[descriptor].file = file;
+            task->descriptors[descriptor].close_on_exec = 0;
+            return descriptor;
+        }
+    }
+    cb_task_set_error(task, CB_EMFILE);
+    return -1;
+}
+
+static int fd_close(struct cb_task *task, int descriptor)
+{
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        task->descriptors[descriptor].file == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    file = task->descriptors[descriptor].file;
+    task->descriptors[descriptor].file = NULL;
+    task->descriptors[descriptor].close_on_exec = 0;
+    cb_open_file_release(file);
+    return 0;
+}
+
+static void fd_close_all(struct cb_task *task)
+{
+    int descriptor;
+    for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
+        if (task->descriptors[descriptor].file != NULL)
+            fd_close(task, descriptor);
+    }
+}
+
+static const struct cb_program_v1 *program_find(struct cb_kernel *kernel,
+                                                const char *name)
+{
+    size_t index;
+    const char *base = strrchr(name, '/');
+    if (base != NULL)
+        name = base + 1;
+    for (index = 0; index < kernel->program_count; ++index) {
+        if (strcmp(kernel->programs[index]->name, name) == 0)
+            return kernel->programs[index];
+    }
+    return NULL;
+}
+
+static cb_ssize_t console_read(struct cb_open_file *file,
+                               struct cb_task *task, void *buffer,
+                               size_t count)
+{
+    cb_ssize_t result;
+    (void)file;
+    if (count == 0) {
+        cb_task_set_error(task, 0);
+        return 0;
+    }
+    while (task->kernel->host->console_poll(0) == 0)
+        cb_task_yield_as(task, CB_TASK_BLOCKED_CONSOLE);
+    result = task->kernel->host->console_read(buffer, count);
+    if (result < 0) {
+        cb_task_set_error(task, (int)-result);
+        return -1;
+    }
+    cb_task_set_error(task, 0);
+    return result;
+}
+
+static cb_ssize_t console_write(struct cb_open_file *file,
+                                struct cb_task *task, const void *buffer,
+                                size_t count)
+{
+    cb_ssize_t result = task->kernel->host->console_write(
+        file->object.console_stream, buffer, count);
+    if (result < 0) {
+        cb_task_set_error(task, (int)-result);
+        return -1;
+    }
+    return result;
+}
+
+static cb_off_t no_seek(struct cb_open_file *file, struct cb_task *task,
+                        cb_off_t offset, int whence)
+{
+    (void)file;
+    (void)offset;
+    (void)whence;
+    cb_task_set_error(task, CB_ESPIPE);
+    return -1;
+}
+
+static int terminal_stat(struct cb_open_file *file,
+                         struct cb_stat_v1 *stat_buffer)
+{
+    (void)file;
+    if (stat_buffer == NULL)
+        return -CB_EINVAL;
+    memset(stat_buffer, 0, sizeof(*stat_buffer));
+    stat_buffer->abi_version = CB_ABI_VERSION_V1;
+    stat_buffer->struct_size = sizeof(*stat_buffer);
+    stat_buffer->type = CB_NODE_TERMINAL;
+    stat_buffer->mode = 0600;
+    return 0;
+}
+
+static const struct cb_file_ops console_input_ops = {
+    console_read, NULL, no_seek, terminal_stat, NULL
+};
+
+static const struct cb_file_ops console_output_ops = {
+    NULL, console_write, no_seek, terminal_stat, NULL
+};
+
+void cb_wake_pipe_tasks(struct cb_kernel *kernel)
+{
+    struct cb_task *task;
+    for (task = kernel->tasks; task != NULL; task = task->next) {
+        if (task->state == CB_TASK_BLOCKED_PIPE) {
+            task->wake_reason = CB_WAKE_PIPE_CHANGED;
+            task->state = CB_TASK_RUNNABLE;
+        }
+    }
+}
+
+static cb_ssize_t pipe_read(struct cb_open_file *file, struct cb_task *task,
+                            void *buffer, size_t count)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    unsigned char *destination = buffer;
+    size_t amount;
+    size_t first;
+    if (count == 0) {
+        cb_task_set_error(task, 0);
+        return 0;
+    }
+    while (pipe->used == 0) {
+        if (pipe->writers == 0)
+            return 0;
+        cb_task_yield_as(task, CB_TASK_BLOCKED_PIPE);
+    }
+    amount = count < pipe->used ? count : pipe->used;
+    first = sizeof(pipe->data) - pipe->read_position;
+    if (first > amount)
+        first = amount;
+    memcpy(destination, pipe->data + pipe->read_position, first);
+    memcpy(destination + first, pipe->data, amount - first);
+    pipe->read_position = (pipe->read_position + amount) % sizeof(pipe->data);
+    pipe->used -= amount;
+    cb_wake_pipe_tasks(task->kernel);
+    cb_task_set_error(task, 0);
+    return (cb_ssize_t)amount;
+}
+
+static cb_ssize_t pipe_write(struct cb_open_file *file, struct cb_task *task,
+                             const void *buffer, size_t count)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    const unsigned char *source = buffer;
+    size_t total = 0;
+    while (total < count) {
+        size_t free_space;
+        size_t write_position;
+        size_t amount;
+        size_t first;
+        if (pipe->readers == 0) {
+            cb_task_set_error(task, CB_EPIPE);
+            return total == 0 ? -1 : (cb_ssize_t)total;
+        }
+        free_space = sizeof(pipe->data) - pipe->used;
+        if (free_space == 0) {
+            cb_task_yield_as(task, CB_TASK_BLOCKED_PIPE);
+            continue;
+        }
+        amount = count - total;
+        if (amount > free_space)
+            amount = free_space;
+        write_position = (pipe->read_position + pipe->used) %
+                         sizeof(pipe->data);
+        first = sizeof(pipe->data) - write_position;
+        if (first > amount)
+            first = amount;
+        memcpy(pipe->data + write_position, source + total, first);
+        memcpy(pipe->data, source + total + first, amount - first);
+        pipe->used += amount;
+        total += amount;
+        cb_wake_pipe_tasks(task->kernel);
+    }
+    cb_task_set_error(task, 0);
+    return (cb_ssize_t)total;
+}
+
+static int pipe_stat(struct cb_open_file *file,
+                     struct cb_stat_v1 *stat_buffer)
+{
+    if (stat_buffer == NULL)
+        return -CB_EINVAL;
+    memset(stat_buffer, 0, sizeof(*stat_buffer));
+    stat_buffer->abi_version = CB_ABI_VERSION_V1;
+    stat_buffer->struct_size = sizeof(*stat_buffer);
+    stat_buffer->type = CB_NODE_PIPE;
+    stat_buffer->mode = 0600;
+    stat_buffer->size = file->object.pipe->used;
+    return 0;
+}
+
+static void pipe_read_close(struct cb_open_file *file)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    --pipe->readers;
+    cb_wake_pipe_tasks(file->kernel);
+    if (pipe->readers == 0 && pipe->writers == 0)
+        cb_release(file->kernel, pipe);
+}
+
+static void pipe_write_close(struct cb_open_file *file)
+{
+    struct cb_pipe *pipe = file->object.pipe;
+    --pipe->writers;
+    cb_wake_pipe_tasks(file->kernel);
+    if (pipe->readers == 0 && pipe->writers == 0)
+        cb_release(file->kernel, pipe);
+}
+
+static const struct cb_file_ops pipe_read_ops = {
+    pipe_read, NULL, no_seek, pipe_stat, pipe_read_close
+};
+
+static const struct cb_file_ops pipe_write_ops = {
+    NULL, pipe_write, no_seek, pipe_stat, pipe_write_close
+};
+
+void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
+{
+    struct cb_kernel *kernel = task->kernel;
+    task->wake_reason = CB_WAKE_NONE;
+    task->state = state;
+    kernel->current = NULL;
+    kernel->host->context_switch(task->context, kernel->scheduler_context);
+    kernel->current = task;
+    task->state = CB_TASK_RUNNING;
+}
+
+static void task_destroy(struct cb_task *task)
+{
+    struct cb_kernel *kernel = task->kernel;
+    fd_close_all(task);
+    kernel->host->context_destroy(task->context);
+    string_vector_destroy(kernel, task->argv);
+    string_vector_destroy(kernel, task->environment);
+    string_vector_destroy(kernel, task->pending_argv);
+    string_vector_destroy(kernel, task->pending_environment);
+    cb_release(kernel, task);
+}
+
+static int task_apply_actions(struct cb_task *task,
+                              const struct cb_spawn_action_v1 *actions,
+                              size_t action_count)
+{
+    size_t index;
+    for (index = 0; index < action_count; ++index) {
+        const struct cb_spawn_action_v1 *action = &actions[index];
+        if (action->abi_version != CB_ABI_VERSION_V1 ||
+            action->struct_size < sizeof(*action)) {
+            cb_task_set_error(task, CB_EINVAL);
+            return -1;
+        }
+        if (action->type == CB_SPAWN_DUP2) {
+            int source = action->from_fd;
+            int target = action->to_fd;
+            if (source < 0 || source >= CB_MAX_FDS || target < 0 ||
+                target >= CB_MAX_FDS ||
+                task->descriptors[source].file == NULL) {
+                cb_task_set_error(task, CB_EBADF);
+                return -1;
+            }
+            if (source != target)
+                fd_install_at(task, task->descriptors[source].file, target, 1);
+            task->descriptors[target].close_on_exec = 0;
+        } else if (action->type == CB_SPAWN_CLOSE) {
+            int descriptor = action->from_fd;
+            if (descriptor >= 0 && descriptor < CB_MAX_FDS &&
+                task->descriptors[descriptor].file != NULL)
+                fd_close(task, descriptor);
+        } else {
+            cb_task_set_error(task, CB_EINVAL);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static struct cb_task *task_create(struct cb_kernel *kernel,
+                                   struct cb_task *parent,
+                                   const struct cb_program_v1 *program,
+                                   char *const argv[], char *const envp[],
+                                   const struct cb_spawn_action_v1 *actions,
+                                   size_t action_count)
+{
+    struct cb_task *task = cb_allocate(kernel, sizeof(*task));
+    int descriptor;
+    if (task == NULL)
+        return NULL;
+    task->kernel = kernel;
+    task->pid = ++kernel->next_pid;
+    task->ppid = parent == NULL ? 0 : parent->pid;
+    task->program = program;
+    task->argv = string_vector_copy(kernel, argv);
+    task->argc = (int)string_vector_count(argv);
+    task->environment = string_vector_copy(kernel,
+        envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
+    if (task->argv == NULL || task->environment == NULL)
+        goto fail;
+    task->root = parent == NULL ? kernel->fs_root : parent->root;
+    task->cwd = parent == NULL ? kernel->fs_root : parent->cwd;
+    if (parent != NULL) {
+        for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
+            task->descriptors[descriptor] = parent->descriptors[descriptor];
+            if (task->descriptors[descriptor].file != NULL)
+                cb_open_file_retain(task->descriptors[descriptor].file);
+        }
+    }
+    if (task_apply_actions(task, actions, action_count) < 0)
+        goto fail;
+    task->context = kernel->host->context_create(
+        task_entry, task,
+        program->requested_stack_size == 0 ? 64 * 1024 :
+                                              program->requested_stack_size);
+    if (task->context == NULL)
+        goto fail;
+    task->state = CB_TASK_RUNNABLE;
+    task->next = kernel->tasks;
+    kernel->tasks = task;
+    return task;
+
+fail:
+    fd_close_all(task);
+    string_vector_destroy(kernel, task->argv);
+    string_vector_destroy(kernel, task->environment);
+    cb_release(kernel, task);
+    return NULL;
+}
+
+static void task_entry(void *argument)
+{
+    struct cb_task *task = argument;
+    int status;
+    task->kernel->current = task;
+    task->state = CB_TASK_RUNNING;
+    status = task->program->start(&task->kernel->api, task->argc,
+                                  task->argv, task->environment);
+    task->kernel->api.exit(status);
+}
+
+static void wake_waiting_parent(struct cb_task *child)
+{
+    struct cb_task *task;
+    for (task = child->kernel->tasks; task != NULL; task = task->next) {
+        if (task->pid == child->ppid && task->state == CB_TASK_BLOCKED_WAIT &&
+            (task->waiting_for == child->pid || task->waiting_for == -1)) {
+            task->wake_reason = CB_WAKE_CHILD_EXITED;
+            task->state = CB_TASK_RUNNABLE;
+            return;
+        }
+    }
+}
+
+static void task_finish_exec(struct cb_task *task)
+{
+    struct cb_kernel *kernel = task->kernel;
+    int descriptor;
+    kernel->host->context_destroy(task->context);
+    task->context = NULL;
+    for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
+        if (task->descriptors[descriptor].file != NULL &&
+            task->descriptors[descriptor].close_on_exec)
+            fd_close(task, descriptor);
+    }
+    string_vector_destroy(kernel, task->argv);
+    string_vector_destroy(kernel, task->environment);
+    task->program = task->pending_program;
+    task->argv = task->pending_argv;
+    task->argc = task->pending_argc;
+    task->environment = task->pending_environment;
+    task->pending_program = NULL;
+    task->pending_argv = NULL;
+    task->pending_environment = NULL;
+    task->pending_argc = 0;
+    task->context = kernel->host->context_create(
+        task_entry, task,
+        task->program->requested_stack_size == 0 ? 64 * 1024 :
+                                                   task->program->requested_stack_size);
+    if (task->context == NULL)
+        kernel->host->fatal("unable to create context after exec");
+    task->state = CB_TASK_RUNNABLE;
+}
+
+static struct cb_task *pick_runnable(struct cb_kernel *kernel)
+{
+    struct cb_task *start;
+    struct cb_task *task;
+    if (kernel->tasks == NULL)
+        return NULL;
+    start = kernel->schedule_cursor != NULL &&
+            kernel->schedule_cursor->next != NULL ?
+            kernel->schedule_cursor->next : kernel->tasks;
+    task = start;
+    do {
+        if (task->state == CB_TASK_RUNNABLE) {
+            kernel->schedule_cursor = task;
+            return task;
+        }
+        task = task->next != NULL ? task->next : kernel->tasks;
+    } while (task != start);
+    return NULL;
+}
+
+static int has_console_waiter(struct cb_kernel *kernel)
+{
+    struct cb_task *task;
+    for (task = kernel->tasks; task != NULL; task = task->next)
+        if (task->state == CB_TASK_BLOCKED_CONSOLE)
+            return 1;
+    return 0;
+}
+
+static void wake_console_waiters(struct cb_kernel *kernel)
+{
+    struct cb_task *task;
+    for (task = kernel->tasks; task != NULL; task = task->next)
+        if (task->state == CB_TASK_BLOCKED_CONSOLE) {
+            task->wake_reason = CB_WAKE_CONSOLE_READY;
+            task->state = CB_TASK_RUNNABLE;
+        }
+}
+
+static cb_pid_t api_getpid(void)
+{
+    return active_kernel->current->pid;
+}
+
+static cb_pid_t api_getppid(void)
+{
+    return active_kernel->current->ppid;
+}
+
+static int api_spawn(const char *program_name, char *const argv[],
+                     char *const envp[],
+                     const struct cb_spawn_action_v1 *actions,
+                     size_t action_count, cb_pid_t *pid_out)
+{
+    struct cb_kernel *kernel = active_kernel;
+    struct cb_task *parent = kernel->current;
+    const struct cb_program_v1 *program;
+    struct cb_task *child;
+    if (program_name == NULL || argv == NULL || argv[0] == NULL ||
+        (action_count != 0 && actions == NULL)) {
+        cb_task_set_error(parent, CB_EINVAL);
+        return -1;
+    }
+    program = program_find(kernel, program_name);
+    if (program == NULL) {
+        cb_task_set_error(parent, CB_ENOENT);
+        return -1;
+    }
+    child = task_create(kernel, parent, program, argv, envp, actions,
+                        action_count);
+    if (child == NULL) {
+        cb_task_set_error(parent, CB_ENOMEM);
+        return -1;
+    }
+    if (pid_out != NULL)
+        *pid_out = child->pid;
+    cb_task_set_error(parent, 0);
+    return 0;
+}
+
+static int api_exec(const char *program_name, char *const argv[],
+                    char *const envp[])
+{
+    struct cb_task *task = active_kernel->current;
+    const struct cb_program_v1 *program;
+    char **new_argv;
+    char **new_environment;
+    if (program_name == NULL || argv == NULL || argv[0] == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    program = program_find(task->kernel, program_name);
+    if (program == NULL) {
+        cb_task_set_error(task, CB_ENOENT);
+        return -1;
+    }
+    new_argv = string_vector_copy(task->kernel, argv);
+    new_environment = string_vector_copy(task->kernel,
+        envp != NULL ? envp : task->environment);
+    if (new_argv == NULL || new_environment == NULL) {
+        string_vector_destroy(task->kernel, new_argv);
+        string_vector_destroy(task->kernel, new_environment);
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
+    task->pending_program = program;
+    task->pending_argv = new_argv;
+    task->pending_argc = (int)string_vector_count(argv);
+    task->pending_environment = new_environment;
+    cb_task_yield_as(task, CB_TASK_EXEC_PENDING);
+    task->kernel->host->fatal("successful exec returned");
+    return -1;
+}
+
+static void api_exit(int status)
+{
+    struct cb_task *task = active_kernel->current;
+    fd_close_all(task);
+    task->exit_status = status & 0xff;
+    task->state = CB_TASK_ZOMBIE;
+    if (task->pid == task->kernel->boot_pid) {
+        task->kernel->boot_finished = 1;
+        task->kernel->boot_status = task->exit_status;
+    }
+    wake_waiting_parent(task);
+    task->kernel->current = NULL;
+    task->kernel->host->context_switch(task->context,
+                                       task->kernel->scheduler_context);
+    task->kernel->host->fatal("exited task resumed");
+}
+
+static struct cb_task *find_waitable_child(struct cb_task *parent,
+                                            cb_pid_t pid,
+                                            int *has_child)
+{
+    struct cb_task *task;
+    *has_child = 0;
+    for (task = parent->kernel->tasks; task != NULL; task = task->next) {
+        if (task->ppid != parent->pid)
+            continue;
+        if (pid != -1 && task->pid != pid)
+            continue;
+        *has_child = 1;
+        if (task->state == CB_TASK_ZOMBIE)
+            return task;
+    }
+    return NULL;
+}
+
+static cb_pid_t api_waitpid(cb_pid_t pid, int *status)
+{
+    struct cb_task *parent = active_kernel->current;
+    for (;;) {
+        struct cb_task *child;
+        struct cb_task **link;
+        int has_child;
+        cb_pid_t result;
+        child = find_waitable_child(parent, pid, &has_child);
+        if (child != NULL) {
+            result = child->pid;
+            if (status != NULL)
+                *status = child->exit_status;
+            link = &parent->kernel->tasks;
+            while (*link != child)
+                link = &(*link)->next;
+            *link = child->next;
+            if (parent->kernel->schedule_cursor == child)
+                parent->kernel->schedule_cursor = NULL;
+            child->state = CB_TASK_DEAD;
+            task_destroy(child);
+            cb_task_set_error(parent, 0);
+            return result;
+        }
+        if (!has_child) {
+            cb_task_set_error(parent, CB_ECHILD);
+            return -1;
+        }
+        parent->waiting_for = pid;
+        cb_task_yield_as(parent, CB_TASK_BLOCKED_WAIT);
+    }
+}
+
+static void api_yield(void)
+{
+    cb_task_yield_as(active_kernel->current, CB_TASK_RUNNABLE);
+}
+
+static int api_open(const char *path, int flags, uint32_t mode)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file = cb_fs_open(task, path, flags, mode);
+    int descriptor;
+    if (file == NULL)
+        return -1;
+    descriptor = fd_install(task, file, 0);
+    if (descriptor < 0)
+        cb_open_file_release(file);
+    return descriptor;
+}
+
+static int api_close(int descriptor)
+{
+    struct cb_task *task = active_kernel->current;
+    int result = fd_close(task, descriptor);
+    if (result == 0)
+        cb_task_set_error(task, 0);
+    return result;
+}
+
+static cb_ssize_t api_read(int descriptor, void *buffer, size_t count)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL ||
+        file->ops->read == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (count != 0 && buffer == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    return file->ops->read(file, task, buffer, count);
+}
+
+static cb_ssize_t api_write(int descriptor, const void *buffer, size_t count)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL ||
+        file->ops->write == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (count != 0 && buffer == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    return file->ops->write(file, task, buffer, count);
+}
+
+static cb_off_t api_lseek(int descriptor, cb_off_t offset, int whence)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL ||
+        file->ops->lseek == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    return file->ops->lseek(file, task, offset, whence);
+}
+
+static int api_dup(int descriptor)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    int result;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    cb_open_file_retain(file);
+    result = fd_install(task, file, 0);
+    if (result < 0)
+        cb_open_file_release(file);
+    else
+        cb_task_set_error(task, 0);
+    return result;
+}
+
+static int api_dup2(int old_descriptor, int new_descriptor)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (old_descriptor < 0 || old_descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[old_descriptor].file) == NULL ||
+        new_descriptor < 0 || new_descriptor >= CB_MAX_FDS) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (old_descriptor != new_descriptor) {
+        fd_install_at(task, file, new_descriptor, 1);
+        task->descriptors[new_descriptor].close_on_exec = 0;
+    }
+    cb_task_set_error(task, 0);
+    return new_descriptor;
+}
+
+static int api_set_cloexec(int descriptor, int enabled)
+{
+    struct cb_task *task = active_kernel->current;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        task->descriptors[descriptor].file == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    task->descriptors[descriptor].close_on_exec = enabled != 0;
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static int api_pipe(int descriptors[2])
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_pipe *pipe;
+    struct cb_open_file *reader;
+    struct cb_open_file *writer;
+    int read_descriptor;
+    int write_descriptor;
+    if (descriptors == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    pipe = cb_allocate(task->kernel, sizeof(*pipe));
+    if (pipe == NULL) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
+    reader = cb_open_file_create(task->kernel, &pipe_read_ops, CB_O_RDONLY);
+    if (reader == NULL) {
+        cb_release(task->kernel, pipe);
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
+    pipe->readers = 1;
+    reader->object.pipe = pipe;
+    writer = cb_open_file_create(task->kernel, &pipe_write_ops, CB_O_WRONLY);
+    if (writer == NULL) {
+        cb_open_file_release(reader);
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
+    pipe->writers = 1;
+    writer->object.pipe = pipe;
+    read_descriptor = fd_install(task, reader, 0);
+    if (read_descriptor < 0) {
+        cb_open_file_release(reader);
+        cb_open_file_release(writer);
+        return -1;
+    }
+    write_descriptor = fd_install(task, writer, 0);
+    if (write_descriptor < 0) {
+        fd_close(task, read_descriptor);
+        cb_open_file_release(writer);
+        return -1;
+    }
+    descriptors[0] = read_descriptor;
+    descriptors[1] = write_descriptor;
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static int api_fstat(int descriptor, struct cb_stat_v1 *stat_buffer)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    int result;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    result = file->ops->stat(file, stat_buffer);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static int api_stat(const char *path, struct cb_stat_v1 *stat_buffer)
+{
+    return cb_fs_stat_path(active_kernel->current, path, stat_buffer);
+}
+
+static int api_mkdir(const char *path, uint32_t mode)
+{
+    return cb_fs_mkdir_path(active_kernel->current, path, mode);
+}
+
+static int api_unlink(const char *path)
+{
+    return cb_fs_unlink_path(active_kernel->current, path);
+}
+
+static int api_chdir(const char *path)
+{
+    return cb_fs_chdir_path(active_kernel->current, path);
+}
+
+static char *api_getcwd(char *buffer, size_t size)
+{
+    return cb_fs_getcwd_path(active_kernel->current, buffer, size);
+}
+
+static int valid_environment_name(const char *name)
+{
+    return name != NULL && name[0] != '\0' && strchr(name, '=') == NULL;
+}
+
+static const char *api_getenv(const char *name)
+{
+    struct cb_task *task = active_kernel->current;
+    size_t length;
+    size_t index;
+    if (!valid_environment_name(name)) {
+        cb_task_set_error(task, CB_EINVAL);
+        return NULL;
+    }
+    length = strlen(name);
+    for (index = 0; task->environment[index] != NULL; ++index) {
+        if (strncmp(task->environment[index], name, length) == 0 &&
+            task->environment[index][length] == '=')
+            return task->environment[index] + length + 1;
+    }
+    return NULL;
+}
+
+static int api_setenv(const char *name, const char *value, int overwrite)
+{
+    struct cb_task *task = active_kernel->current;
+    size_t count;
+    size_t index;
+    size_t name_length;
+    char *entry;
+    char **resized;
+    if (!valid_environment_name(name) || value == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    name_length = strlen(name);
+    count = string_vector_count(task->environment);
+    for (index = 0; index < count; ++index) {
+        if (strncmp(task->environment[index], name, name_length) == 0 &&
+            task->environment[index][name_length] == '=') {
+            if (!overwrite)
+                return 0;
+            break;
+        }
+    }
+    entry = cb_allocate(task->kernel, name_length + strlen(value) + 2);
+    if (entry == NULL) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return -1;
+    }
+    sprintf(entry, "%s=%s", name, value);
+    if (index < count) {
+        cb_release(task->kernel, task->environment[index]);
+        task->environment[index] = entry;
+    } else {
+        resized = cb_resize(task->kernel, task->environment,
+                            (count + 2) * sizeof(*resized));
+        if (resized == NULL) {
+            cb_release(task->kernel, entry);
+            cb_task_set_error(task, CB_ENOMEM);
+            return -1;
+        }
+        task->environment = resized;
+        task->environment[count] = entry;
+        task->environment[count + 1] = NULL;
+    }
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static int api_unsetenv(const char *name)
+{
+    struct cb_task *task = active_kernel->current;
+    size_t count;
+    size_t index;
+    size_t name_length;
+    if (!valid_environment_name(name)) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    name_length = strlen(name);
+    count = string_vector_count(task->environment);
+    for (index = 0; index < count; ++index) {
+        if (strncmp(task->environment[index], name, name_length) == 0 &&
+            task->environment[index][name_length] == '=') {
+            cb_release(task->kernel, task->environment[index]);
+            memmove(&task->environment[index], &task->environment[index + 1],
+                    (count - index) * sizeof(*task->environment));
+            break;
+        }
+    }
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static const char *api_strerror(int error)
+{
+    switch (error) {
+    case 0: return "no error";
+    case CB_EPERM: return "operation not permitted";
+    case CB_ENOENT: return "no such file or directory";
+    case CB_EIO: return "input/output error";
+    case CB_EBADF: return "bad file descriptor";
+    case CB_ECHILD: return "no child processes";
+    case CB_ENOMEM: return "cannot allocate memory";
+    case CB_EACCES: return "permission denied";
+    case CB_EEXIST: return "file exists";
+    case CB_ENOTDIR: return "not a directory";
+    case CB_EISDIR: return "is a directory";
+    case CB_EINVAL: return "invalid argument";
+    case CB_EMFILE: return "too many open files";
+    case CB_ENOSPC: return "no space left";
+    case CB_ESPIPE: return "illegal seek";
+    case CB_EPIPE: return "broken pipe";
+    case CB_ENAMETOOLONG: return "file name too long";
+    case CB_ENOSYS: return "function not implemented";
+    case CB_ENOTEMPTY: return "directory not empty";
+    default: return "unknown error";
+    }
+}
+
+static int api_get_errno(void)
+{
+    return active_kernel->current->error;
+}
+
+static void api_set_errno(int error)
+{
+    active_kernel->current->error = error;
+}
+
+static const struct cb_capabilities_v1 *api_capabilities(void)
+{
+    return &active_kernel->capabilities;
+}
+
+static void initialize_api(struct cb_kernel *kernel)
+{
+    struct cb_api_v1 *api = &kernel->api;
+    api->abi_version = CB_ABI_VERSION_V1;
+    api->struct_size = sizeof(*api);
+    api->getpid = api_getpid;
+    api->getppid = api_getppid;
+    api->spawn = api_spawn;
+    api->exec = api_exec;
+    api->exit = api_exit;
+    api->waitpid = api_waitpid;
+    api->yield = api_yield;
+    api->open = api_open;
+    api->close = api_close;
+    api->read = api_read;
+    api->write = api_write;
+    api->lseek = api_lseek;
+    api->dup = api_dup;
+    api->dup2 = api_dup2;
+    api->set_cloexec = api_set_cloexec;
+    api->pipe = api_pipe;
+    api->fstat = api_fstat;
+    api->stat = api_stat;
+    api->mkdir = api_mkdir;
+    api->unlink = api_unlink;
+    api->chdir = api_chdir;
+    api->getcwd = api_getcwd;
+    api->getenv = api_getenv;
+    api->setenv = api_setenv;
+    api->unsetenv = api_unsetenv;
+    api->strerror = api_strerror;
+    api->get_errno = api_get_errno;
+    api->set_errno = api_set_errno;
+    api->capabilities = api_capabilities;
+}
+
+struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host)
+{
+    struct cb_kernel *kernel;
+    if (host == NULL || host->abi_version != CB_ABI_VERSION_V1 ||
+        host->struct_size < sizeof(*host))
+        return NULL;
+    kernel = host->allocate(sizeof(*kernel));
+    if (kernel == NULL)
+        return NULL;
+    kernel->host = host;
+    kernel->scheduler_context = host->context_root();
+    if (kernel->scheduler_context == NULL) {
+        host->release(kernel);
+        return NULL;
+    }
+    kernel->capabilities.abi_version = CB_ABI_VERSION_V1;
+    kernel->capabilities.struct_size = sizeof(kernel->capabilities);
+    kernel->capabilities.native_modules = 1;
+    kernel->capabilities.cooperative_tasks = 1;
+    kernel->capabilities.spawn = 1;
+    kernel->capabilities.exec = 1;
+    kernel->capabilities.ramfs = 1;
+    initialize_api(kernel);
+    active_kernel = kernel;
+    if (cb_fs_initialize(kernel) < 0) {
+        cb_kernel_destroy(kernel);
+        return NULL;
+    }
+    return kernel;
+}
+
+void cb_kernel_destroy(struct cb_kernel *kernel)
+{
+    struct cb_task *task;
+    if (kernel == NULL)
+        return;
+    task = kernel->tasks;
+    while (task != NULL) {
+        struct cb_task *next = task->next;
+        task_destroy(task);
+        task = next;
+    }
+    cb_fs_destroy(kernel);
+    kernel->host->context_destroy(kernel->scheduler_context);
+    if (active_kernel == kernel)
+        active_kernel = NULL;
+    kernel->host->release(kernel);
+}
+
+int cb_kernel_register(struct cb_kernel *kernel,
+                       const struct cb_program_v1 *program)
+{
+    if (kernel == NULL || program == NULL || program->name == NULL ||
+        program->start == NULL ||
+        program->abi_version != CB_ABI_VERSION_V1 ||
+        program->struct_size < sizeof(*program) ||
+        kernel->program_count == CB_MAX_PROGRAMS ||
+        program_find(kernel, program->name) != NULL)
+        return -1;
+    kernel->programs[kernel->program_count++] = program;
+    return 0;
+}
+
+int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
+{
+    const struct cb_program_v1 *shell = program_find(kernel, "sh");
+    struct cb_task *task;
+    char *interactive_argv[] = {(char *)"sh", NULL};
+    char *command_argv[] = {(char *)"sh", (char *)"-c", (char *)command,
+                            NULL};
+    char *environment[] = {(char *)"HOME=/home/user", (char *)"PATH=/bin",
+                           NULL};
+    struct cb_open_file *input;
+    struct cb_open_file *output;
+    struct cb_open_file *error;
+    if (kernel == NULL || shell == NULL || kernel->boot_pid != 0)
+        return -1;
+    task = task_create(kernel, NULL, shell,
+                       command == NULL ? interactive_argv : command_argv,
+                       environment, NULL, 0);
+    if (task == NULL)
+        return -1;
+    input = cb_open_file_create(kernel, &console_input_ops, CB_O_RDONLY);
+    output = cb_open_file_create(kernel, &console_output_ops, CB_O_WRONLY);
+    error = cb_open_file_create(kernel, &console_output_ops, CB_O_WRONLY);
+    if (input == NULL || output == NULL || error == NULL) {
+        cb_open_file_release(input);
+        cb_open_file_release(output);
+        cb_open_file_release(error);
+        return -1;
+    }
+    input->object.console_stream = 0;
+    output->object.console_stream = 1;
+    error->object.console_stream = 2;
+    fd_install_at(task, input, 0, 0);
+    fd_install_at(task, output, 1, 0);
+    fd_install_at(task, error, 2, 0);
+    kernel->boot_pid = task->pid;
+    return 0;
+}
+
+int cb_kernel_run(struct cb_kernel *kernel)
+{
+    unsigned idle_rounds = 0;
+    if (kernel == NULL || kernel->boot_pid == 0)
+        return -1;
+    active_kernel = kernel;
+    while (!kernel->boot_finished) {
+        struct cb_task *task;
+        if (kernel->host->console_poll(0) > 0)
+            wake_console_waiters(kernel);
+        task = pick_runnable(kernel);
+        if (task == NULL) {
+            if (has_console_waiter(kernel)) {
+                if (kernel->host->console_poll(-1) >= 0)
+                    wake_console_waiters(kernel);
+                continue;
+            }
+            if (++idle_rounds > 1) {
+                kernel->host->fatal("deadlock: tasks blocked without host events");
+                return -1;
+            }
+            kernel->host->yield_host();
+            continue;
+        }
+        idle_rounds = 0;
+        kernel->current = task;
+        task->state = CB_TASK_RUNNING;
+        kernel->host->context_switch(kernel->scheduler_context, task->context);
+        kernel->current = NULL;
+        if (task->state == CB_TASK_EXEC_PENDING)
+            task_finish_exec(task);
+    }
+    return kernel->boot_status;
+}
+
+const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel)
+{
+    return kernel == NULL ? NULL : &kernel->api;
+}
