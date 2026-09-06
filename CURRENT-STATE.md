@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 14 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 15 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -170,10 +170,21 @@ termination, instance destruction, and program destruction. The native
 executor alone owns the command descriptor and task context; existing exec and
 process probes pass unchanged through the new boundary.
 
+Iteration 15 introduced the explicit VFS boundary. Its architecture test first
+failed because mount and node operation tables did not exist. Generic `vfs.c`
+now owns path traversal, cwd rendering, errno translation, and validated root
+installation; private `ramfs.c` owns storage and directory representation.
+`test_vfs_contract` validates every versioned mount/node callback, ownership,
+root metadata, lookup, retain/release, and destruction. Task cwd/root and open
+files retain generic node handles, preserving open-after-unlink lifetime. All
+prior filesystem and process probes pass without direct RAMFS access in the
+portable core.
+
 ## What's next
 
-See `BACKLOG.md`. The next release blocker is the explicit VFS node/mount
-boundary required by `SPEC.md` section 4.5.
+See `COMPLIANCE.md`. The next release work is a requirement-by-requirement audit,
+including the Linux `/proc` one-process proof, allocation/overflow review, and
+README native-command documentation.
 
 ## Key files and commands
 
@@ -181,7 +192,8 @@ boundary required by `SPEC.md` section 4.5.
 |---|---|
 | Public ABI | `include/cannedbsd/abi.h` |
 | Portable runtime core | `src/core.c` |
-| RAM filesystem | `src/fs.c` |
+| Generic VFS | `src/vfs.c` |
+| RAM filesystem backend | `src/ramfs.c` |
 | Linux host adapter | `src/host_linux.c` |
 | Native commands | `src/programs.c` |
 | Shell | `src/shell.c` |

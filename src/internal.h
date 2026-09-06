@@ -36,6 +36,8 @@ struct cb_task;
 struct cb_open_file;
 struct cb_program;
 struct cb_execution;
+struct cb_vfs_mount;
+struct cb_vfs_node;
 
 struct cb_executor_ops {
     uint32_t abi_version;
@@ -83,23 +85,39 @@ enum cb_wake_reason {
     CB_WAKE_CHILD_EXITED
 };
 
-enum cb_node_kind {
-    CB_FS_DIRECTORY,
-    CB_FS_REGULAR
+struct cb_vfs_mount_ops {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    struct cb_vfs_node *(*root)(struct cb_vfs_mount *mount);
+    void (*destroy)(struct cb_vfs_mount *mount);
 };
 
-struct cb_node {
-    enum cb_node_kind kind;
-    uint64_t inode;
-    uint32_t mode;
-    char *name;
-    struct cb_node *parent;
-    struct cb_node *children;
-    struct cb_node *next_sibling;
-    unsigned char *data;
-    size_t size;
-    size_t capacity;
-    unsigned open_references;
+struct cb_vfs_node_ops {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    void (*retain)(struct cb_vfs_node *node);
+    void (*release)(struct cb_vfs_node *node);
+    int (*lookup)(struct cb_vfs_node *directory, const char *name,
+                  size_t name_length, struct cb_vfs_node **node_out);
+    int (*create)(struct cb_vfs_node *directory, const char *name,
+                  uint32_t type, uint32_t mode,
+                  struct cb_vfs_node **node_out);
+    int (*unlink)(struct cb_vfs_node *node);
+    int (*open)(struct cb_vfs_node *node, struct cb_task *task, int flags,
+                struct cb_open_file **file_out);
+    int (*stat)(struct cb_vfs_node *node, struct cb_stat_v1 *stat_buffer);
+    struct cb_vfs_node *(*parent)(struct cb_vfs_node *node);
+    const char *(*name)(struct cb_vfs_node *node);
+};
+
+struct cb_vfs_mount {
+    const struct cb_vfs_mount_ops *ops;
+    struct cb_kernel *kernel;
+};
+
+struct cb_vfs_node {
+    const struct cb_vfs_node_ops *ops;
+    struct cb_vfs_mount *mount;
 };
 
 struct cb_file_ops {
@@ -126,7 +144,7 @@ struct cb_open_file {
     const struct cb_file_ops *ops;
     struct cb_kernel *kernel;
     union {
-        struct cb_node *node;
+        struct cb_vfs_node *node;
         struct cb_pipe *pipe;
         int console_stream;
     } object;
@@ -148,8 +166,8 @@ struct cb_task {
     int argc;
     char **environment;
     struct cb_fd_entry descriptors[CB_MAX_FDS];
-    struct cb_node *root;
-    struct cb_node *cwd;
+    struct cb_vfs_node *root;
+    struct cb_vfs_node *cwd;
     int error;
     int exit_status;
     cb_pid_t waiting_for;
@@ -173,7 +191,8 @@ struct cb_kernel {
     cb_pid_t boot_pid;
     int boot_status;
     int boot_finished;
-    struct cb_node *fs_root;
+    struct cb_vfs_mount *root_mount;
+    struct cb_vfs_node *vfs_root;
     uint64_t next_inode;
     struct cb_program *programs[CB_MAX_PROGRAMS];
     size_t program_count;
@@ -205,16 +224,22 @@ void cb_executor_instance_destroy(struct cb_execution *execution);
 void cb_executor_program_destroy(struct cb_kernel *kernel,
                                  struct cb_program *program);
 
-int cb_fs_initialize(struct cb_kernel *kernel);
-void cb_fs_destroy(struct cb_kernel *kernel);
-struct cb_open_file *cb_fs_open(struct cb_task *task, const char *path,
-                                int flags, uint32_t mode);
-int cb_fs_stat_path(struct cb_task *task, const char *path,
-                    struct cb_stat_v1 *stat_buffer);
-int cb_fs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
-int cb_fs_unlink_path(struct cb_task *task, const char *path);
-int cb_fs_chdir_path(struct cb_task *task, const char *path);
-char *cb_fs_getcwd_path(struct cb_task *task, char *buffer, size_t size);
+int cb_vfs_initialize(struct cb_kernel *kernel);
+int cb_vfs_set_root_mount(struct cb_kernel *kernel,
+                          struct cb_vfs_mount *mount);
+void cb_vfs_destroy(struct cb_kernel *kernel);
+struct cb_open_file *cb_vfs_open(struct cb_task *task, const char *path,
+                                 int flags, uint32_t mode);
+int cb_vfs_stat_path(struct cb_task *task, const char *path,
+                     struct cb_stat_v1 *stat_buffer);
+int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
+int cb_vfs_unlink_path(struct cb_task *task, const char *path);
+int cb_vfs_chdir_path(struct cb_task *task, const char *path);
+char *cb_vfs_getcwd_path(struct cb_task *task, char *buffer, size_t size);
+void cb_vfs_node_retain(struct cb_vfs_node *node);
+void cb_vfs_node_release(struct cb_vfs_node *node);
+
+struct cb_vfs_mount *cb_ramfs_mount_create(struct cb_kernel *kernel);
 
 void *cb_allocate(struct cb_kernel *kernel, size_t size);
 void *cb_resize(struct cb_kernel *kernel, void *pointer, size_t size);

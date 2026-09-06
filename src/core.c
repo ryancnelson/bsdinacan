@@ -395,6 +395,8 @@ static void task_destroy(struct cb_task *task)
     string_vector_destroy(kernel, task->environment);
     string_vector_destroy(kernel, task->pending_argv);
     string_vector_destroy(kernel, task->pending_environment);
+    cb_vfs_node_release(task->cwd);
+    cb_vfs_node_release(task->root);
     cb_release(kernel, task);
 }
 
@@ -456,8 +458,10 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
     if (task->argv == NULL || task->environment == NULL)
         goto fail;
-    task->root = parent == NULL ? kernel->fs_root : parent->root;
-    task->cwd = parent == NULL ? kernel->fs_root : parent->cwd;
+    task->root = parent == NULL ? kernel->vfs_root : parent->root;
+    task->cwd = parent == NULL ? kernel->vfs_root : parent->cwd;
+    cb_vfs_node_retain(task->root);
+    cb_vfs_node_retain(task->cwd);
     if (parent != NULL) {
         for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
             task->descriptors[descriptor] = parent->descriptors[descriptor];
@@ -479,6 +483,8 @@ fail:
     fd_close_all(task);
     string_vector_destroy(kernel, task->argv);
     string_vector_destroy(kernel, task->environment);
+    cb_vfs_node_release(task->cwd);
+    cb_vfs_node_release(task->root);
     cb_release(kernel, task);
     return NULL;
 }
@@ -712,7 +718,7 @@ static void api_yield(void)
 static int api_open(const char *path, int flags, uint32_t mode)
 {
     struct cb_task *task = active_kernel->current;
-    struct cb_open_file *file = cb_fs_open(task, path, flags, mode);
+    struct cb_open_file *file = cb_vfs_open(task, path, flags, mode);
     int descriptor;
     if (file == NULL)
         return -1;
@@ -900,27 +906,27 @@ static int api_fstat(int descriptor, struct cb_stat_v1 *stat_buffer)
 
 static int api_stat(const char *path, struct cb_stat_v1 *stat_buffer)
 {
-    return cb_fs_stat_path(active_kernel->current, path, stat_buffer);
+    return cb_vfs_stat_path(active_kernel->current, path, stat_buffer);
 }
 
 static int api_mkdir(const char *path, uint32_t mode)
 {
-    return cb_fs_mkdir_path(active_kernel->current, path, mode);
+    return cb_vfs_mkdir_path(active_kernel->current, path, mode);
 }
 
 static int api_unlink(const char *path)
 {
-    return cb_fs_unlink_path(active_kernel->current, path);
+    return cb_vfs_unlink_path(active_kernel->current, path);
 }
 
 static int api_chdir(const char *path)
 {
-    return cb_fs_chdir_path(active_kernel->current, path);
+    return cb_vfs_chdir_path(active_kernel->current, path);
 }
 
 static char *api_getcwd(char *buffer, size_t size)
 {
-    return cb_fs_getcwd_path(active_kernel->current, buffer, size);
+    return cb_vfs_getcwd_path(active_kernel->current, buffer, size);
 }
 
 static int valid_environment_name(const char *name)
@@ -1139,7 +1145,7 @@ struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host)
     kernel->capabilities.ramfs = 1;
     initialize_api(kernel);
     active_kernel = kernel;
-    if (cb_fs_initialize(kernel) < 0) {
+    if (cb_vfs_initialize(kernel) < 0) {
         cb_kernel_destroy(kernel);
         return NULL;
     }
@@ -1160,7 +1166,7 @@ void cb_kernel_destroy(struct cb_kernel *kernel)
     }
     for (index = 0; index < kernel->program_count; ++index)
         cb_executor_program_destroy(kernel, kernel->programs[index]);
-    cb_fs_destroy(kernel);
+    cb_vfs_destroy(kernel);
     kernel->host->context_destroy(kernel->scheduler_context);
     if (active_kernel == kernel)
         active_kernel = NULL;

@@ -51,7 +51,7 @@ runtime model before the human-facing demo grows.
 - [x] **Iteration 14: explicit native executor boundary.** Route preparation,
   instance creation, resume, suspension, termination, and destruction through
   a generic versioned executor table; keep native contexts out of the task core.
-- [ ] **Iteration 15: explicit VFS boundary.** Route pathname and lifecycle
+- [x] **Iteration 15: explicit VFS boundary.** Route pathname and lifecycle
   operations through versioned mount/node operation tables rather than calling
   RAMFS entry points directly from the program API.
 
@@ -99,6 +99,15 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 15 (2026-09-06): explicit VFS boundary.** The architecture
+  test first failed because there were no mount or node operation tables. Path
+  normalization, traversal, cwd rendering, task errno translation, and root
+  installation now live in `vfs.c`; the private RAMFS representation lives in
+  `ramfs.c`. Versioned mount operations own root discovery/destruction, while
+  versioned node operations own retain/release, lookup, create, unlink, open,
+  stat, parent, and name. `test_vfs_contract` rejects incomplete tables and
+  proves root installation/lifecycle. Existing RAMFS, cwd, descriptor,
+  open-unlink, redirection, and acceptance tests all pass through the boundary.
 - [x] **Iteration 14 (2026-09-06): explicit native executor boundary.** An
   architecture test first failed because no executor operation table existed
   and the task core directly owned contexts and called native entry points. A

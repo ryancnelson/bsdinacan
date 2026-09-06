@@ -18,10 +18,11 @@ TEST_PROGRAM := $(BUILD)/test_core
 CORE_SOURCES := \
 	src/core.c \
 	src/executor.c \
-	src/fs.c \
 	src/host_linux.c \
 	src/programs.c \
-	src/shell.c
+	src/ramfs.c \
+	src/shell.c \
+	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
 TEST_SOURCES := tests/test_core.c $(CORE_SOURCES)

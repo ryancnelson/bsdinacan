@@ -260,6 +260,123 @@ static void test_host_contract(void)
 #undef EXPECT_NULL_HOST_CALLBACK
 }
 
+static struct cb_vfs_node *null_mount_root(struct cb_vfs_mount *mount)
+{
+    (void)mount;
+    return NULL;
+}
+
+static void expect_invalid_root_mount(struct cb_kernel *kernel,
+                                      struct cb_vfs_mount *mount,
+                                      const char *field)
+{
+    if (cb_vfs_set_root_mount(kernel, mount) == 0) {
+        fprintf(stderr, "root mount with invalid %s was accepted\n", field);
+        exit(1);
+    }
+}
+
+static void test_vfs_contract(void)
+{
+    struct cb_kernel kernel;
+    struct cb_kernel other_kernel;
+    struct cb_vfs_mount *mount;
+    struct cb_vfs_node *root;
+    struct cb_vfs_node *tmp;
+    const struct cb_vfs_mount_ops *mount_ops;
+    const struct cb_vfs_node_ops *node_ops;
+    struct cb_vfs_mount_ops mount_copy;
+    struct cb_vfs_node_ops node_copy;
+    struct cb_stat_v1 stat_buffer;
+
+    memset(&kernel, 0, sizeof(kernel));
+    memset(&other_kernel, 0, sizeof(other_kernel));
+    kernel.host = cb_linux_host_ops();
+    other_kernel.host = cb_linux_host_ops();
+    mount = cb_ramfs_mount_create(&kernel);
+    if (mount == NULL)
+        fail("RAMFS mount creation");
+    mount_ops = mount->ops;
+    root = mount_ops->root(mount);
+    node_ops = root == NULL ? NULL : root->ops;
+    if (mount_ops->abi_version != CB_ABI_VERSION_V1 ||
+        mount_ops->struct_size != sizeof(*mount_ops) ||
+        mount_ops->root == NULL || mount_ops->destroy == NULL ||
+        node_ops == NULL || node_ops->abi_version != CB_ABI_VERSION_V1 ||
+        node_ops->struct_size != sizeof(*node_ops) ||
+        node_ops->retain == NULL || node_ops->release == NULL ||
+        node_ops->lookup == NULL || node_ops->create == NULL ||
+        node_ops->unlink == NULL || node_ops->open == NULL ||
+        node_ops->stat == NULL || node_ops->parent == NULL ||
+        node_ops->name == NULL)
+        fail("RAMFS VFS operation tables");
+    expect_invalid_root_mount(NULL, mount, "null kernel");
+    expect_invalid_root_mount(&kernel, NULL, "null mount");
+    mount->kernel = &other_kernel;
+    expect_invalid_root_mount(&kernel, mount, "kernel ownership");
+    mount->kernel = &kernel;
+
+    mount_copy = *mount_ops;
+    mount_copy.abi_version = 0;
+    mount->ops = &mount_copy;
+    expect_invalid_root_mount(&kernel, mount, "mount version");
+    mount_copy = *mount_ops;
+    mount_copy.struct_size = sizeof(mount_copy) - 1;
+    expect_invalid_root_mount(&kernel, mount, "mount size");
+    mount_copy = *mount_ops;
+    mount_copy.root = NULL;
+    expect_invalid_root_mount(&kernel, mount, "mount root callback");
+    mount_copy = *mount_ops;
+    mount_copy.destroy = NULL;
+    expect_invalid_root_mount(&kernel, mount, "mount destroy callback");
+    mount_copy = *mount_ops;
+    mount_copy.root = null_mount_root;
+    expect_invalid_root_mount(&kernel, mount, "null root node");
+
+    mount->ops = mount_ops;
+#define EXPECT_INVALID_NODE_OP(member) do { \
+    node_copy = *node_ops; \
+    node_copy.member = NULL; \
+    root->ops = &node_copy; \
+    expect_invalid_root_mount(&kernel, mount, "node " #member); \
+} while (0)
+    node_copy = *node_ops;
+    node_copy.abi_version = 0;
+    root->ops = &node_copy;
+    expect_invalid_root_mount(&kernel, mount, "node version");
+    node_copy = *node_ops;
+    node_copy.struct_size = sizeof(node_copy) - 1;
+    root->ops = &node_copy;
+    expect_invalid_root_mount(&kernel, mount, "node size");
+    EXPECT_INVALID_NODE_OP(retain);
+    EXPECT_INVALID_NODE_OP(release);
+    EXPECT_INVALID_NODE_OP(lookup);
+    EXPECT_INVALID_NODE_OP(create);
+    EXPECT_INVALID_NODE_OP(unlink);
+    EXPECT_INVALID_NODE_OP(open);
+    EXPECT_INVALID_NODE_OP(stat);
+    EXPECT_INVALID_NODE_OP(parent);
+    EXPECT_INVALID_NODE_OP(name);
+#undef EXPECT_INVALID_NODE_OP
+
+    root->ops = node_ops;
+    if (cb_vfs_set_root_mount(&kernel, mount) < 0 ||
+        cb_vfs_set_root_mount(&kernel, mount) == 0 ||
+        kernel.vfs_root != root || root->mount != mount ||
+        root->ops->parent(root) != NULL ||
+        strcmp(root->ops->name(root), "") != 0 ||
+        root->ops->stat(root, &stat_buffer) < 0 ||
+        stat_buffer.type != CB_NODE_DIRECTORY || stat_buffer.mode != 0755 ||
+        root->ops->lookup(root, "tmp", 3, &tmp) < 0 || tmp == NULL ||
+        tmp->mount != mount)
+        fail("root mount installation");
+    cb_vfs_node_retain(tmp);
+    cb_vfs_node_release(tmp);
+    cb_vfs_destroy(&kernel);
+    if (kernel.root_mount != NULL || kernel.vfs_root != NULL)
+        fail("root mount destruction");
+}
+
 static void test_registration_contract(void)
 {
     struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
@@ -1411,6 +1528,7 @@ static void expect_streams(const char *expected_stdout,
 int main(void)
 {
     test_host_contract();
+    test_vfs_contract();
     test_registration_contract();
     test_executor_contract();
     expect_path("/", "/", "/");

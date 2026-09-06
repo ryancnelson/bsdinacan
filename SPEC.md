@@ -187,6 +187,18 @@ Filesystem behavior MUST be separated from the initial RAM filesystem by VFS
 node and mount operations. Descriptor entries MUST refer to cannedBSD open-file
 objects, not directly to host file descriptors.
 
+Both operation tables are versioned. A mount supplies root-node discovery and
+mount destruction. A node supplies retain/release, child lookup and creation,
+unlink, open, stat, parent discovery, and name discovery. Root-mount
+installation validates the complete tables and ownership relationship before
+publishing the mount. Task root and cwd fields, plus open files, retain generic
+node handles; filesystem-specific node representations remain below the node
+operations. Path traversal and task-local errno translation belong to the VFS
+layer rather than to a filesystem implementation.
+
+v0.1 installs one RAMFS root. Later mount routing may return nodes belonging to
+other mounts during lookup without changing task, descriptor, or program APIs.
+
 These boundaries must allow later implementations for:
 
 - An image-backed private Unix root.
