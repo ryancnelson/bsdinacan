@@ -475,6 +475,10 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+    if (count == 0) {
+        cb_task_set_error(task, 0);
+        return 0;
+    }
     if (file->flags & CB_O_APPEND)
         file->offset = (cb_off_t)node->size;
     if (file->offset < 0 || (uint64_t)file->offset > SIZE_MAX ||
@@ -503,6 +507,8 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
         node->data = new_data;
         node->capacity = capacity;
     }
+    if (start > node->size)
+        memset(node->data + node->size, 0, start - node->size);
     memcpy(node->data + start, buffer, count);
     file->offset += (cb_off_t)count;
     if (needed > node->size)

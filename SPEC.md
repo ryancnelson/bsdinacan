@@ -298,6 +298,9 @@ Required objects are directories and regular files. Required behavior:
 - `.` and `..` handling without escaping the process root.
 - Per-process current directory.
 - Open for read, write, create, truncate, and append.
+- Truncation sets the logical size to zero. A later write beyond the logical end
+  zero-fills the intervening hole even when old storage capacity is reused; a
+  zero-byte write never changes size or contents.
 - Independent directory entries and file contents.
 - File offsets shared through duplicated open-file objects.
 - Minimal `stat` information: object type, mode, size, and stable inode number.

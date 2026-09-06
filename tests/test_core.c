@@ -680,6 +680,152 @@ static int processprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
+                           char *const argv[], char *const envp[])
+{
+    static const unsigned char initial_data[] = "abcdef";
+    static const unsigned char sparse_data[] = {
+        'a', 'b', 'c', 'd', 'e', 'f', 0, 0, 0, 0, 'Z'
+    };
+    static const unsigned char truncated_sparse_data[] = {0, 0, 0, 0, 'Z'};
+    static const unsigned char appended_sparse_data[] = {0, 0, 0, 0, 'Z', '!'};
+    const char *initial_directories[] = {
+        "/", "/bin", "/tmp", "/home", "/home/user"
+    };
+    const uint32_t initial_modes[] = {0755, 0755, 0777, 0755, 0755};
+    struct cb_stat_v1 initial_stats[5];
+    struct cb_stat_v1 path_stat;
+    struct cb_stat_v1 descriptor_stat;
+    unsigned char buffer[32];
+    char cwd[CB_PATH_MAX];
+    int descriptor;
+    int second_descriptor;
+    size_t index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    for (index = 0; index < 5; ++index) {
+        if (api->stat(initial_directories[index], &initial_stats[index]) < 0 ||
+            initial_stats[index].abi_version != CB_ABI_VERSION_V1 ||
+            initial_stats[index].struct_size != sizeof(struct cb_stat_v1) ||
+            initial_stats[index].type != CB_NODE_DIRECTORY ||
+            initial_stats[index].mode != initial_modes[index] ||
+            initial_stats[index].size != 0 || initial_stats[index].inode == 0)
+            return 160;
+        if (index > 0) {
+            size_t prior;
+            for (prior = 0; prior < index; ++prior)
+                if (initial_stats[index].inode == initial_stats[prior].inode)
+                    return 161;
+        }
+    }
+    if (api->stat("/", &path_stat) < 0 ||
+        path_stat.inode != initial_stats[0].inode ||
+        api->getcwd(cwd, sizeof(cwd)) == NULL || strcmp(cwd, "/") != 0)
+        return 162;
+
+    if (api->mkdir("/tmp/work", 0711) < 0 ||
+        api->chdir("/tmp/work") < 0 ||
+        api->getcwd(cwd, sizeof(cwd)) == NULL || strcmp(cwd, "/tmp/work") != 0 ||
+        api->stat(".", &path_stat) < 0 || path_stat.type != CB_NODE_DIRECTORY ||
+        path_stat.mode != 0711 || api->mkdir("../peer", 0700) < 0 ||
+        api->stat("/tmp/peer", &descriptor_stat) < 0 ||
+        descriptor_stat.type != CB_NODE_DIRECTORY || descriptor_stat.mode != 0700)
+        return 163;
+    if (api->chdir("../../../../") < 0 ||
+        api->getcwd(cwd, sizeof(cwd)) == NULL || strcmp(cwd, "/") != 0)
+        return 164;
+    if (api->mkdir("/tmp/work", 0755) != -1 ||
+        api->get_errno() != CB_EEXIST)
+        return 165;
+
+    descriptor = api->open("/tmp/work/first",
+                           CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0640);
+    if (descriptor < 0 ||
+        api->write(descriptor, initial_data, sizeof(initial_data) - 1) !=
+            (cb_ssize_t)(sizeof(initial_data) - 1) ||
+        api->fstat(descriptor, &descriptor_stat) < 0 ||
+        api->stat("/tmp/work/first", &path_stat) < 0 ||
+        descriptor_stat.inode != path_stat.inode ||
+        descriptor_stat.type != CB_NODE_REGULAR || descriptor_stat.mode != 0640 ||
+        descriptor_stat.size != sizeof(initial_data) - 1)
+        return 166;
+    if (api->lseek(descriptor, 10, CB_SEEK_SET) != 10 ||
+        api->write(descriptor, "Z", 1) != 1 ||
+        api->lseek(descriptor, 0, CB_SEEK_SET) != 0 ||
+        api->read(descriptor, buffer, sizeof(sparse_data)) !=
+            (cb_ssize_t)sizeof(sparse_data) ||
+        memcmp(buffer, sparse_data, sizeof(sparse_data)) != 0)
+        return 167;
+    if (api->close(descriptor) < 0)
+        return 168;
+
+    descriptor = api->open("/tmp/work/first", CB_O_WRONLY | CB_O_TRUNC, 0);
+    if (descriptor < 0 || api->lseek(descriptor, 20, CB_SEEK_SET) != 20 ||
+        api->write(descriptor, NULL, 0) != 0 ||
+        api->fstat(descriptor, &descriptor_stat) < 0 ||
+        descriptor_stat.size != 0 ||
+        api->lseek(descriptor, 4, CB_SEEK_SET) != 4 ||
+        api->write(descriptor, "Z", 1) != 1 || api->close(descriptor) < 0)
+        return 169;
+    descriptor = api->open("/tmp/work/first", CB_O_RDONLY, 0);
+    if (descriptor < 0 ||
+        api->read(descriptor, buffer, sizeof(truncated_sparse_data)) !=
+            (cb_ssize_t)sizeof(truncated_sparse_data) ||
+        memcmp(buffer, truncated_sparse_data, sizeof(truncated_sparse_data)) != 0)
+        return 170;
+
+    second_descriptor = api->open("/tmp/work/second",
+                                  CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0600);
+    if (second_descriptor < 0 || api->write(second_descriptor, "Q", 1) != 1 ||
+        api->lseek(second_descriptor, 0, CB_SEEK_SET) != 0 ||
+        api->read(second_descriptor, buffer, 1) != 1 || buffer[0] != 'Q' ||
+        api->fstat(second_descriptor, &descriptor_stat) < 0 ||
+        descriptor_stat.mode != 0600 || descriptor_stat.size != 1 ||
+        descriptor_stat.inode == path_stat.inode)
+        return 171;
+    if (api->close(descriptor) < 0 || api->close(second_descriptor) < 0)
+        return 172;
+
+    descriptor = api->open("/tmp/work/first", CB_O_WRONLY | CB_O_APPEND, 0);
+    if (descriptor < 0 || api->lseek(descriptor, 0, CB_SEEK_SET) != 0 ||
+        api->write(descriptor, "!", 1) != 1 ||
+        api->read(descriptor, buffer, 1) != -1 || api->get_errno() != CB_EBADF ||
+        api->close(descriptor) < 0)
+        return 173;
+    descriptor = api->open("/tmp/work/first", CB_O_RDONLY, 0);
+    if (descriptor < 0 || api->write(descriptor, "x", 1) != -1 ||
+        api->get_errno() != CB_EBADF ||
+        api->fstat(descriptor, &descriptor_stat) < 0 ||
+        descriptor_stat.size != sizeof(appended_sparse_data) ||
+        descriptor_stat.inode != path_stat.inode ||
+        api->read(descriptor, buffer, sizeof(appended_sparse_data)) !=
+            (cb_ssize_t)sizeof(appended_sparse_data) ||
+        memcmp(buffer, appended_sparse_data, sizeof(appended_sparse_data)) != 0 ||
+        api->close(descriptor) < 0)
+        return 174;
+
+    if (api->mkdir("/tmp/work/first/child", 0755) != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->open("/tmp/work", CB_O_RDONLY, 0) != -1 ||
+        api->get_errno() != CB_EISDIR)
+        return 175;
+    if (api->unlink("/tmp/missing") != -1 || api->get_errno() != CB_ENOENT ||
+        api->unlink("/tmp/peer") != -1 || api->get_errno() != CB_EISDIR ||
+        api->unlink("/tmp/work") != -1 || api->get_errno() != CB_ENOTEMPTY ||
+        api->unlink("/") != -1 || api->get_errno() != CB_ENOTEMPTY)
+        return 176;
+    if (api->stat(NULL, &path_stat) != -1 || api->get_errno() != CB_EINVAL ||
+        api->stat("/tmp/work/first", NULL) != -1 ||
+        api->get_errno() != CB_EINVAL)
+        return 177;
+    if (api->chdir("/home/user") < 0 || api->getcwd(cwd, 2) != NULL ||
+        api->get_errno() != CB_ENAMETOOLONG)
+        return 178;
+    return 0;
+}
+
 static const struct cb_program_v1 pidcheck_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pidcheck", 0,
     64 * 1024, pidcheck_main
@@ -760,6 +906,11 @@ static const struct cb_program_v1 processprobe_program = {
     64 * 1024, processprobe_main
 };
 
+static const struct cb_program_v1 ramfsprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ramfsprobe", 0,
+    64 * 1024, ramfsprobe_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -793,7 +944,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
             cb_kernel_register(kernel, &descriptorprobe_program) < 0 ||
             cb_kernel_register(kernel, &processchild_program) < 0 ||
-            cb_kernel_register(kernel, &processprobe_program) < 0)
+            cb_kernel_register(kernel, &processprobe_program) < 0 ||
+            cb_kernel_register(kernel, &ramfsprobe_program) < 0)
             fail("test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
@@ -868,6 +1020,7 @@ int main(void)
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
+    run_case("ramfsprobe", "", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||

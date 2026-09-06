@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 10 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 11 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -134,10 +134,18 @@ agent image. The runner contains its build dependencies; the repository
 workflow only selects the sanitizer compiler, links `libucontext`, and runs the
 same gate used locally.
 
+Iteration 11 added `ramfsprobe`. Its red run returned status 170 after truncate,
+seek, and write: retained allocation bytes leaked into what should have been a
+zero-filled sparse hole. RAMFS now clears the gap from the prior logical end and
+treats zero-byte writes as non-mutating. Direct tests cover the initial tree and
+modes, live absolute/relative resolution, root confinement, independent file
+contents and inodes, stat/fstat agreement, sparse writes, append, access modes,
+mkdir/unlink errors, and cwd failures.
+
 ## What's next
 
-See `BACKLOG.md`. The next behavior loop is Priority 1, Iteration 11: the RAMFS
-contract.
+See `BACKLOG.md`. The next behavior loop is Priority 1, Iteration 12: the shell
+and base-command contract.
 
 ## Key files and commands
 

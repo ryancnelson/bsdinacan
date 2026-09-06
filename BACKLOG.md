@@ -40,7 +40,7 @@ runtime model before the human-facing demo grows.
 - [x] **Iteration 10: process and scheduler contract.** Prove PID 1, unique PIDs,
   PPID, copied argv/environment, cwd/environment independence, blocking wait,
   zombie collection, `ECHILD`, explicit yield order, and wake reasons.
-- [ ] **Iteration 11: RAMFS contract.** Cover the initial hierarchy, live path
+- [x] **Iteration 11: RAMFS contract.** Cover the initial hierarchy, live path
   resolution, creation modes, independent contents, holes, stat/inode
   stability, mkdir/unlink error cases, and per-task cwd.
 - [ ] **Iteration 12: shell and base-command contract.** Cover quotes, escapes,
@@ -93,6 +93,13 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 11 (2026-09-06): RAMFS contract.** `ramfsprobe` first returned
+  status 170: truncation reset logical size but a later sparse write within the
+  retained allocation exposed stale bytes. Writes now zero-fill from the old
+  logical end to the new write offset, and zero-byte writes do not extend files.
+  The probe also covers the initial hierarchy and modes, root confinement,
+  relative live lookup, independent objects, stable inode/stat metadata,
+  append, access modes, mkdir/unlink errors, and cwd error behavior.
 - [x] **Iteration 10 (2026-09-06): process and scheduler contract.** The first
   focused run returned status 152 because a parent resumed from blocking wait
   without a recorded cause. Tasks now record pipe-change, console-ready, and

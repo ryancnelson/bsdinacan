@@ -49,12 +49,12 @@ non-goal rather than unfinished v0.1 work.
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| Initial `/`, `/bin`, `/tmp`, `/home/user` hierarchy | Missing | Constructed by `cb_fs_initialize`, but no direct stat/type/mode test. |
-| Absolute/relative paths, `.`, `..`, root confinement | Partial | Four normalization cases pass; live VFS resolution and per-task cwd isolation need tests. |
-| Create/read/write/truncate/append and independent contents | Partial | Shell integration covers create, truncate, append, and read. Direct modes, offsets, holes, permissions flags, and independent files need tests. |
-| Shared duplicated-file offset | Missing | Required but untested. |
-| Stable stat/fstat metadata | Partial | `unlinkprobe` checks fstat size. Path stat, type, mode, inode stability, and stat/fstat agreement need tests. |
-| mkdir/unlink errors | Partial | Open-unlink lifetime is proven. mkdir, duplicate, parent-not-directory, root/directory unlink, nonempty-directory, and missing-path errors need tests. |
+| Initial `/`, `/bin`, `/tmp`, `/home/user` hierarchy | Proven | `ramfsprobe` verifies every initial object, type, mode, nonzero inode, and distinct inode identity. |
+| Absolute/relative paths, `.`, `..`, root confinement | Proven | Normalization cases plus `ramfsprobe` exercise live relative lookup, parent traversal, and confinement at `/`; process tests prove task-local cwd isolation. |
+| Create/read/write/truncate/append and independent contents | Proven | `ramfsprobe` covers exact modes, offsets, fresh and post-truncate sparse holes, zero-byte writes, append-at-write, access errors, and independent contents/inodes. |
+| Shared duplicated-file offset | Proven | `descriptorprobe` reads through one duplicate after seeking/writing through the other. |
+| Stable stat/fstat metadata | Proven | `ramfsprobe` verifies version/size fields, type, mode, size, inode stability, uniqueness, and path/descriptor agreement. |
+| mkdir/unlink errors | Proven | `ramfsprobe` covers duplicate mkdir, non-directory parents, directory/root unlink errors, nonempty directories, and missing paths. |
 | Open file survives unlink until final close | Proven | `unlinkprobe` first reproduced and now guards the former ASan use-after-free. |
 
 ## Shell and base commands
