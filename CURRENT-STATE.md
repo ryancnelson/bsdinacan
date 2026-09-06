@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 12 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 13 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -152,10 +152,19 @@ The suite covers quoting, escaping, empty arguments, expansion timing, syntax
 diagnostics, every built-in, pipeline status and state isolation, redirection
 and partial-spawn cleanup, and the required native commands.
 
+Iteration 13 added direct ABI-boundary tests. The red run segfaulted when
+`cb_kernel_create` dereferenced a missing required host callback. The core now
+validates every required v1 host operation before allocation; new tests also
+enforce strict program descriptors, duplicates, and the 64-entry capacity.
+The Linux host supplies monotonic and Unix-epoch wall clocks. `abiprobe` proves
+the version, size, and presence of every program API operation; exact v0.1
+capability values; mappings for every declared error; unknown-error behavior;
+and errno isolation across interleaved parent and child tasks.
+
 ## What's next
 
-See `BACKLOG.md`. The next behavior loop is Priority 1, Iteration 13: ABI,
-capability, registration, and host-clock contracts.
+See `BACKLOG.md`. The next release blocker is the explicit native executor
+boundary required by `SPEC.md` section 4.4.
 
 ## Key files and commands
 
@@ -182,5 +191,5 @@ capability, registration, and host-clock contracts.
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,
   not an implemented capability.
-- A local git repository records the verified baseline. Public repository and
-  Woodpecker activation are publication steps, not runtime capabilities.
+- The public GitHub repository and Woodpecker project are active. A pushed
+  post-activation commit still needs to prove the webhook-to-run path.

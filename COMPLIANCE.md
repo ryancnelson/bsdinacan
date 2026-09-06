@@ -15,8 +15,8 @@ non-goal rather than unfinished v0.1 work.
 |---|---|---|
 | One host application; commands are not host processes | Partial | `make check-architecture` rejects host process-launch APIs outside the backend. Add a Linux `/proc` integration check around a blocked multi-task workload. |
 | Native execution with no CPU emulator | Proven | Native C modules are linked into `bsdinacan`; architecture scan finds no emulator boundary. |
-| Versioned host-operations table | Partial | `cb_host_ops_v1` has version and size and `cb_kernel_create` validates both. Registration/version failure tests are missing. The specified wall-clock operation is missing. |
-| Versioned program API and descriptors | Partial | `cb_api_v1`, `cb_program_v1`, and `cb_stat_v1` are versioned. Tests for undersized/wrong-version program descriptors are missing. |
+| Versioned host-operations table | Proven | `test_host_contract` checks version, exact size, every required callback, monotonic behavior, nonzero wall time, and clean rejection of null, wrong-version, undersized, or callback-incomplete tables. |
+| Versioned program API and descriptors | Proven | `abiprobe` checks the complete `cb_api_v1`; `test_registration_contract` covers wrong version/size, null and empty names, unknown flags, null entry points, duplicates, valid entries, and capacity. |
 | Explicit native executor boundary | Missing | The registry returns `cb_program_v1` directly and `core.c` starts it directly. There are no validate/prepare, instance create, resume, terminate, and destroy operations. |
 | Explicit VFS node/mount boundary | Missing | Descriptor objects are runtime-owned, but `core.c` calls the single RAMFS implementation directly. No filesystem/mount operation table exists. |
 | Linux-specific mechanisms confined to backend | Proven | `make check-architecture` scans forbidden headers and process calls; `host_linux.c` owns `ucontext`, poll, host read/write, and clocks. |
@@ -32,7 +32,7 @@ non-goal rather than unfinished v0.1 work.
 | Exec preserves process identity/state and closes CLOEXEC descriptors | Proven | `execprobe` proves PID and cwd preservation, environment replacement, CLOEXEC closure, same-fd `dup2` behavior, and ordinary descriptor retention. |
 | Exit creates zombie; waitpid blocks, collects, and reports errors | Proven | `processprobe` proves blocking wait, status 42, wake reason, collection, repeated-wait `ECHILD`, and non-child `ECHILD`. |
 | Explicit wake reason | Proven | Focused probes distinguish pipe change, console readiness, child exit, and voluntary yield without a wake cause. |
-| Fork/vfork absent and capabilities honest | Partial | Calls are absent and capability fields are zero-initialized. Capability record needs a direct exact-value test. |
+| Fork/vfork absent and capabilities honest | Proven | Architecture scans reject host fork/vfork calls and `abiprobe` requires both capability fields to be exactly zero. |
 
 ## Descriptors, pipes, and terminal
 
@@ -73,10 +73,10 @@ non-goal rather than unfinished v0.1 work.
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| Stable error numbers and per-task errno | Partial | Constants and task-local field exist. Cross-task errno isolation and strerror coverage need tests. |
+| Stable error numbers and per-task errno | Proven | `abiprobe` checks a non-unknown string for every declared error, unknown-error fallback, and distinct errno values across interleaved parent and child tasks. |
 | Overflow and pointer/vector ownership rules | Partial | Several bounds exist, copied argv/environment are directly verified, and sanitizers pass current paths. Allocation-failure coverage remains narrow. |
 | No internal pointer crosses program ABI | Proven | Public header contains scalar values, opaque behavior through function tables, strings/vectors, and versioned value structs; internal types are absent. |
-| Capability record reports exact v0.1 truth | Missing | Values are initialized but no exact-value/version/size test exists. |
+| Capability record reports exact v0.1 truth | Proven | `abiprobe` checks version, exact structure size, every enabled field as one, and every excluded or deferred field as zero. |
 | Required integrations and exact acceptance output | Proven | `make test` checks all §11.2 commands and exact `HELLO`; `tests/test_launcher.sh` verifies the selected executable. |
 | Normal and ASan/UBSan suites | Proven | `make test`, `make sanitize`, and `make check-build-modes`; ASan documents its `ucontext` support warning. |
 | README build/run/test instructions | Partial | Build/run/test are present. Adding a native command is not documented. |

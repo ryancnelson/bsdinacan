@@ -92,7 +92,8 @@ contains only mechanisms unavailable in portable code:
 - Allocate, resize, and release memory.
 - Create, switch, and destroy stackful execution contexts.
 - Read, write, and poll the host console.
-- Return monotonic and wall-clock time.
+- Return monotonic milliseconds and wall-clock milliseconds since the Unix
+  epoch. A zero clock result reports that the host could not supply a value.
 - Sleep or yield the enclosing application.
 - Report a fatal runtime error.
 
@@ -364,7 +365,7 @@ The small initial `tr` is not claimed to be a complete NetBSD `tr` port.
 
 ## 10. Capability discovery
 
-The API exposes a versioned capability record. v0.1 reports approximately:
+The API exposes a versioned capability record. v0.1 reports exactly:
 
 ```text
 native_modules       yes

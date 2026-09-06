@@ -146,6 +146,15 @@ static uint64_t host_monotonic_millis(void)
            (uint64_t)now.tv_nsec / UINT64_C(1000000);
 }
 
+static uint64_t host_wall_clock_millis(void)
+{
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0 || now.tv_sec < 0)
+        return 0;
+    return (uint64_t)now.tv_sec * UINT64_C(1000) +
+           (uint64_t)now.tv_nsec / UINT64_C(1000000);
+}
+
 static void host_yield(void)
 {
     struct timespec delay = {0, 1000000};
@@ -172,6 +181,7 @@ static const struct cb_host_ops_v1 linux_ops = {
     host_console_read,
     host_console_write,
     host_monotonic_millis,
+    host_wall_clock_millis,
     host_yield,
     host_fatal
 };

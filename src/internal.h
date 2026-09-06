@@ -24,6 +24,7 @@ struct cb_host_ops_v1 {
     cb_ssize_t (*console_read)(void *buffer, size_t count);
     cb_ssize_t (*console_write)(int stream, const void *buffer, size_t count);
     uint64_t (*monotonic_millis)(void);
+    uint64_t (*wall_clock_millis)(void);
     void (*yield_host)(void);
     void (*fatal)(const char *message);
 };

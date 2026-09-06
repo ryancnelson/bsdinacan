@@ -1049,6 +1049,7 @@ static const char *api_strerror(int error)
     case 0: return "no error";
     case CB_EPERM: return "operation not permitted";
     case CB_ENOENT: return "no such file or directory";
+    case CB_EINTR: return "interrupted system call";
     case CB_EIO: return "input/output error";
     case CB_EBADF: return "bad file descriptor";
     case CB_ECHILD: return "no child processes";
@@ -1058,6 +1059,7 @@ static const char *api_strerror(int error)
     case CB_ENOTDIR: return "not a directory";
     case CB_EISDIR: return "is a directory";
     case CB_EINVAL: return "invalid argument";
+    case CB_ENFILE: return "too many open files in system";
     case CB_EMFILE: return "too many open files";
     case CB_ENOSPC: return "no space left";
     case CB_ESPIPE: return "illegal seek";
@@ -1120,11 +1122,23 @@ static void initialize_api(struct cb_kernel *kernel)
     api->capabilities = api_capabilities;
 }
 
+static int host_ops_valid(const struct cb_host_ops_v1 *host)
+{
+    return host != NULL && host->abi_version == CB_ABI_VERSION_V1 &&
+           host->struct_size >= sizeof(*host) && host->allocate != NULL &&
+           host->resize != NULL && host->release != NULL &&
+           host->context_root != NULL && host->context_create != NULL &&
+           host->context_switch != NULL && host->context_destroy != NULL &&
+           host->console_poll != NULL && host->console_read != NULL &&
+           host->console_write != NULL && host->monotonic_millis != NULL &&
+           host->wall_clock_millis != NULL && host->yield_host != NULL &&
+           host->fatal != NULL;
+}
+
 struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host)
 {
     struct cb_kernel *kernel;
-    if (host == NULL || host->abi_version != CB_ABI_VERSION_V1 ||
-        host->struct_size < sizeof(*host))
+    if (!host_ops_valid(host))
         return NULL;
     kernel = host->allocate(sizeof(*kernel));
     if (kernel == NULL)
@@ -1173,6 +1187,7 @@ int cb_kernel_register(struct cb_kernel *kernel,
                        const struct cb_program_v1 *program)
 {
     if (kernel == NULL || program == NULL || program->name == NULL ||
+        program->name[0] == '\0' || program->flags != 0 ||
         program->start == NULL ||
         program->abi_version != CB_ABI_VERSION_V1 ||
         program->struct_size < sizeof(*program) ||

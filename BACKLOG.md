@@ -46,7 +46,7 @@ runtime model before the human-facing demo grows.
 - [x] **Iteration 12: shell and base-command contract.** Cover quotes, escapes,
   empty words, braced and quote-dependent expansion, syntax errors, every
   built-in, native command status/errors, redirection failures, and cleanup.
-- [ ] **Iteration 13: ABI and capability contract.** Test wrong versions/sizes,
+- [x] **Iteration 13: ABI and capability contract.** Test wrong versions/sizes,
   exact capabilities, host-clock operations, and program-registration limits.
 
 ## Priority 2 — usable-system demo
@@ -93,6 +93,15 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 13 (2026-09-06): ABI and capability contract.** A direct test
+  first crashed when a required host callback was null. Kernel
+  creation now validates every v1 host operation before dereferencing the
+  table; new registration checks reject malformed descriptors—including empty
+  names and unknown flags—duplicates, and entries beyond its fixed capacity.
+  The Linux backend supplies both monotonic and
+  Unix-epoch wall clocks. `abiprobe` verifies the complete program API table,
+  exact capabilities, every declared error string, unknown-error behavior,
+  and errno isolation across cooperatively interleaved parent and child tasks.
 - [x] **Iteration 12 (2026-09-06): shell and base-command contract.** Focused
   black-box cases exposed four independent gaps: invalid environment names were
   accepted, nonnumeric `exit` silently became zero, built-ins were rejected in

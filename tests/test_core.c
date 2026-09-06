@@ -26,6 +26,17 @@ static int pipe_edge_peer_state;
 static int pipe_capacity_read_fd;
 static int pipe_capacity_peer_started;
 static size_t pipe_capacity_bytes_read;
+static int errno_child_phase;
+
+static int registration_stub_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    return 0;
+}
 
 static void *controlled_allocate(size_t size)
 {
@@ -110,6 +121,131 @@ static void expect_path(const char *cwd, const char *path,
                 cwd, path, expected, actual);
         exit(1);
     }
+}
+
+static void expect_invalid_host(const struct cb_host_ops_v1 *host,
+                                const char *field)
+{
+    struct cb_kernel *kernel = cb_kernel_create(host);
+    if (kernel != NULL) {
+        cb_kernel_destroy(kernel);
+        fprintf(stderr, "host with invalid %s was accepted\n", field);
+        exit(1);
+    }
+}
+
+static void test_host_contract(void)
+{
+    const struct cb_host_ops_v1 *linux_host = cb_linux_host_ops();
+    struct cb_host_ops_v1 host;
+    uint64_t before;
+    uint64_t after;
+
+    if (linux_host == NULL ||
+        linux_host->abi_version != CB_ABI_VERSION_V1 ||
+        linux_host->struct_size != sizeof(*linux_host) ||
+        linux_host->allocate == NULL || linux_host->resize == NULL ||
+        linux_host->release == NULL || linux_host->context_root == NULL ||
+        linux_host->context_create == NULL ||
+        linux_host->context_switch == NULL ||
+        linux_host->context_destroy == NULL ||
+        linux_host->console_poll == NULL ||
+        linux_host->console_read == NULL ||
+        linux_host->console_write == NULL ||
+        linux_host->monotonic_millis == NULL ||
+        linux_host->wall_clock_millis == NULL ||
+        linux_host->yield_host == NULL || linux_host->fatal == NULL)
+        fail("Linux host operation table");
+    before = linux_host->monotonic_millis();
+    linux_host->yield_host();
+    after = linux_host->monotonic_millis();
+    if (before == 0 || after < before || linux_host->wall_clock_millis() == 0)
+        fail("Linux host clocks");
+
+    expect_invalid_host(NULL, "null table");
+    host = *linux_host;
+    host.abi_version = 0;
+    expect_invalid_host(&host, "version");
+    host = *linux_host;
+    host.struct_size = sizeof(host) - 1;
+    expect_invalid_host(&host, "size");
+#define EXPECT_NULL_HOST_CALLBACK(member) do { \
+    host = *linux_host; \
+    host.member = NULL; \
+    expect_invalid_host(&host, #member); \
+} while (0)
+    EXPECT_NULL_HOST_CALLBACK(allocate);
+    EXPECT_NULL_HOST_CALLBACK(resize);
+    EXPECT_NULL_HOST_CALLBACK(release);
+    EXPECT_NULL_HOST_CALLBACK(context_root);
+    EXPECT_NULL_HOST_CALLBACK(context_create);
+    EXPECT_NULL_HOST_CALLBACK(context_switch);
+    EXPECT_NULL_HOST_CALLBACK(context_destroy);
+    EXPECT_NULL_HOST_CALLBACK(console_poll);
+    EXPECT_NULL_HOST_CALLBACK(console_read);
+    EXPECT_NULL_HOST_CALLBACK(console_write);
+    EXPECT_NULL_HOST_CALLBACK(monotonic_millis);
+    EXPECT_NULL_HOST_CALLBACK(wall_clock_millis);
+    EXPECT_NULL_HOST_CALLBACK(yield_host);
+    EXPECT_NULL_HOST_CALLBACK(fatal);
+#undef EXPECT_NULL_HOST_CALLBACK
+}
+
+static void test_registration_contract(void)
+{
+    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    struct cb_program_v1 candidate = {
+        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "candidate", 0,
+        64 * 1024, registration_stub_main
+    };
+    struct cb_program_v1 programs[CB_MAX_PROGRAMS];
+    char names[CB_MAX_PROGRAMS][24];
+    size_t index;
+
+    if (kernel == NULL)
+        fail("registration test kernel creation");
+    if (cb_kernel_register(NULL, &candidate) == 0 ||
+        cb_kernel_register(kernel, NULL) == 0)
+        fail("null registration input");
+    candidate.abi_version = 0;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("program version validation");
+    candidate.abi_version = CB_ABI_VERSION_V1;
+    candidate.struct_size = sizeof(candidate) - 1;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("program size validation");
+    candidate.struct_size = sizeof(candidate);
+    candidate.name = NULL;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("null program name validation");
+    candidate.name = "";
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("empty program name validation");
+    candidate.name = "candidate";
+    candidate.flags = 1;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("program flags validation");
+    candidate.flags = 0;
+    candidate.start = NULL;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("null program entry validation");
+
+    for (index = 0; index < CB_MAX_PROGRAMS; ++index) {
+        snprintf(names[index], sizeof(names[index]), "program-%lu",
+                 (unsigned long)index);
+        programs[index] = candidate;
+        programs[index].name = names[index];
+        programs[index].start = registration_stub_main;
+        if (cb_kernel_register(kernel, &programs[index]) < 0)
+            fail("valid program registration");
+        if (cb_kernel_register(kernel, &programs[index]) == 0)
+            fail("duplicate program registration");
+    }
+    candidate.name = "overflow";
+    candidate.start = registration_stub_main;
+    if (cb_kernel_register(kernel, &candidate) == 0)
+        fail("program registry capacity");
+    cb_kernel_destroy(kernel);
 }
 
 static int pidcheck_main(const struct cb_api_v1 *api, int argc,
@@ -680,6 +816,89 @@ static int processprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int errnochild_main(const struct cb_api_v1 *api, int argc,
+                           char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->get_errno() != 0)
+        return 179;
+    api->set_errno(CB_EACCES);
+    errno_child_phase = 1;
+    api->yield();
+    if (api->get_errno() != CB_EACCES)
+        return 180;
+    errno_child_phase = 2;
+    return 0;
+}
+
+static int abiprobe_main(const struct cb_api_v1 *api, int argc,
+                         char *const argv[], char *const envp[])
+{
+    static const int errors[] = {
+        0, CB_EPERM, CB_ENOENT, CB_EINTR, CB_EIO, CB_EBADF, CB_ECHILD,
+        CB_ENOMEM, CB_EACCES, CB_EEXIST, CB_ENOTDIR, CB_EISDIR, CB_EINVAL,
+        CB_ENFILE, CB_EMFILE, CB_ENOSPC, CB_ESPIPE, CB_EPIPE,
+        CB_ENAMETOOLONG, CB_ENOSYS, CB_ENOTEMPTY
+    };
+    const struct cb_capabilities_v1 *capabilities;
+    char *child_argv[] = {(char *)"errnochild", NULL};
+    cb_pid_t child;
+    int status;
+    size_t index;
+    (void)argc;
+    (void)argv;
+
+    if (api == NULL || api->abi_version != CB_ABI_VERSION_V1 ||
+        api->struct_size != sizeof(*api) || api->getpid == NULL ||
+        api->getppid == NULL || api->spawn == NULL || api->exec == NULL ||
+        api->exit == NULL || api->waitpid == NULL || api->yield == NULL ||
+        api->open == NULL || api->close == NULL || api->read == NULL ||
+        api->write == NULL || api->lseek == NULL || api->dup == NULL ||
+        api->dup2 == NULL || api->set_cloexec == NULL || api->pipe == NULL ||
+        api->fstat == NULL || api->stat == NULL || api->mkdir == NULL ||
+        api->unlink == NULL || api->chdir == NULL || api->getcwd == NULL ||
+        api->getenv == NULL || api->setenv == NULL || api->unsetenv == NULL ||
+        api->strerror == NULL || api->get_errno == NULL ||
+        api->set_errno == NULL || api->capabilities == NULL)
+        return 181;
+    capabilities = api->capabilities();
+    if (capabilities == NULL ||
+        capabilities->abi_version != CB_ABI_VERSION_V1 ||
+        capabilities->struct_size != sizeof(*capabilities) ||
+        capabilities->native_modules != 1 ||
+        capabilities->cooperative_tasks != 1 ||
+        capabilities->memory_protection != 0 || capabilities->spawn != 1 ||
+        capabilities->exec != 1 || capabilities->fork != 0 ||
+        capabilities->vfork != 0 || capabilities->ramfs != 1 ||
+        capabilities->persistent_fs != 0 || capabilities->host_mounts != 0 ||
+        capabilities->network_sockets != 0 ||
+        capabilities->unix_sockets != 0 || capabilities->pty != 0 ||
+        capabilities->wasm_executor != 0 || capabilities->x11 != 0)
+        return 182;
+    for (index = 0; index < sizeof(errors) / sizeof(errors[0]); ++index)
+        if (strcmp(api->strerror(errors[index]), "unknown error") == 0)
+            return 183;
+    if (strcmp(api->strerror(123456), "unknown error") != 0)
+        return 184;
+
+    errno_child_phase = 0;
+    if (api->spawn("errnochild", child_argv, envp, NULL, 0, &child) < 0)
+        return 185;
+    api->set_errno(CB_EPERM);
+    api->yield();
+    if (errno_child_phase != 1 || api->get_errno() != CB_EPERM)
+        return 186;
+    api->yield();
+    if (errno_child_phase != 2 || api->get_errno() != CB_EPERM)
+        return 187;
+    if (api->waitpid(child, &status) != child || status != 0 ||
+        api->get_errno() != 0)
+        return 188;
+    return 0;
+}
+
 static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
                            char *const argv[], char *const envp[])
 {
@@ -911,6 +1130,16 @@ static const struct cb_program_v1 ramfsprobe_program = {
     64 * 1024, ramfsprobe_main
 };
 
+static const struct cb_program_v1 errnochild_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "errnochild", 0,
+    64 * 1024, errnochild_main
+};
+
+static const struct cb_program_v1 abiprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "abiprobe", 0,
+    64 * 1024, abiprobe_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -945,7 +1174,9 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &descriptorprobe_program) < 0 ||
             cb_kernel_register(kernel, &processchild_program) < 0 ||
             cb_kernel_register(kernel, &processprobe_program) < 0 ||
-            cb_kernel_register(kernel, &ramfsprobe_program) < 0)
+            cb_kernel_register(kernel, &ramfsprobe_program) < 0 ||
+            cb_kernel_register(kernel, &errnochild_program) < 0 ||
+            cb_kernel_register(kernel, &abiprobe_program) < 0)
             fail("test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
@@ -1011,6 +1242,8 @@ static void expect_streams(const char *expected_stdout,
 
 int main(void)
 {
+    test_host_contract();
+    test_registration_contract();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
@@ -1101,6 +1334,7 @@ int main(void)
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
+    run_case("abiprobe", "", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||
