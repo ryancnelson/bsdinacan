@@ -7,7 +7,6 @@
 
 static struct cb_kernel *active_kernel;
 
-static void task_entry(void *argument);
 static void initialize_api(struct cb_kernel *kernel);
 
 void *cb_allocate(struct cb_kernel *kernel, size_t size)
@@ -178,8 +177,8 @@ static void fd_close_all(struct cb_task *task)
     }
 }
 
-static const struct cb_program_v1 *program_find(struct cb_kernel *kernel,
-                                                const char *name)
+static struct cb_program *program_find(struct cb_kernel *kernel,
+                                       const char *name)
 {
     size_t index;
     const char *base = strrchr(name, '/');
@@ -382,7 +381,7 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
     task->wake_reason = CB_WAKE_NONE;
     task->state = state;
     kernel->current = NULL;
-    kernel->host->context_switch(task->context, kernel->scheduler_context);
+    cb_executor_suspend(task->execution);
     kernel->current = task;
     task->state = CB_TASK_RUNNING;
 }
@@ -391,7 +390,7 @@ static void task_destroy(struct cb_task *task)
 {
     struct cb_kernel *kernel = task->kernel;
     fd_close_all(task);
-    kernel->host->context_destroy(task->context);
+    cb_executor_instance_destroy(task->execution);
     string_vector_destroy(kernel, task->argv);
     string_vector_destroy(kernel, task->environment);
     string_vector_destroy(kernel, task->pending_argv);
@@ -438,7 +437,7 @@ static int task_apply_actions(struct cb_task *task,
 
 static struct cb_task *task_create(struct cb_kernel *kernel,
                                    struct cb_task *parent,
-                                   const struct cb_program_v1 *program,
+                                   const struct cb_program *program,
                                    char *const argv[], char *const envp[],
                                    const struct cb_spawn_action_v1 *actions,
                                    size_t action_count)
@@ -468,11 +467,8 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
     }
     if (task_apply_actions(task, actions, action_count) < 0)
         goto fail;
-    task->context = kernel->host->context_create(
-        task_entry, task,
-        program->requested_stack_size == 0 ? 64 * 1024 :
-                                              program->requested_stack_size);
-    if (task->context == NULL)
+    task->execution = cb_executor_instance_create(task, program);
+    if (task->execution == NULL)
         goto fail;
     task->state = CB_TASK_RUNNABLE;
     task->next = kernel->tasks;
@@ -485,17 +481,6 @@ fail:
     string_vector_destroy(kernel, task->environment);
     cb_release(kernel, task);
     return NULL;
-}
-
-static void task_entry(void *argument)
-{
-    struct cb_task *task = argument;
-    int status;
-    task->kernel->current = task;
-    task->state = CB_TASK_RUNNING;
-    status = task->program->start(&task->kernel->api, task->argc,
-                                  task->argv, task->environment);
-    task->kernel->api.exit(status);
 }
 
 static void wake_waiting_parent(struct cb_task *child)
@@ -515,8 +500,8 @@ static void task_finish_exec(struct cb_task *task)
 {
     struct cb_kernel *kernel = task->kernel;
     int descriptor;
-    kernel->host->context_destroy(task->context);
-    task->context = NULL;
+    cb_executor_instance_destroy(task->execution);
+    task->execution = NULL;
     for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
         if (task->descriptors[descriptor].file != NULL &&
             task->descriptors[descriptor].close_on_exec)
@@ -532,12 +517,9 @@ static void task_finish_exec(struct cb_task *task)
     task->pending_argv = NULL;
     task->pending_environment = NULL;
     task->pending_argc = 0;
-    task->context = kernel->host->context_create(
-        task_entry, task,
-        task->program->requested_stack_size == 0 ? 64 * 1024 :
-                                                   task->program->requested_stack_size);
-    if (task->context == NULL)
-        kernel->host->fatal("unable to create context after exec");
+    task->execution = cb_executor_instance_create(task, task->program);
+    if (task->execution == NULL)
+        kernel->host->fatal("unable to create execution after exec");
     task->state = CB_TASK_RUNNABLE;
 }
 
@@ -597,7 +579,7 @@ static int api_spawn(const char *program_name, char *const argv[],
 {
     struct cb_kernel *kernel = active_kernel;
     struct cb_task *parent = kernel->current;
-    const struct cb_program_v1 *program;
+    struct cb_program *program;
     struct cb_task *child;
     if (program_name == NULL || argv == NULL || argv[0] == NULL ||
         (action_count != 0 && actions == NULL)) {
@@ -625,7 +607,7 @@ static int api_exec(const char *program_name, char *const argv[],
                     char *const envp[])
 {
     struct cb_task *task = active_kernel->current;
-    const struct cb_program_v1 *program;
+    struct cb_program *program;
     char **new_argv;
     char **new_environment;
     if (program_name == NULL || argv == NULL || argv[0] == NULL) {
@@ -667,9 +649,8 @@ static void api_exit(int status)
     }
     wake_waiting_parent(task);
     task->kernel->current = NULL;
-    task->kernel->host->context_switch(task->context,
-                                       task->kernel->scheduler_context);
-    task->kernel->host->fatal("exited task resumed");
+    cb_executor_request_termination(task->execution);
+    task->kernel->host->fatal("terminated execution returned");
 }
 
 static struct cb_task *find_waitable_child(struct cb_task *parent,
@@ -1168,6 +1149,7 @@ struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host)
 void cb_kernel_destroy(struct cb_kernel *kernel)
 {
     struct cb_task *task;
+    size_t index;
     if (kernel == NULL)
         return;
     task = kernel->tasks;
@@ -1176,6 +1158,8 @@ void cb_kernel_destroy(struct cb_kernel *kernel)
         task_destroy(task);
         task = next;
     }
+    for (index = 0; index < kernel->program_count; ++index)
+        cb_executor_program_destroy(kernel, kernel->programs[index]);
     cb_fs_destroy(kernel);
     kernel->host->context_destroy(kernel->scheduler_context);
     if (active_kernel == kernel)
@@ -1186,21 +1170,28 @@ void cb_kernel_destroy(struct cb_kernel *kernel)
 int cb_kernel_register(struct cb_kernel *kernel,
                        const struct cb_program_v1 *program)
 {
-    if (kernel == NULL || program == NULL || program->name == NULL ||
-        program->name[0] == '\0' || program->flags != 0 ||
-        program->start == NULL ||
-        program->abi_version != CB_ABI_VERSION_V1 ||
-        program->struct_size < sizeof(*program) ||
-        kernel->program_count == CB_MAX_PROGRAMS ||
-        program_find(kernel, program->name) != NULL)
+    return cb_kernel_register_executor(kernel, cb_native_executor(), program);
+}
+
+int cb_kernel_register_executor(struct cb_kernel *kernel,
+                                const struct cb_executor_ops *executor,
+                                const void *source)
+{
+    struct cb_program *program;
+    if (kernel == NULL || kernel->program_count >= CB_MAX_PROGRAMS ||
+        cb_executor_prepare(kernel, executor, source, &program) < 0)
         return -1;
+    if (program_find(kernel, program->name) != NULL) {
+        cb_executor_program_destroy(kernel, program);
+        return -1;
+    }
     kernel->programs[kernel->program_count++] = program;
     return 0;
 }
 
 int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
 {
-    const struct cb_program_v1 *shell = program_find(kernel, "sh");
+    struct cb_program *shell = program_find(kernel, "sh");
     struct cb_task *task;
     char *interactive_argv[] = {(char *)"sh", NULL};
     char *command_argv[] = {(char *)"sh", (char *)"-c", (char *)command,
@@ -1263,7 +1254,7 @@ int cb_kernel_run(struct cb_kernel *kernel)
         idle_rounds = 0;
         kernel->current = task;
         task->state = CB_TASK_RUNNING;
-        kernel->host->context_switch(kernel->scheduler_context, task->context);
+        cb_executor_start_or_resume(task->execution);
         kernel->current = NULL;
         if (task->state == CB_TASK_EXEC_PENDING)
             task_finish_exec(task);

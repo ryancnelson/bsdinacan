@@ -48,6 +48,12 @@ runtime model before the human-facing demo grows.
   built-in, native command status/errors, redirection failures, and cleanup.
 - [x] **Iteration 13: ABI and capability contract.** Test wrong versions/sizes,
   exact capabilities, host-clock operations, and program-registration limits.
+- [x] **Iteration 14: explicit native executor boundary.** Route preparation,
+  instance creation, resume, suspension, termination, and destruction through
+  a generic versioned executor table; keep native contexts out of the task core.
+- [ ] **Iteration 15: explicit VFS boundary.** Route pathname and lifecycle
+  operations through versioned mount/node operation tables rather than calling
+  RAMFS entry points directly from the program API.
 
 ## Priority 2 — usable-system demo
 
@@ -93,6 +99,15 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 14 (2026-09-06): explicit native executor boundary.** An
+  architecture test first failed because no executor operation table existed
+  and the task core directly owned contexts and called native entry points. A
+  versioned generic executor now prepares runtime-owned program objects and
+  owns per-task execution instances. A delegating test executor proves prepare,
+  create, start/resume, suspend, requested termination, instance destruction,
+  and program destruction. Existing spawn, exec, wait, pipeline, and acceptance
+  tests pass through the boundary; the architecture gate rejects native entry
+  or task-context details in `core.c`.
 - [x] **Iteration 13 (2026-09-06): ABI and capability contract.** A direct test
   first crashed when a required host callback was null. Kernel
   creation now validates every v1 host operation before dereferencing the

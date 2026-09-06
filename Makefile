@@ -17,6 +17,7 @@ TEST_PROGRAM := $(BUILD)/test_core
 
 CORE_SOURCES := \
 	src/core.c \
+	src/executor.c \
 	src/fs.c \
 	src/host_linux.c \
 	src/programs.c \
@@ -46,6 +47,7 @@ check-architecture:
 		-g '!host_linux.c' || { echo 'forbidden host process API found'; exit 1; }
 	@! rg -n '#include[[:space:]]*<((sys/|linux/)|unistd\.h)' src include \
 		-g '!host_linux.c' || { echo 'host header leaked outside backend'; exit 1; }
+	tests/test_architecture.sh
 
 check-build-modes:
 	tests/test_build_modes.sh

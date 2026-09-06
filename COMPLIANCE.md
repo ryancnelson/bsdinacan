@@ -17,7 +17,7 @@ non-goal rather than unfinished v0.1 work.
 | Native execution with no CPU emulator | Proven | Native C modules are linked into `bsdinacan`; architecture scan finds no emulator boundary. |
 | Versioned host-operations table | Proven | `test_host_contract` checks version, exact size, every required callback, monotonic behavior, nonzero wall time, and clean rejection of null, wrong-version, undersized, or callback-incomplete tables. |
 | Versioned program API and descriptors | Proven | `abiprobe` checks the complete `cb_api_v1`; `test_registration_contract` covers wrong version/size, null and empty names, unknown flags, null entry points, duplicates, valid entries, and capacity. |
-| Explicit native executor boundary | Missing | The registry returns `cb_program_v1` directly and `core.c` starts it directly. There are no validate/prepare, instance create, resume, terminate, and destroy operations. |
+| Explicit native executor boundary | Proven | `test_executor_contract` wraps the native executor and observes prepare, instance create, repeated start/resume, suspend, requested termination, instance destruction, and program destruction. `tests/test_architecture.sh` rejects direct native-entry and task-context handling in `core.c`. |
 | Explicit VFS node/mount boundary | Missing | Descriptor objects are runtime-owned, but `core.c` calls the single RAMFS implementation directly. No filesystem/mount operation table exists. |
 | Linux-specific mechanisms confined to backend | Proven | `make check-architecture` scans forbidden headers and process calls; `host_linux.c` owns `ucontext`, poll, host read/write, and clocks. |
 
@@ -67,7 +67,7 @@ non-goal rather than unfinished v0.1 work.
 | `;`, `$?`, `$NAME`, `${NAME}` | Proven | Tests cover sequential expansion timing, status changes, single/double quote behavior, unset/empty values, braced values, and malformed names. |
 | `cd`, `pwd`, `export`, `unset`, `exit` | Proven | Each built-in has success, mutation/isolation, redirection or pipeline, and relevant argument/error cases; `exit` covers inherited, wrapped, signed, and invalid status. |
 | Native `echo`, `cat`, `tr`, `true`, `false` | Proven | Black-box cases cover all modules, stdin/files, `echo -n`, translation ranges, status propagation, usage, and missing-file diagnostics. |
-| Registry does not obstruct later loaders/executors | Missing | Depends on the explicit executor boundary above. Runtime-visible executable filesystem objects are a post-v0.1 design choice, not required by the normative v0.1 descriptor rule. |
+| Registry does not obstruct later loaders/executors | Proven | `cb_kernel_register_executor` accepts any valid versioned executor table and opaque source; the lifecycle wrapper test registers and runs through a distinct table. Runtime-visible executable filesystem objects remain a post-v0.1 design choice. |
 
 ## Errors, capabilities, documentation, and release
 

@@ -27,6 +27,14 @@ static int pipe_capacity_read_fd;
 static int pipe_capacity_peer_started;
 static size_t pipe_capacity_bytes_read;
 static int errno_child_phase;
+static const struct cb_executor_ops *executor_delegate;
+static unsigned executor_prepare_count;
+static unsigned executor_create_count;
+static unsigned executor_resume_count;
+static unsigned executor_suspend_count;
+static unsigned executor_terminate_count;
+static unsigned executor_instance_destroy_count;
+static unsigned executor_program_destroy_count;
 
 static int registration_stub_main(const struct cb_api_v1 *api, int argc,
                                   char *const argv[], char *const envp[])
@@ -35,6 +43,67 @@ static int registration_stub_main(const struct cb_api_v1 *api, int argc,
     (void)argc;
     (void)argv;
     (void)envp;
+    return 0;
+}
+
+static int lifecycle_prepare(struct cb_kernel *kernel,
+                             const struct cb_executor_ops *executor,
+                             const void *source,
+                             struct cb_program **program_out)
+{
+    ++executor_prepare_count;
+    return executor_delegate->prepare(kernel, executor, source, program_out);
+}
+
+static struct cb_execution *lifecycle_instance_create(
+    struct cb_task *task, const struct cb_program *program)
+{
+    ++executor_create_count;
+    return executor_delegate->instance_create(task, program);
+}
+
+static void lifecycle_start_or_resume(struct cb_execution *execution)
+{
+    ++executor_resume_count;
+    executor_delegate->start_or_resume(execution);
+}
+
+static void lifecycle_suspend(struct cb_execution *execution)
+{
+    ++executor_suspend_count;
+    executor_delegate->suspend(execution);
+}
+
+static void lifecycle_request_termination(struct cb_execution *execution)
+{
+    ++executor_terminate_count;
+    executor_delegate->request_termination(execution);
+}
+
+static void lifecycle_instance_destroy(struct cb_execution *execution)
+{
+    ++executor_instance_destroy_count;
+    executor_delegate->instance_destroy(execution);
+}
+
+static void lifecycle_program_destroy(struct cb_kernel *kernel,
+                                      struct cb_program *program)
+{
+    ++executor_program_destroy_count;
+    executor_delegate->program_destroy(kernel, program);
+}
+
+static int executor_lifecycle_main(const struct cb_api_v1 *api, int argc,
+                                   char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (executor_resume_count != 1 || executor_suspend_count != 0)
+        return 189;
+    api->yield();
+    if (executor_resume_count != 2 || executor_suspend_count != 1)
+        return 190;
     return 0;
 }
 
@@ -246,6 +315,105 @@ static void test_registration_contract(void)
     if (cb_kernel_register(kernel, &candidate) == 0)
         fail("program registry capacity");
     cb_kernel_destroy(kernel);
+}
+
+static void expect_invalid_executor(struct cb_kernel *kernel,
+                                    const struct cb_executor_ops *executor,
+                                    const struct cb_program_v1 *source,
+                                    const char *field)
+{
+    if (cb_kernel_register_executor(kernel, executor, source) == 0) {
+        fprintf(stderr, "executor with invalid %s was accepted\n", field);
+        exit(1);
+    }
+}
+
+static void test_executor_contract(void)
+{
+    const struct cb_executor_ops *native = cb_native_executor();
+    struct cb_executor_ops executor = {
+        CB_ABI_VERSION_V1,
+        sizeof(struct cb_executor_ops),
+        lifecycle_prepare,
+        lifecycle_instance_create,
+        lifecycle_start_or_resume,
+        lifecycle_suspend,
+        lifecycle_request_termination,
+        lifecycle_instance_destroy,
+        lifecycle_program_destroy
+    };
+    struct cb_program_v1 source = {
+        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "sh", 0,
+        64 * 1024, executor_lifecycle_main
+    };
+    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    int status;
+
+    if (native == NULL || native->abi_version != CB_ABI_VERSION_V1 ||
+        native->struct_size != sizeof(*native) || native->prepare == NULL ||
+        native->instance_create == NULL || native->start_or_resume == NULL ||
+        native->suspend == NULL || native->request_termination == NULL ||
+        native->instance_destroy == NULL || native->program_destroy == NULL)
+        fail("native executor operation table");
+    if (kernel == NULL)
+        fail("executor test kernel creation");
+    expect_invalid_executor(NULL, &executor, &source, "null kernel");
+    expect_invalid_executor(kernel, NULL, &source, "null table");
+    expect_invalid_executor(kernel, &executor, NULL, "null source");
+    executor.abi_version = 0;
+    expect_invalid_executor(kernel, &executor, &source, "version");
+    executor.abi_version = CB_ABI_VERSION_V1;
+    executor.struct_size = sizeof(executor) - 1;
+    expect_invalid_executor(kernel, &executor, &source, "size");
+#define EXPECT_NULL_EXECUTOR_CALLBACK(member) do { \
+    executor = (struct cb_executor_ops){ \
+        CB_ABI_VERSION_V1, sizeof(struct cb_executor_ops), \
+        lifecycle_prepare, lifecycle_instance_create, \
+        lifecycle_start_or_resume, lifecycle_suspend, \
+        lifecycle_request_termination, lifecycle_instance_destroy, \
+        lifecycle_program_destroy \
+    }; \
+    executor.member = NULL; \
+    expect_invalid_executor(kernel, &executor, &source, #member); \
+} while (0)
+    EXPECT_NULL_EXECUTOR_CALLBACK(prepare);
+    EXPECT_NULL_EXECUTOR_CALLBACK(instance_create);
+    EXPECT_NULL_EXECUTOR_CALLBACK(start_or_resume);
+    EXPECT_NULL_EXECUTOR_CALLBACK(suspend);
+    EXPECT_NULL_EXECUTOR_CALLBACK(request_termination);
+    EXPECT_NULL_EXECUTOR_CALLBACK(instance_destroy);
+    EXPECT_NULL_EXECUTOR_CALLBACK(program_destroy);
+#undef EXPECT_NULL_EXECUTOR_CALLBACK
+
+    executor = (struct cb_executor_ops){
+        CB_ABI_VERSION_V1, sizeof(struct cb_executor_ops),
+        lifecycle_prepare, lifecycle_instance_create,
+        lifecycle_start_or_resume, lifecycle_suspend,
+        lifecycle_request_termination, lifecycle_instance_destroy,
+        lifecycle_program_destroy
+    };
+    executor_delegate = native;
+    executor_prepare_count = 0;
+    executor_create_count = 0;
+    executor_resume_count = 0;
+    executor_suspend_count = 0;
+    executor_terminate_count = 0;
+    executor_instance_destroy_count = 0;
+    executor_program_destroy_count = 0;
+    if (cb_kernel_register_executor(kernel, &executor, &source) < 0 ||
+        cb_kernel_boot(kernel, NULL) < 0)
+        fail("executor lifecycle setup");
+    status = cb_kernel_run(kernel);
+    if (status != 0 || executor_prepare_count != 1 ||
+        executor_create_count != 1 || executor_resume_count != 2 ||
+        executor_suspend_count != 1 || executor_terminate_count != 1 ||
+        executor_instance_destroy_count != 0 ||
+        executor_program_destroy_count != 0)
+        fail("executor active lifecycle");
+    cb_kernel_destroy(kernel);
+    if (executor_instance_destroy_count != 1 ||
+        executor_program_destroy_count != 1)
+        fail("executor destroy lifecycle");
 }
 
 static int pidcheck_main(const struct cb_api_v1 *api, int argc,
@@ -1244,6 +1412,7 @@ int main(void)
 {
     test_host_contract();
     test_registration_contract();
+    test_executor_contract();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");

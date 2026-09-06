@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 13 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 14 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -161,10 +161,19 @@ the version, size, and presence of every program API operation; exact v0.1
 capability values; mappings for every declared error; unknown-error behavior;
 and errno isolation across interleaved parent and child tasks.
 
+Iteration 14 introduced the explicit native executor boundary. Its architecture
+test first failed because `core.c` directly stored task contexts, selected stack
+sizes, and invoked `program->start`. The registry now stores runtime-owned
+generic program objects and each task owns an executor instance. A delegating
+test executor proves prepare, create, start/resume, suspend, requested
+termination, instance destruction, and program destruction. The native
+executor alone owns the command descriptor and task context; existing exec and
+process probes pass unchanged through the new boundary.
+
 ## What's next
 
-See `BACKLOG.md`. The next release blocker is the explicit native executor
-boundary required by `SPEC.md` section 4.4.
+See `BACKLOG.md`. The next release blocker is the explicit VFS node/mount
+boundary required by `SPEC.md` section 4.5.
 
 ## Key files and commands
 
@@ -191,5 +200,6 @@ boundary required by `SPEC.md` section 4.4.
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,
   not an implemented capability.
-- The public GitHub repository and Woodpecker project are active. A pushed
-  post-activation commit still needs to prove the webhook-to-run path.
+- The public GitHub repository and Woodpecker project are active. Pipeline #1
+  proved the GitHub webhook, Alpine agent, and canonical gate end to end for
+  commit `5e971e6`.

@@ -167,8 +167,19 @@ interface MUST separate these operations:
 - Request termination.
 - Destroy its execution instance.
 
-v0.1 provides only the native executor. The interface MUST permit a future
-`.cbwasm` executor whose linear-memory pointers never escape into the core.
+The executor operation table is versioned and immutable for the lifetime of
+every program prepared through it. Preparation produces a runtime-owned generic
+program object; the v0.1 native executor copies the descriptor and command name,
+so the registration source need not remain allocated. Each task owns one
+execution instance. `exec` destroys that instance only after replacement state
+has been prepared, then creates a fresh instance without changing the task PID.
+
+The portable task and scheduler core MUST interact with execution only through
+the generic start/resume, suspend, termination, and destruction operations. It
+MUST NOT call a native entry point or manipulate a task's native stack context.
+The v0.1 native executor owns that context and calls the registered C entry
+point. The interface MUST permit a future `.cbwasm` executor whose interpreter
+state and linear-memory pointers never escape into the core.
 
 ### 4.5 VFS and descriptor object interfaces
 

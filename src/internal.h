@@ -34,6 +34,36 @@ const struct cb_host_ops_v1 *cb_linux_host_ops(void);
 struct cb_kernel;
 struct cb_task;
 struct cb_open_file;
+struct cb_program;
+struct cb_execution;
+
+struct cb_executor_ops {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    int (*prepare)(struct cb_kernel *kernel,
+                   const struct cb_executor_ops *executor,
+                   const void *source,
+                   struct cb_program **program_out);
+    struct cb_execution *(*instance_create)(struct cb_task *task,
+                                            const struct cb_program *program);
+    void (*start_or_resume)(struct cb_execution *execution);
+    void (*suspend)(struct cb_execution *execution);
+    void (*request_termination)(struct cb_execution *execution);
+    void (*instance_destroy)(struct cb_execution *execution);
+    void (*program_destroy)(struct cb_kernel *kernel,
+                            struct cb_program *program);
+};
+
+struct cb_program {
+    const struct cb_executor_ops *executor;
+    const char *name;
+};
+
+struct cb_execution {
+    const struct cb_executor_ops *executor;
+    struct cb_task *task;
+    const struct cb_program *program;
+};
 
 enum cb_task_state {
     CB_TASK_RUNNABLE,
@@ -112,8 +142,8 @@ struct cb_task {
     cb_pid_t pid;
     cb_pid_t ppid;
     enum cb_task_state state;
-    struct cb_host_context *context;
-    const struct cb_program_v1 *program;
+    struct cb_execution *execution;
+    const struct cb_program *program;
     char **argv;
     int argc;
     char **environment;
@@ -124,7 +154,7 @@ struct cb_task {
     int exit_status;
     cb_pid_t waiting_for;
     enum cb_wake_reason wake_reason;
-    const struct cb_program_v1 *pending_program;
+    const struct cb_program *pending_program;
     char **pending_argv;
     int pending_argc;
     char **pending_environment;
@@ -145,7 +175,7 @@ struct cb_kernel {
     int boot_finished;
     struct cb_node *fs_root;
     uint64_t next_inode;
-    const struct cb_program_v1 *programs[CB_MAX_PROGRAMS];
+    struct cb_program *programs[CB_MAX_PROGRAMS];
     size_t program_count;
     struct cb_api_v1 api;
     struct cb_capabilities_v1 capabilities;
@@ -155,9 +185,25 @@ struct cb_kernel *cb_kernel_create(const struct cb_host_ops_v1 *host);
 void cb_kernel_destroy(struct cb_kernel *kernel);
 int cb_kernel_register(struct cb_kernel *kernel,
                        const struct cb_program_v1 *program);
+int cb_kernel_register_executor(struct cb_kernel *kernel,
+                                const struct cb_executor_ops *executor,
+                                const void *source);
 int cb_kernel_boot(struct cb_kernel *kernel, const char *command);
 int cb_kernel_run(struct cb_kernel *kernel);
 const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
+
+const struct cb_executor_ops *cb_native_executor(void);
+int cb_executor_prepare(struct cb_kernel *kernel,
+                        const struct cb_executor_ops *executor,
+                        const void *source, struct cb_program **program_out);
+struct cb_execution *cb_executor_instance_create(
+    struct cb_task *task, const struct cb_program *program);
+void cb_executor_start_or_resume(struct cb_execution *execution);
+void cb_executor_suspend(struct cb_execution *execution);
+void cb_executor_request_termination(struct cb_execution *execution);
+void cb_executor_instance_destroy(struct cb_execution *execution);
+void cb_executor_program_destroy(struct cb_kernel *kernel,
+                                 struct cb_program *program);
 
 int cb_fs_initialize(struct cb_kernel *kernel);
 void cb_fs_destroy(struct cb_kernel *kernel);
