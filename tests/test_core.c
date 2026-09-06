@@ -995,6 +995,20 @@ static void run_interactive_case(const char *input, const char *expected_stdout,
     cb_kernel_destroy(kernel);
 }
 
+static void expect_streams(const char *expected_stdout,
+                           const char *expected_stderr)
+{
+    if (strcmp(captured_streams[1], expected_stdout) != 0 ||
+        strcmp(captured_streams[2], expected_stderr) != 0) {
+        fprintf(stderr,
+                "expected stdout/stderr: <%s> <%s>\n"
+                "actual stdout/stderr: <%s> <%s>\n",
+                expected_stdout, expected_stderr, captured_streams[1],
+                captured_streams[2]);
+        exit(1);
+    }
+}
+
 int main(void)
 {
     expect_path("/", "/", "/");
@@ -1011,6 +1025,72 @@ int main(void)
     run_case("cd /tmp; pwd", "/tmp\n", 0, 0);
     run_case("export WORD=works; echo $WORD", "works\n", 0, 0);
     run_case("echo input > /tmp/in; cat < /tmp/in", "input\n", 0, 0);
+    run_case("echo '' \"\" a\\ b 'c d' \"e f\" ';' '|'",
+             "  a b c d e f ; |\n", 0, 0);
+    run_case("export V=world; echo '$V' \"$V\" \\$V \"x${V}y\"",
+             "$V world $V xworldy\n", 0, 0);
+    run_case("export V=world; unset V; echo x${V}y", "xy\n", 0, 0);
+    run_case("export GOOD=ok ALSO=fine; echo $GOOD-$ALSO; "
+             "unset GOOD ALSO; echo x$GOOD$ALSO", "ok-fine\nx\n", 0, 0);
+    run_case("false; echo $?; true; echo $?", "1\n0\n", 0, 0);
+    run_case("echo 'a;b'; echo \"c;d\"", "a;b\nc;d\n", 0, 0);
+    run_case("echo a\\;b a\\|b a\\>b", "a;b a|b a>b\n", 0, 0);
+    run_case("cd /tmp; pwd; cd; pwd", "/tmp\n/home/user\n", 0, 0);
+    run_case("cd /missing; echo $?",
+             "sh: cd: no such file or directory\n1\n", 0, 0);
+    expect_streams("1\n", "sh: cd: no such file or directory\n");
+    run_case("cd / /tmp; echo $?",
+             "sh: cd: too many arguments\n2\n", 0, 0);
+    expect_streams("2\n", "sh: cd: too many arguments\n");
+    run_case("pwd > /tmp/pwd; cat /tmp/pwd", "/\n", 0, 0);
+    run_case("echo abc > /tmp/in; tr a-z A-Z < /tmp/in > /tmp/out; "
+             "cat /tmp/out", "ABC\n", 0, 0);
+    run_case("echo input | cat -", "input\n", 0, 0);
+    run_case("echo abc | tr a-c x-z", "xyz\n", 0, 0);
+    run_case("echo -n compact", "compact", 0, 0);
+    run_case("export 1BAD=value; echo $?",
+             "sh: export: invalid name\n2\n", 0, 0);
+    expect_streams("2\n", "sh: export: invalid name\n");
+    run_case("unset BAD-NAME; echo $?",
+             "sh: unset: invalid name\n2\n", 0, 0);
+    expect_streams("2\n", "sh: unset: invalid name\n");
+    run_case("echo ${BAD-NAME}", "sh: syntax error\n", 2, 0);
+    expect_streams("", "sh: syntax error\n");
+    run_case("echo ${}", "sh: syntax error\n", 2, 0);
+    expect_streams("", "sh: syntax error\n");
+    run_case("exit nope", "sh: exit: numeric argument required\n", 2, 0);
+    expect_streams("", "sh: exit: numeric argument required\n");
+    run_case("pwd | cat", "/\n", 0, 0);
+    run_case("cd /tmp | cat; pwd", "/\n", 0, 0);
+    run_case("export PIPEVAR=child | cat; echo x${PIPEVAR}x", "xx\n", 0, 0);
+    run_case("true | false; echo $?; false | true; echo $?", "1\n0\n", 0, 0);
+    run_case("exit 7 | cat; echo $?", "0\n", 0, 0);
+    run_case("echo hi | missing-command | cat; echo $?",
+             "sh: missing-command: no such file or directory\n127\n", 0, 0);
+    expect_streams("127\n",
+                   "sh: missing-command: no such file or directory\n");
+    run_case("echo unterminated'", "sh: syntax error\n", 2, 0);
+    expect_streams("", "sh: syntax error\n");
+    run_case("echo trailing\\", "sh: syntax error\n", 2, 0);
+    expect_streams("", "sh: syntax error\n");
+    run_case("echo hi |", "sh: missing command\n", 2, 0);
+    expect_streams("", "sh: missing command\n");
+    run_case("echo hi >", "sh: redirection requires a path\n", 2, 0);
+    expect_streams("", "sh: redirection requires a path\n");
+    run_case("echo no > /missing/file; echo $?",
+             "sh: no such file or directory\n1\n", 0, 0);
+    expect_streams("1\n", "sh: no such file or directory\n");
+    run_case("cat /missing; echo $?",
+             "cat: /missing: no such file or directory\n1\n", 0, 0);
+    expect_streams("1\n", "cat: /missing: no such file or directory\n");
+    run_case("echo abc | tr z-a A-Z", "usage: tr string1 string2\n", 2, 0);
+    expect_streams("", "usage: tr string1 string2\n");
+    run_case("exit 257", "", 1, 0);
+    run_case("exit -1", "", 255, 0);
+    run_case("exit 1 2; echo continued",
+             "sh: exit: too many arguments\ncontinued\n", 0, 0);
+    expect_streams("continued\n", "sh: exit: too many arguments\n");
+    run_case("false; exit", "", 1, 0);
     run_case("execprobe", "", 7, 1);
     run_case("unlinkprobe", "", 0, 1);
     run_case("pipeallocprobe", "", 0, 1);

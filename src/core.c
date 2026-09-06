@@ -1,5 +1,6 @@
 #include "internal.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -943,7 +944,13 @@ static char *api_getcwd(char *buffer, size_t size)
 
 static int valid_environment_name(const char *name)
 {
-    return name != NULL && name[0] != '\0' && strchr(name, '=') == NULL;
+    const unsigned char *cursor = (const unsigned char *)name;
+    if (cursor == NULL || (!isalpha(*cursor) && *cursor != '_'))
+        return 0;
+    for (++cursor; *cursor != '\0'; ++cursor)
+        if (!isalnum(*cursor) && *cursor != '_')
+            return 0;
+    return 1;
 }
 
 static const char *api_getenv(const char *name)

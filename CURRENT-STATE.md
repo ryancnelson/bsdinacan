@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 11 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 12 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -142,10 +142,20 @@ modes, live absolute/relative resolution, root confinement, independent file
 contents and inodes, stat/fstat agreement, sparse writes, append, access modes,
 mkdir/unlink errors, and cwd failures.
 
+Iteration 12 expanded the shell black-box matrix. Successive red runs proved
+that invalid environment identifiers were accepted, nonnumeric `exit` became
+zero, built-ins could not run in pipelines, and redirection setup errors became
+status 127. Identifier syntax is now shared by the runtime API and lexer;
+`exit` strictly parses signed decimal values; pipeline built-ins execute as
+internal child tasks with isolated state; and setup failures retain status 1.
+The suite covers quoting, escaping, empty arguments, expansion timing, syntax
+diagnostics, every built-in, pipeline status and state isolation, redirection
+and partial-spawn cleanup, and the required native commands.
+
 ## What's next
 
-See `BACKLOG.md`. The next behavior loop is Priority 1, Iteration 12: the shell
-and base-command contract.
+See `BACKLOG.md`. The next behavior loop is Priority 1, Iteration 13: ABI,
+capability, registration, and host-clock contracts.
 
 ## Key files and commands
 

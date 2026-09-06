@@ -43,7 +43,7 @@ runtime model before the human-facing demo grows.
 - [x] **Iteration 11: RAMFS contract.** Cover the initial hierarchy, live path
   resolution, creation modes, independent contents, holes, stat/inode
   stability, mkdir/unlink error cases, and per-task cwd.
-- [ ] **Iteration 12: shell and base-command contract.** Cover quotes, escapes,
+- [x] **Iteration 12: shell and base-command contract.** Cover quotes, escapes,
   empty words, braced and quote-dependent expansion, syntax errors, every
   built-in, native command status/errors, redirection failures, and cleanup.
 - [ ] **Iteration 13: ABI and capability contract.** Test wrong versions/sizes,
@@ -93,6 +93,16 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 12 (2026-09-06): shell and base-command contract.** Focused
+  black-box cases exposed four independent gaps: invalid environment names were
+  accepted, nonnumeric `exit` silently became zero, built-ins were rejected in
+  pipelines, and redirection setup failure was overwritten with status 127.
+  The runtime now enforces identifier syntax, `exit` parses signed decimal
+  status strictly, pipelined built-ins run as isolated internal tasks, and setup
+  failures preserve status 1. Tests cover quoting/escaping/empty words,
+  expansion and timing, syntax errors, all built-ins, pipeline status/isolation,
+  combined redirection, cleanup after partial spawn, and every required native
+  command's success and error paths.
 - [x] **Iteration 11 (2026-09-06): RAMFS contract.** `ramfsprobe` first returned
   status 170: truncation reset logical size but a later sparse write within the
   retained allocation exposed stale bytes. Writes now zero-fill from the old

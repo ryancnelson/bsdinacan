@@ -84,12 +84,14 @@ static int append_expansion(const struct cb_api_v1 *api, const char **cursor,
     char name[128];
     size_t length;
     char status[32];
+    int braced = 0;
     if (**cursor == '?') {
         int count = snprintf(status, sizeof(status), "%d", last_status);
         ++*cursor;
         return append_bytes(buffer, used, capacity, status, (size_t)count);
     }
     if (**cursor == '{') {
+        braced = 1;
         ++*cursor;
         start = *cursor;
         while (**cursor != '\0' && **cursor != '}')
@@ -104,10 +106,17 @@ static int append_expansion(const struct cb_api_v1 *api, const char **cursor,
             ++*cursor;
         length = (size_t)(*cursor - start);
     }
-    if (length == 0)
+    if (length == 0 && !braced)
         return append_bytes(buffer, used, capacity, "$", 1);
-    if (length >= sizeof(name))
+    if (length == 0 || length >= sizeof(name) ||
+        (!isalpha((unsigned char)start[0]) && start[0] != '_'))
         return -1;
+    {
+        size_t index;
+        for (index = 1; index < length; ++index)
+            if (!isalnum((unsigned char)start[index]) && start[index] != '_')
+                return -1;
+    }
     memcpy(name, start, length);
     name[length] = '\0';
     value = api->getenv(name);
@@ -241,6 +250,27 @@ static int is_builtin(const char *name)
            strcmp(name, "exit") == 0;
 }
 
+static int parse_exit_status(const char *text, int *status_out)
+{
+    const unsigned char *cursor = (const unsigned char *)text;
+    unsigned status = 0;
+    int negative = 0;
+    if (*cursor == '+' || *cursor == '-') {
+        negative = *cursor == '-';
+        ++cursor;
+    }
+    if (!isdigit(*cursor))
+        return -1;
+    while (*cursor != '\0') {
+        if (!isdigit(*cursor))
+            return -1;
+        status = (status * 10 + (unsigned)(*cursor - '0')) & 0xffu;
+        ++cursor;
+    }
+    *status_out = negative ? (int)((0u - status) & 0xffu) : (int)status;
+    return 0;
+}
+
 static int run_builtin(const struct cb_api_v1 *api, struct stage *stage,
                        int last_status, int *should_exit)
 {
@@ -306,12 +336,36 @@ static int run_builtin(const struct cb_api_v1 *api, struct stage *stage,
             shell_error(api, "exit: too many arguments");
             return 2;
         }
-        if (stage->argc == 2)
-            status = atoi(stage->argv[1]);
+        if (stage->argc == 2 &&
+            parse_exit_status(stage->argv[1], &status) < 0) {
+            shell_error(api, "exit: numeric argument required");
+            *should_exit = 1;
+            return 2;
+        }
         *should_exit = 1;
-        return status & 0xff;
+        return status;
     }
     return 127;
+}
+
+static int shell_builtin_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    struct stage stage;
+    int last_status;
+    int should_exit = 0;
+    (void)envp;
+    if (argc < 3 || parse_exit_status(argv[1], &last_status) < 0)
+        return 2;
+    memset(&stage, 0, sizeof(stage));
+    stage.argc = argc - 2;
+    if (stage.argc > SHELL_MAX_ARGS)
+        return 2;
+    memcpy(stage.argv, &argv[2], (size_t)stage.argc * sizeof(stage.argv[0]));
+    stage.argv[stage.argc] = NULL;
+    if (!is_builtin(stage.argv[0]))
+        return 127;
+    return run_builtin(api, &stage, last_status, &should_exit);
 }
 
 static int open_redirections(const struct cb_api_v1 *api, struct stage *stage,
@@ -408,6 +462,8 @@ static int run_pipeline(const struct cb_api_v1 *api, struct stage *stages,
     int inputs[SHELL_MAX_STAGES];
     int outputs[SHELL_MAX_STAGES];
     cb_pid_t pids[SHELL_MAX_STAGES];
+    char *pipeline_argv[SHELL_MAX_STAGES][SHELL_MAX_ARGS + 3];
+    char status_text[32];
     size_t pipe_count = stage_count > 0 ? stage_count - 1 : 0;
     size_t created_pipes = 0;
     size_t spawned = 0;
@@ -417,27 +473,28 @@ static int run_pipeline(const struct cb_api_v1 *api, struct stage *stages,
     if (stage_count == 1 && is_builtin(stages[0].argv[0]))
         return run_builtin_redirected(api, &stages[0], last_status,
                                       should_exit);
+    snprintf(status_text, sizeof(status_text), "%d", last_status);
     for (index = 0; index < stage_count; ++index) {
         inputs[index] = -1;
         outputs[index] = -1;
-        if (is_builtin(stages[index].argv[0])) {
-            shell_error(api, "built-in command cannot be used in a pipeline yet");
-            return 2;
-        }
         if (open_redirections(api, &stages[index], &inputs[index],
                               &outputs[index]) < 0) {
             shell_error(api, api->strerror(api->get_errno()));
+            status = 1;
             goto cleanup;
         }
     }
     for (created_pipes = 0; created_pipes < pipe_count; ++created_pipes) {
         if (api->pipe(pipes[created_pipes]) < 0) {
             shell_error(api, "cannot create pipe");
+            status = 1;
             goto cleanup;
         }
     }
     for (index = 0; index < stage_count; ++index) {
         struct cb_spawn_action_v1 actions[2 + 2 * (SHELL_MAX_STAGES - 1) + 2];
+        const char *program_name = stages[index].argv[0];
+        char **spawn_argv = stages[index].argv;
         size_t action_count = 0;
         size_t pipe_index;
         int source_input = inputs[index] >= 0 ? inputs[index] :
@@ -462,13 +519,26 @@ static int run_pipeline(const struct cb_api_v1 *api, struct stage *stages,
         if (outputs[index] >= 0 && outputs[index] != inputs[index])
             action_count = add_action(actions, action_count, CB_SPAWN_CLOSE,
                                       outputs[index], -1);
-        if (api->spawn(stages[index].argv[0], stages[index].argv, NULL,
+        if (is_builtin(stages[index].argv[0])) {
+            size_t argument;
+            pipeline_argv[index][0] = (char *)"__cannedbsd_shell_builtin";
+            pipeline_argv[index][1] = status_text;
+            for (argument = 0; argument < (size_t)stages[index].argc;
+                 ++argument)
+                pipeline_argv[index][argument + 2] =
+                    stages[index].argv[argument];
+            pipeline_argv[index][(size_t)stages[index].argc + 2] = NULL;
+            program_name = "__cannedbsd_shell_builtin";
+            spawn_argv = pipeline_argv[index];
+        }
+        if (api->spawn(program_name, spawn_argv, NULL,
                        actions, action_count, &pids[index]) < 0) {
             shell_write(api, 2, "sh: ");
             shell_write(api, 2, stages[index].argv[0]);
             shell_write(api, 2, ": ");
             shell_write(api, 2, api->strerror(api->get_errno()));
             shell_write(api, 2, "\n");
+            status = 127;
             goto cleanup;
         }
         ++spawned;
@@ -492,7 +562,7 @@ cleanup:
             status = child_status;
     }
     if (spawned != stage_count)
-        return 127;
+        return status == 0 ? 127 : status;
     return status;
 }
 
@@ -668,4 +738,13 @@ const struct cb_program_v1 cb_shell_program = {
     0,
     128 * 1024,
     shell_main
+};
+
+const struct cb_program_v1 cb_shell_builtin_program = {
+    CB_ABI_VERSION_V1,
+    sizeof(struct cb_program_v1),
+    "__cannedbsd_shell_builtin",
+    0,
+    64 * 1024,
+    shell_builtin_main
 };

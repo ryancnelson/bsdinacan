@@ -201,6 +201,7 @@ void cb_register_base_programs(struct cb_kernel *kernel)
 {
     const struct cb_program_v1 *programs[] = {
         &cb_shell_program,
+        &cb_shell_builtin_program,
         &echo_program,
         &cat_program,
         &tr_program,

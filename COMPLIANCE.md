@@ -62,11 +62,11 @@ non-goal rather than unfinished v0.1 work.
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
 | Interactive shell and `-c` | Proven | `-c` integrations plus deterministic interactive input verify prompt, line execution, EOF handling, and `exit 3`. |
-| Words, argv, single/double quotes, escapes | Partial | Simple argv works. Empty words, both quote modes, escapes, whitespace, and syntax-error cases need explicit tests. |
-| Pipelines and redirections | Partial | Required integration pipeline plus `<`, `>`, and `>>` examples pass. Failure cleanup and combined redirection tests are missing. |
-| `;`, `$?`, `$NAME`, `${NAME}` | Partial | `;`, `$?`, and `$NAME` pass. Braced expansion, quote-dependent expansion, unset variables, and expansion timing need tests. |
-| `cd`, `pwd`, `export`, `unset`, `exit` | Partial | First four have happy-path coverage except `unset`; `exit` and error cases need tests. |
-| Native `echo`, `cat`, `tr`, `true`, `false` | Partial | All register; integration exercises each except direct `true`. Command status/error/argument behavior needs focused coverage. |
+| Words, argv, single/double quotes, escapes | Proven | Black-box shell cases cover empty words, whitespace, both quote modes, escaped metacharacters, trailing escape, and unterminated quote diagnostics. |
+| Pipelines and redirections | Proven | Tests cover multi-stage pipelines, built-in pipeline tasks, last-stage status, `<`, `>`, `>>`, combined redirection, setup failure status, and cleanup after partial spawn. |
+| `;`, `$?`, `$NAME`, `${NAME}` | Proven | Tests cover sequential expansion timing, status changes, single/double quote behavior, unset/empty values, braced values, and malformed names. |
+| `cd`, `pwd`, `export`, `unset`, `exit` | Proven | Each built-in has success, mutation/isolation, redirection or pipeline, and relevant argument/error cases; `exit` covers inherited, wrapped, signed, and invalid status. |
+| Native `echo`, `cat`, `tr`, `true`, `false` | Proven | Black-box cases cover all modules, stdin/files, `echo -n`, translation ranges, status propagation, usage, and missing-file diagnostics. |
 | Registry does not obstruct later loaders/executors | Missing | Depends on the explicit executor boundary above. Runtime-visible executable filesystem objects are a post-v0.1 design choice, not required by the normative v0.1 descriptor rule. |
 
 ## Errors, capabilities, documentation, and release

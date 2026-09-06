@@ -331,6 +331,12 @@ The v0.1 shell is intentionally small. It MUST support:
 - Environment expansion `$NAME` and `${NAME}`.
 - Built-ins `cd`, `pwd`, `export`, `unset`, and `exit`.
 
+`NAME` uses `[A-Za-z_][A-Za-z0-9_]*`; `export` and `unset` reject other names.
+`exit` accepts an optional decimal status, wraps it to eight bits, and exits
+with status 2 after diagnosing a nonnumeric argument. Built-ins may appear in a
+pipeline. They then run in an internal child task, so directory and environment
+changes do not mutate the parent shell.
+
 Globbing, command substitution, subshells, job control, background execution,
 functions, loops, conditionals, and full POSIX shell syntax are deferred.
 

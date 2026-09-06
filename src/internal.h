@@ -184,6 +184,7 @@ void cb_open_file_release(struct cb_open_file *file);
 
 void cb_register_base_programs(struct cb_kernel *kernel);
 extern const struct cb_program_v1 cb_shell_program;
+extern const struct cb_program_v1 cb_shell_builtin_program;
 
 /* Test hooks exercise the real core without exposing internals to programs. */
 int cb_test_path_normalize(const char *cwd, const char *path,
