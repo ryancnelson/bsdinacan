@@ -10,6 +10,8 @@ archive_file=$build_path/libcannedbsd.a
 errno_header=libc/include/errno.h
 allocation_source=tests/libc_allocation_source.c
 allocation_object=$build_path/libc_allocation_source.o
+memory_source=tests/libc_memory_source.c
+memory_object=$build_path/libc_memory_source.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -39,6 +41,18 @@ for interface in read write open malloc free strerror strlen strcmp; do
         exit 1
     fi
 done
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$memory_source"; then
+    echo 'FAIL: memory source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! rg -q '\bmemcpy[[:space:]]*\(' "$memory_source" ||
+        nm -u "$memory_object" |
+            rg -q '[[:space:]]U[[:space:]]+memcpy$' ||
+        ! nm -u "$memory_object" |
+            rg -q '[[:space:]]U[[:space:]]+cb_libc_memcpy$'; then
+    echo 'FAIL: ordinary memcpy source does not use the private veneer' >&2
+    exit 1
+fi
 if ! rg -q '\berrno\b' "$source_file"; then
     echo 'FAIL: ordinary command does not exercise the errno lvalue' >&2
     exit 1

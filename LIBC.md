@@ -47,8 +47,8 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
-- `string.h`: `strerror` plus NetBSD's generic `strlen` and `strcmp` under
-  private link names.
+- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, and
+  size-optimized `memcpy` under private link names.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
@@ -95,8 +95,9 @@ than kernel coupling.
 Every imported file must retain its file-specific copyright and license. The
 commit importing it must record the upstream NetBSD repository path, revision,
 local changes, and tests. `UPSTREAM.md` is the machine-checked provenance ledger.
-The first entries are NetBSD `yes.c`, generic `strlen.c`, and generic
-`strcmp.c`, all stored byte-for-byte unchanged; their build and runtime
+The first entries are NetBSD `yes.c` plus generic `strlen.c`, `strcmp.c`,
+`memcpy.c`, and its shared `bcopy.c` implementation, all stored byte-for-byte
+unchanged; their build and runtime
 adaptation live entirely in cannedBSD-owned files. The archive retains each
 imported libc routine as a separate object under a private `cb_libc_*` link
 name. GCC and Clang use an assembler-name declaration for sources such as

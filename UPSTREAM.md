@@ -70,3 +70,35 @@ Hash and symbol tests reject source drift and host `strcmp`. The ordinary
 bootstrap `wc.c` now uses standard `strcmp` and `strlen` spellings and its
 object must import both private implementations. Direct tests cover equality,
 prefix ordering, both order directions, and unsigned-byte ordering.
+
+## NetBSD `memcpy`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Wrapper upstream/local path:
+  `common/lib/libc/string/memcpy.c` /
+  `upstream/netbsd/common/lib/libc/string/memcpy.c`
+- Wrapper SHA-256:
+  `27954650049d23535119c13fec0d333929e6ad17bb80d3c5e33ac9938f57f2a4`
+- Implementation upstream/local path:
+  `common/lib/libc/string/bcopy.c` /
+  `upstream/netbsd/common/lib/libc/string/bcopy.c`
+- Implementation SHA-256:
+  `915b194678b2855a522755dad71ae4fb4f366d3f0518fd089bc6c2cb35722c44`
+- Embedded RCS identifiers: `$NetBSD: memcpy.c,v 1.2 2013/12/02 21:21:33 joerg Exp $`
+  and `$NetBSD: bcopy.c,v 1.13 2018/02/12 11:14:15 martin Exp $`
+- License: `bcopy.c` carries the file-specific three-clause Regents of the
+  University of California license retained verbatim; `memcpy.c` is the
+  NetBSD wrapper that defines `MEMCOPY` and includes it.
+
+Both inputs are byte-for-byte unchanged. The build uses `-Os` to select
+NetBSD's own size-optimized byte-copy branch, appropriate for the initial
+classic-machine goal, and emits the definition as `cb_libc_memcpy` through the
+same GCC/Clang link-name adapter used for fortified `strcmp` builds. A future
+ARM EABI port must supply NetBSD's `__strong_alias` support or an explicit
+equivalent; the present x86 Linux prototype does not claim that adapter yet.
+
+Hash, object, archive, and ordinary-source tests exclude host `memcpy`. Direct
+tests cover its returned destination, zero length, offset buffers, sentinel
+boundaries, NUL, and high-bit bytes. Overlap is deliberately not tested because
+it is outside the `memcpy` contract.

@@ -13,6 +13,11 @@ provenance_file=UPSTREAM.md
 strcmp_source=upstream/netbsd/common/lib/libc/string/strcmp.c
 strcmp_object=$build_path/netbsd_strcmp.o
 strcmp_hash=f06298e20a2c02e9fbe11aeb06123d8b2ad6c8d5a9a04ad68fdae2aa142524f6
+memcpy_source=upstream/netbsd/common/lib/libc/string/memcpy.c
+bcopy_source=upstream/netbsd/common/lib/libc/string/bcopy.c
+memcpy_object=$build_path/netbsd_memcpy.o
+memcpy_hash=27954650049d23535119c13fec0d333929e6ad17bb80d3c5e33ac9938f57f2a4
+bcopy_hash=915b194678b2855a522755dad71ae4fb4f366d3f0518fd089bc6c2cb35722c44
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -83,6 +88,36 @@ if nm -u "$strcmp_object" | rg -q '[[:space:]]U[[:space:]]+strcmp$'; then
 fi
 if ! ar t "$archive_file" | rg -q '^netbsd_strcmp\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strcmp' >&2
+    exit 1
+fi
+if [[ ! -f $memcpy_source || ! -f $bcopy_source ]]; then
+    echo 'FAIL: pinned NetBSD memcpy or bcopy source is missing' >&2
+    exit 1
+fi
+actual_memcpy_hash=$(sha256sum "$memcpy_source" | awk '{print $1}')
+actual_bcopy_hash=$(sha256sum "$bcopy_source" | awk '{print $1}')
+if [[ $actual_memcpy_hash != "$memcpy_hash" ||
+      $actual_bcopy_hash != "$bcopy_hash" ]]; then
+    echo 'FAIL: NetBSD memcpy source set changed' >&2
+    exit 1
+fi
+if ! rg -q "$memcpy_hash" "$provenance_file" ||
+        ! rg -q "$bcopy_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD memcpy provenance does not match the source set' >&2
+    exit 1
+fi
+if [[ ! -f $memcpy_object ]] ||
+        ! nm "$memcpy_object" |
+            rg -q '[[:space:]]T[[:space:]]+cb_libc_memcpy$'; then
+    echo 'FAIL: NetBSD memcpy was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$memcpy_object" | rg -q '[[:space:]]U[[:space:]]+memcpy$'; then
+    echo 'FAIL: NetBSD memcpy object imports host memcpy' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | rg -q '^netbsd_memcpy\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD memcpy' >&2
     exit 1
 fi
 

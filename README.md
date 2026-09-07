@@ -112,6 +112,10 @@ The allocation veneer now includes overflow-checked `calloc` and
 ownership-preserving `realloc`, with an ordinary-source compile probe as well
 as task-level failure and lifetime tests.
 
+NetBSD's generic, size-optimized `memcpy` is also a separately archived libc
+object. Its two-file upstream source set is hash-pinned, and an ordinary-source
+probe plus direct byte-copy cases exclude accidental host-libc resolution.
+
 ## Add a native command
 
 A v0.1 command is a C function that receives only the versioned cannedBSD API,

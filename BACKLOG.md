@@ -88,6 +88,11 @@ runtime model before the human-facing demo grows.
   `realloc` over the task-owned program heap. Prove zero fill, multiplication
   overflow, zero-size behavior, growth and shrink preservation, foreign-pointer
   rejection, and failed-resize atomicity with deterministic failure injection.
+- [x] **Iteration 23: NetBSD `memcpy`.** Pin both the generic `memcpy.c` wrapper
+  and its included `bcopy.c`, compile the upstream size-optimized implementation
+  unchanged under `cb_libc_memcpy`, and prove return value, zero-length, whole
+  and offset buffers, and high-bit byte copying without a host `memcpy`
+  dependency.
 
 ## Priority 2 — usable-system demo
 
@@ -137,6 +142,17 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 23 (2026-09-06): NetBSD `memcpy`.** The red source-boundary
+  run failed because both pinned inputs were absent. NetBSD's tiny `memcpy.c`
+  wrapper and shared `bcopy.c` implementation are now hash-pinned and compiled
+  unchanged with NetBSD's own size-optimized byte-copy branch. The first link
+  failed because host fortification makes upstream undefine `memcpy`; the
+  definition-side GCC/Clang link-name adapter now handles that case without
+  touching upstream source. Object and ordinary-source tests exclude host
+  `memcpy`; direct cases prove return, zero-length, offset, sentinel, NUL, and
+  high-bit-byte behavior. ARM alias support remains explicitly unclaimed. The
+  canonical gate passes locally and in the exact Alpine Woodpecker agent image.
 
 - [x] **Iteration 22 (2026-09-06): basic allocation veneer.** The red build
   failed because `cb_libc_calloc` and `cb_libc_realloc` were absent. `calloc`

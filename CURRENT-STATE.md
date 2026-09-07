@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 22 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 23 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -217,6 +217,17 @@ ordinary `wc` command uses them to report the exact cannedBSD error from a
 failed open. The canonical gate passes locally and in the exact Alpine
 Woodpecker agent image.
 
+Iteration 23 imported NetBSD `memcpy.c` and the `bcopy.c` implementation it
+includes. The source test first failed because both pinned inputs were absent.
+The first link then showed that host `_FORTIFY_SOURCE` makes upstream undefine
+the macro-renamed `memcpy`; the definition-side GCC/Clang assembler-name adapter
+now handles it without changing either source file. `-Os` deliberately selects
+NetBSD's own compact byte-copy branch. Hash, object, archive, ordinary-source,
+and direct semantic tests exclude host libc and cover returned pointers,
+zero-length and offset copies, sentinel boundaries, NUL, and high-bit bytes.
+The provenance ledger explicitly leaves ARM EABI alias support for that port.
+The complete gate passes locally and in the exact Alpine Woodpecker agent image.
+
 Iteration 19 crossed the first actual NetBSD-source boundary. Its red command
 test returned status 127 because `yes` was absent. NetBSD
 `usr.bin/yes/yes.c` is pinned to commit `b890038f7ae5` and its exact SHA-256 is
@@ -265,11 +276,9 @@ Woodpecker agent image.
 
 ## What's next
 
-Inventory the next genuinely useful imported utility and implement only its
-next missing libc dependency. `memcpy` is high leverage, but its NetBSD generic
-source includes `bcopy.c`; treat that as an explicit provenance/build-design
-decision rather than a reflexive import. Do not grow printf or getopt
-speculatively.
+Add NetBSD `memmove.c` only if sharing the now-pinned `bcopy.c` implementation
+survives an overlap-focused red test and the same link-name boundary. Do not
+grow printf or getopt speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

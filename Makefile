@@ -34,8 +34,11 @@ YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
+NETBSD_MEMCPY_OBJECT := $(BUILD)/netbsd_memcpy.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
-LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) $(NETBSD_STRCMP_OBJECT)
+LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
+LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) \
+	$(NETBSD_STRCMP_OBJECT) $(NETBSD_MEMCPY_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
 .PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
@@ -76,11 +79,22 @@ $(NETBSD_STRCMP_OBJECT): upstream/netbsd/common/lib/libc/string/strcmp.c \
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
 		-DCANNEDBSD_BUILDING_LIBC_STRCMP -c $< -o $@
 
+$(NETBSD_MEMCPY_OBJECT): upstream/netbsd/common/lib/libc/string/memcpy.c \
+		upstream/netbsd/common/lib/libc/string/bcopy.c \
+		compat/netbsd/include/assert.h include/cannedbsd/libc.h libc/include/string.h \
+		libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -Os \
+		-DCANNEDBSD_BUILDING_LIBC_MEMCPY -c $< -o $@
+
 $(LIBC_ARCHIVE): $(LIBC_OBJECTS)
 	$(AR) rcs $@ $^
 
 $(LIBC_ALLOCATION_TEST_OBJECT): tests/libc_allocation_source.c \
 		include/cannedbsd/libc.h libc/include/stdlib.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
+
+$(LIBC_MEMORY_TEST_OBJECT): tests/libc_memory_source.c \
+		include/cannedbsd/libc.h libc/include/string.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
 
 $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
@@ -106,7 +120,8 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
-test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) check-architecture
+test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
+		$(LIBC_MEMORY_TEST_OBJECT) check-architecture
 	$(TEST_PROGRAM)
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
@@ -147,6 +162,13 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_allocation_source.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
+		-DCANNEDBSD_BUILDING_LIBC_MEMCPY \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memcpy.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_memory_source.c
 
 ci:
 	$(MAKE) check-publication

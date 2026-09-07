@@ -2025,10 +2025,26 @@ static void test_netbsd_strcmp(void)
         fail("NetBSD strcmp semantics");
 }
 
+static void test_netbsd_memcpy(void)
+{
+    static const unsigned char source[] = {0x10, 0x80, 0xff, 0x00, 0x55};
+    unsigned char destination[8] = {0xa5, 0xa5, 0xa5, 0xa5,
+                                    0xa5, 0xa5, 0xa5, 0xa5};
+
+    if (cb_libc_memcpy(destination, source, 0) != destination ||
+        destination[0] != 0xa5 ||
+        cb_libc_memcpy(destination + 1, source, sizeof(source)) !=
+            destination + 1 ||
+        memcmp(destination + 1, source, sizeof(source)) != 0 ||
+        destination[0] != 0xa5 || destination[6] != 0xa5)
+        fail("NetBSD memcpy semantics");
+}
+
 int main(void)
 {
     test_netbsd_strlen();
     test_netbsd_strcmp();
+    test_netbsd_memcpy();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();
