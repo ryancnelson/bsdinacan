@@ -45,3 +45,22 @@ Linux backend remains the only source file allowed to use `ucontext`.
 
 The repository is active in Woodpecker. Pipeline #1 established the GitHub
 webhook-to-agent path; every subsequent push must pass the same canonical gate.
+
+## Classic Mac build
+
+`.woodpecker/mac68k.yml` additionally cross-compiles the System 7 application on
+every push and pull request. It requires a Docker backend with the `role=retro68`
+label and pins the Retro68 toolchain image by digest. The dedicated agent uses
+the mandatory label `!role=retro68` so it cannot take unrelated workflows.
+The existing local runner and Linux gate remain unchanged.
+
+The runner provides an `/artifacts` volume for build retention. Each pipeline
+and source commit gets a directory containing separate run directories, so
+reruns retain earlier artifacts. `CannedBSD.tar.gz` includes MacBinary, an HFS
+disk image, and the application with its `.rsrc` and `.finf` metadata. It is
+accompanied by `commit.txt` and `SHA256SUMS`.
+
+This gate proves the Mac application compiles and packages successfully. Guest
+execution is a separate acceptance check: retrieve the CI artifact, verify its
+checksum, and run it under System 7 as described in `platform/mac68k/README.md`.
+CI does not install the application into an emulator.
