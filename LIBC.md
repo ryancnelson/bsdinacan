@@ -1,6 +1,6 @@
 # cannedBSD libc and source compatibility
 
-Status: first source-compatibility slice implemented
+Status: first unmodified NetBSD utility running through the compatibility layer
 
 ## Compatibility authority
 
@@ -42,11 +42,15 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `unistd.h`: `read`, `write`, `close`, and standard descriptor numbers.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc` and `free`.
+- `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
+- `stdio.h`: unbuffered `puts` with complete-write and error handling.
 - `string.h`: `strerror` only.
+- `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
+- NetBSD's unmodified `usr.bin/yes/yes.c`, pinned by revision and content hash.
 
 `commands/wc.c` contains no cannedBSD names or private headers. Its object is
 compiled separately with `main` renamed, then linked with the descriptor
@@ -54,8 +58,9 @@ adapter. `tests/test_libc_source.sh` checks that boundary and rejects imports of
 unprefixed host-facing I/O or allocation symbols.
 
 This is not a complete libc and the bootstrap command is not NetBSD `wc`.
-Notably absent are stdio, general string functions, directory traversal, time,
-signals, terminal control, locale, and the rest of ISO C/POSIX libc.
+`puts` is deliberately unbuffered; general stdio, string functions, directory
+traversal, time, signals, terminal control, locale, and the rest of ISO C/POSIX
+libc remain absent.
 
 ## Program heap ownership
 
@@ -84,14 +89,15 @@ than kernel coupling.
 
 Every imported file must retain its file-specific copyright and license. The
 commit importing it must record the upstream NetBSD repository path, revision,
-local changes, and tests. There is no imported NetBSD code in the repository at
-the time of this first slice.
+local changes, and tests. `UPSTREAM.md` is the machine-checked provenance ledger.
+The first entry is NetBSD `yes.c`, which is stored byte-for-byte unchanged; its
+build and runtime adaptation live entirely in cannedBSD-owned files.
 
 ## Compatibility ladder
 
 1. Compile and run an ordinary external `main()` through the libc veneer.
 2. Expand only the libc surface required by one unmodified NetBSD utility.
-3. Import that utility with provenance and make its upstream tests pass.
+3. Import that utility unchanged with pinned provenance and behavioral tests.
 4. Cross-build a small pkgsrc package for cannedBSD.
 5. Run the pkgsrc build tools inside cannedBSD.
 6. Eventually build selected packages inside the can itself.

@@ -76,7 +76,7 @@ sanitizer-linked artifact.
 `make ci` is the canonical pre-push and Woodpecker gate. See
 [CI.md](CI.md) for its exact stages and safety constraints.
 
-## First libc source target
+## First libc and upstream source targets
 
 The first post-v0.1 compatibility slice compiles `commands/wc.c` as a separate
 translation unit containing an ordinary `main(int, char **)`. Its familiar
@@ -91,9 +91,15 @@ build/bsdinacan -c 'echo -n hello | wc -c'
 ```
 
 The exact output is `5`. The bootstrap command currently implements only
-`wc -c [file]`; it is original code rather than imported NetBSD `wc`. See
-[LIBC.md](LIBC.md) for the compatibility hierarchy, heap ownership contract,
-upstream provenance policy, and route toward NetBSD utilities and pkgsrc.
+`wc -c [file]`; it is original code rather than imported NetBSD `wc`.
+
+The next slice compiles NetBSD's `usr.bin/yes/yes.c` byte-for-byte unchanged.
+Only its descriptor adapter and the minimal `puts`, exit-constant, and metadata
+headers are cannedBSD code. The tests consume one line and close the pipe, then
+wait for `yes` itself to prove it encounters `EPIPE` and returns failure instead
+of running forever. [UPSTREAM.md](UPSTREAM.md) records the exact revision,
+content hash, license, adaptations, and evidence. See [LIBC.md](LIBC.md) for the
+compatibility hierarchy, heap ownership contract, and route toward pkgsrc.
 
 ## Add a native command
 
@@ -163,8 +169,8 @@ backend notes.
 
 Working Linux proof-of-concept. The v0.1 acceptance pipeline passes, and the
 runtime has internal tasks, descriptors, pipes, RAMFS, a native-command
-registry, a small shell, task-owned program allocations, and the first
-libc-backed external command. This is not yet the richer demo: `sed`, `awk`,
+registry, a small shell, task-owned program allocations, an original
+libc-backed `wc`, and an unmodified pinned NetBSD `yes`. This is not yet the richer demo: `sed`, `awk`,
 curses, a tiny vi, networking, dynamic modules, WASM, and classic-host adapters
 remain planned work. Read [CURRENT-STATE.md](CURRENT-STATE.md) first when
 continuing development, then take the first ready item in

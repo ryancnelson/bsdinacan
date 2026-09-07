@@ -4,6 +4,7 @@
 #include <string.h>
 
 extern const struct cb_program_v1 cb_wc_program;
+extern const struct cb_program_v1 cb_yes_program;
 
 static int write_all(const struct cb_api_v1 *api, int descriptor,
                      const void *buffer, size_t count)
@@ -209,7 +210,8 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &tr_program,
         &true_program,
         &false_program,
-        &cb_wc_program
+        &cb_wc_program,
+        &cb_yes_program
     };
     size_t index;
     for (index = 0; index < sizeof(programs) / sizeof(programs[0]); ++index) {

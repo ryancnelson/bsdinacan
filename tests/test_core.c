@@ -1472,6 +1472,75 @@ static int allocationprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int yesreader_main(const struct cb_api_v1 *api, int argc,
+                          char *const argv[], char *const envp[])
+{
+    char line[3];
+    cb_ssize_t count;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    count = api->read(0, line, sizeof(line));
+    if (count != (cb_ssize_t)sizeof(line) ||
+        memcmp(line, "ok\n", sizeof(line)) != 0)
+        return 227;
+    return api->write(1, line, sizeof(line)) == (cb_ssize_t)sizeof(line) ?
+           0 : 228;
+}
+
+static int yesprobe_main(const struct cb_api_v1 *api, int argc,
+                         char *const argv[], char *const envp[])
+{
+    int descriptors[2];
+    char *yes_argv[] = {(char *)"yes", (char *)"ok", NULL};
+    char *reader_argv[] = {(char *)"yesreader", NULL};
+    struct cb_spawn_action_v1 yes_actions[3] = {{0}};
+    struct cb_spawn_action_v1 reader_actions[3] = {{0}};
+    cb_pid_t yes_pid;
+    cb_pid_t reader_pid;
+    int yes_status;
+    int reader_status;
+    size_t index;
+    (void)argc;
+    (void)argv;
+    if (api->pipe(descriptors) < 0)
+        return 229;
+    for (index = 0; index < 3; ++index) {
+        yes_actions[index].abi_version = CB_ABI_VERSION_V1;
+        yes_actions[index].struct_size = sizeof(yes_actions[index]);
+        reader_actions[index].abi_version = CB_ABI_VERSION_V1;
+        reader_actions[index].struct_size = sizeof(reader_actions[index]);
+    }
+    yes_actions[0].type = CB_SPAWN_DUP2;
+    yes_actions[0].from_fd = descriptors[1];
+    yes_actions[0].to_fd = 1;
+    yes_actions[1].type = CB_SPAWN_CLOSE;
+    yes_actions[1].from_fd = descriptors[0];
+    yes_actions[2].type = CB_SPAWN_CLOSE;
+    yes_actions[2].from_fd = descriptors[1];
+
+    reader_actions[0].type = CB_SPAWN_DUP2;
+    reader_actions[0].from_fd = descriptors[0];
+    reader_actions[0].to_fd = 0;
+    reader_actions[1].type = CB_SPAWN_CLOSE;
+    reader_actions[1].from_fd = descriptors[0];
+    reader_actions[2].type = CB_SPAWN_CLOSE;
+    reader_actions[2].from_fd = descriptors[1];
+
+    if (api->spawn("yes", yes_argv, envp, yes_actions, 3, &yes_pid) < 0 ||
+        api->spawn("yesreader", reader_argv, envp, reader_actions, 3,
+                   &reader_pid) < 0)
+        return 230;
+    if (api->close(descriptors[0]) < 0 || api->close(descriptors[1]) < 0)
+        return 231;
+    if (api->waitpid(yes_pid, &yes_status) != yes_pid || yes_status != 1)
+        return 232;
+    if (api->waitpid(reader_pid, &reader_status) != reader_pid ||
+        reader_status != 0)
+        return 233;
+    return 0;
+}
+
 static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
                            char *const argv[], char *const envp[])
 {
@@ -1738,6 +1807,16 @@ static const struct cb_program_v1 allocationprobe_program = {
     64 * 1024, allocationprobe_main
 };
 
+static const struct cb_program_v1 yesreader_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "yesreader", 0,
+    64 * 1024, yesreader_main
+};
+
+static const struct cb_program_v1 yesprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "yesprobe", 0,
+    64 * 1024, yesprobe_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -1779,7 +1858,9 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &allocationchild_program) < 0 ||
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
-            cb_kernel_register(kernel, &allocationprobe_program) < 0)
+            cb_kernel_register(kernel, &allocationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &yesreader_program) < 0 ||
+            cb_kernel_register(kernel, &yesprobe_program) < 0)
             fail("test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
@@ -1952,6 +2033,8 @@ int main(void)
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
+    run_case("yes ok | yesreader", "ok\n", 0, 1);
+    run_case("yesprobe", "ok\n", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||

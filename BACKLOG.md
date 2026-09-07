@@ -68,6 +68,12 @@ runtime model before the human-facing demo grows.
   operation without exposing a task object. Prove distinct cells and retained
   values across cooperative interleaving, zero state after successful `exec`,
   and ordinary-source `errno` plus `strerror()` after a failed `open()`.
+- [x] **Iteration 19: first unmodified NetBSD utility.** Pin and import
+  `usr.bin/yes/yes.c` from NetBSD commit `b890038f7ae5`, retain its file license,
+  and compile it byte-for-byte unchanged. Add only the `puts`, `EXIT_FAILURE`,
+  and metadata-header compatibility it requires. A test reader consumes one
+  line and closes the pipe, requiring exact `ok\n` output and clean `EPIPE`
+  termination.
 
 ## Priority 2 — usable-system demo
 
@@ -117,6 +123,17 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 19 (2026-09-06): first unmodified NetBSD utility.** The red
+  command test returned status 127 because `yes` did not exist. NetBSD's
+  `usr.bin/yes/yes.c` is now pinned at commit `b890038f7ae5` and compiled
+  byte-for-byte unchanged; a SHA-256 test protects the source and its provenance
+  record. Compatibility headers and a prefixed, partial-write-safe `puts` are
+  implemented outside the imported file. A one-line pipeline proves exact
+  `ok\n` output, while a direct two-child probe waits for both tasks and proves
+  the writer returns `EXIT_FAILURE` after final-reader close produces `EPIPE`.
+  The canonical gate passes locally and in the exact Alpine Woodpecker agent
+  image.
 
 - [x] **Iteration 18 (2026-09-06): task-local libc errno.** The first red run
   made `abiprobe` return 181 because the new errno-location operation was

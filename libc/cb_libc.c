@@ -99,3 +99,25 @@ char *cb_libc_strerror(int error)
 {
     return (char *)bound_api->strerror(error);
 }
+
+static int write_all(int descriptor, const char *text, size_t length)
+{
+    while (length != 0) {
+        cb_ssize_t written = bound_api->write(descriptor, text, length);
+        if (written <= 0)
+            return -1;
+        text += (size_t)written;
+        length -= (size_t)written;
+    }
+    return 0;
+}
+
+int cb_libc_puts(const char *text)
+{
+    size_t length = 0;
+    while (text[length] != '\0')
+        ++length;
+    if (write_all(1, text, length) < 0 || write_all(1, "\n", 1) < 0)
+        return -1;
+    return 0;
+}

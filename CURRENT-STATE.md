@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 18 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 19 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -45,6 +45,7 @@ On 2026-09-06, the existing suite completed successfully and demonstrated:
 - Unix-style lifetime for an unlinked RAMFS file that remains open;
 - shell variables, `$?`, `cd`, `pwd`, `export`, and `unset`;
 - task-owned program allocations and a separately compiled libc-backed `wc`;
+- a pinned, byte-for-byte unmodified NetBSD `yes` using the libc veneer;
 - the v0.1 acceptance command producing `HELLO`.
 
 That statement is bounded by the current tests. It is not evidence of complete
@@ -214,10 +215,22 @@ ordinary `wc` command uses them to report the exact cannedBSD error from a
 failed open. The canonical gate passes locally and in the exact Alpine
 Woodpecker agent image.
 
+Iteration 19 crossed the first actual NetBSD-source boundary. Its red command
+test returned status 127 because `yes` was absent. NetBSD
+`usr.bin/yes/yes.c` is pinned to commit `b890038f7ae5` and its exact SHA-256 is
+checked on every build; its three-clause Regents license remains in the
+byte-for-byte unchanged source. cannedBSD-owned headers supply only the
+metadata macros, exit constant, and unbuffered `puts` it requires. One test
+checks exact `ok\n` output. A separate probe directly waits for both reader and
+writer, proving final-reader close reaches `EPIPE` and makes the original loop
+return `EXIT_FAILURE` rather than relying on the shell's last-pipeline status.
+The complete gate passes locally and in the exact Alpine Woodpecker agent image.
+
 ## What's next
 
-Add the smallest string and unbuffered formatting slice needed by one carefully
-selected unmodified NetBSD utility, then record its exact upstream provenance.
+Import a very small, high-leverage set of NetBSD libc string routines unchanged,
+with the same provenance discipline, before selecting the next utility. Do not
+grow printf or getopt speculatively.
 Do not mistake the original bounded bootstrap `wc` for that compatibility
 proof.
 
