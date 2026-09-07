@@ -8,8 +8,13 @@ cb_mac_context_swap:
     move.l 8(%sp),%a1
     movem.l %d2-%d7/%a2-%a6,-(%sp)
     move.l %sp,(%a0)
+    move.l 0x0110,4(%a0)
+    /* The VBL sniffer must be off while A7 is in transition. Heap-backed
+     * contexts keep it off; the original application context restores it. */
+    clr.l 0x0110
     move.l (%a1),%sp
     movem.l (%sp)+,%d2-%d7/%a2-%a6
+    move.l 4(%a1),0x0110
     rts
 
 /* Inherit the enclosing application's address registers, especially A5,
