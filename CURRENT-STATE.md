@@ -16,18 +16,10 @@ discussion live in `PROJECT_NOTES.md` and `TARGETS.md`.
 
 ## How to run a loop
 
-1. Read this file, `BACKLOG.md`, and the relevant part of `SPEC.md`.
-2. Run `make clean test` to establish a fresh non-sanitized baseline.
-3. Pick only the first ready Priority 1 item.
-4. State one falsifiable hypothesis and write the smallest test that disproves
-   the current implementation.
-5. Run that test and record the failure mode: red.
-6. Make the smallest coherent implementation change: green.
-7. Run the canonical `make ci` gate.
-8. Review the diff for ABI leaks, host-OS leakage, ownership errors, and tests
-   that accidentally assert implementation details.
-9. Update `BACKLOG.md` and this file with only verified facts.
-10. Commit if this directory has been placed under version control.
+Follow `AGENTS.md`. It defines orientation, stable backlog IDs, isolated
+worktrees, task claiming, the red/green loop, both Woodpecker gates, and the
+evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
+`CAPABILITY-MAP.md` records dependency planning without making everything ready.
 
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
@@ -318,9 +310,11 @@ pin provenance and require private ordinary-source and archive symbols.
 
 ## What's next
 
-Continue the pinned NetBSD `printenv` compile inventory. After `strchr`, choose
-the smallest independently testable missing interface from its actual compiler
-diagnostics. Do not grow printf, getopt, or locale speculatively.
+Start with `PENV-01` in `BACKLOG.md`: establish task-local libc process state
+and expose `environ`. Its test must force cooperative interleaving because a
+single process-global pointer would leak one cannedBSD task's environment into
+another. The remaining pinned NetBSD `printenv` dependencies are recorded as
+separate, dependency-ordered loops rather than speculative libc growth.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 
@@ -328,6 +322,9 @@ provenance evidence.
 
 | Purpose | Location or command |
 |---|---|
+| Coding-agent procedure | `AGENTS.md` |
+| Worker queue | `BACKLOG.md` |
+| Dependency inventory | `CAPABILITY-MAP.md` |
 | Public ABI | `include/cannedbsd/abi.h` |
 | libc/source compatibility contract | `LIBC.md` |
 | libc veneer and headers | `libc/`, `include/cannedbsd/libc.h` |

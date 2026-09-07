@@ -76,6 +76,10 @@ sanitizer-linked artifact.
 `make ci` is the canonical pre-push and Woodpecker gate. See
 [CI.md](CI.md) for its exact stages and safety constraints.
 
+Coding agents start with [AGENTS.md](AGENTS.md), claim work only from
+[BACKLOG.md](BACKLOG.md), and use [CAPABILITY-MAP.md](CAPABILITY-MAP.md) to
+understand later dependencies.
+
 ## First libc and upstream source targets
 
 The first post-v0.1 compatibility slice compiles `commands/wc.c` as a separate
@@ -189,5 +193,5 @@ registry, a small shell, task-owned program allocations, an original
 libc-backed `wc`, and an unmodified pinned NetBSD `yes`. This is not yet the richer demo: `sed`, `awk`,
 curses, a tiny vi, networking, dynamic modules, WASM, and classic-host adapters
 remain planned work. Read [CURRENT-STATE.md](CURRENT-STATE.md) first when
-continuing development, then take the first ready item in
-[BACKLOG.md](BACKLOG.md).
+continuing development. Coding workers follow [AGENTS.md](AGENTS.md) and claim
+only a ready ID from [BACKLOG.md](BACKLOG.md).

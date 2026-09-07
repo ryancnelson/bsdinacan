@@ -1,9 +1,183 @@
 # cannedBSD Backlog
 
-The ordering is intentional. Priority 1 contains one-loop tasks that protect the
-runtime model before the human-facing demo grows.
+This is the authoritative worker queue. `CAPABILITY-MAP.md` inventories later
+work, while `AGENTS.md` defines how an agent claims and completes one loop.
 
-## Priority 1 — ready
+Every worker item has a stable ID, status, base, dependencies, hypothesis, red
+test, and acceptance boundary. `Base: main` means the freshly fetched
+`origin/main`. A coordinator launching several agents assigns distinct IDs.
+
+## Ready worker queue
+
+The order is intentional. Choose the first ready item unless a coordinator
+assigns an ID. The `PENV` items are serial; items in the `VFS` and `PORT` lanes
+may proceed in parallel when their paths do not overlap.
+
+### PENV-01 — task-local libc process state and `environ`
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** none
+- **Hypothesis:** a task-local libc location/accessor can expose the current
+  task's environment without leaking it during cooperative interleaving.
+- **Red:** an ordinary-source probe referencing `environ` fails today. The
+  behavioral red test must use distinct environments in two tasks, force one
+  writer past pipe capacity so it blocks, mutate an environment, and cover exec.
+- **Accept:** each task observes only its own current vector before and after
+  resumption; setenv/unsetenv and exec are reflected; startup no longer discards
+  envp; old ABI sizes remain valid. A single unscoped host global is not enough.
+
+### VFS-01 — two-mount routing boundary
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** none
+- **Hypothesis:** path traversal can cross a mount boundary without exposing a
+  filesystem-specific node to tasks or descriptors.
+- **Red:** mount two RAM filesystems at deterministic paths and show lookup,
+  cwd, stat, and open cannot currently route into the second mount.
+- **Accept:** both mounts remain isolated; traversal and `..` at mount roots are
+  specified; cross-mount mutation returns the chosen error; retain/release and
+  failed-install cleanup are proven; the one-root behavior remains compatible.
+
+### PORT-01 — host adapter conformance harness
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** none
+- **Hypothesis:** a reusable mock-host suite can prove the version, size,
+  capability, allocation, clock, console, and context contracts without a
+  platform-specific implementation.
+- **Red:** demonstrate at least one contract currently checked only through the
+  Linux host or duplicated platform tests.
+- **Accept:** the same deterministic harness can be invoked by Linux and future
+  host ports; it tests undersized/oversized tables and absent capabilities; it
+  adds no host API to the portable core and changes no runtime behavior.
+
+## Dependency-ordered queue
+
+These entries become Ready only after every named dependency is Done. An agent
+must not implement a blocked item merely because its design looks obvious.
+
+### PENV-02 — `exit(3)` and `__dead`
+
+- **Status:** Blocked on PENV-01
+- **Base:** main plus PENV-01
+- **Hypothesis:** the existing task-exit operation can provide a non-returning
+  ordinary C `exit` while preserving task cleanup.
+- **Red:** ordinary source calling `exit(7)` fails to link.
+- **Accept:** the parent observes status 7, code after exit never runs, heap and
+  descriptors are reclaimed, and the declaration carries `__dead` metadata.
+
+### PENV-03 — empty-option `getopt`
+
+- **Status:** Blocked on PENV-01
+- **Base:** main plus PENV-01
+- **Hypothesis:** task-local getopt state can support the exact empty optstring
+  used by pinned `printenv` without claiming the full extension surface.
+- **Red:** compile and run an ordinary argv probe for no options, `--`, and an
+  unknown option.
+- **Accept:** getopt, optind, optarg, opterr, and optopt have isolated task
+  state, reset on exec, and behave correctly across forced interleaving.
+
+### PENV-04 — bounded unbuffered formatted output
+
+- **Status:** Blocked on PENV-01
+- **Base:** main plus PENV-01
+- **Hypothesis:** literals, `%%`, and `%s` are sufficient for every format in
+  pinned `printenv` and can preserve descriptor errors without buffered state.
+- **Red:** ordinary printenv-format probes fail because printf, fprintf, stdout,
+  and stderr are absent.
+- **Accept:** exact return counts, partial writes, EPIPE/error propagation, and
+  stdout/stderr redirection are tested. Unsupported conversions are not claimed.
+
+### PENV-05 — `errx(3)` diagnostic
+
+- **Status:** Blocked on PENV-02 and PENV-04
+- **Base:** integrated dependencies
+- **Hypothesis:** the bounded formatter plus exit can provide printenv's exact
+  fatal diagnostic without a general stdio implementation.
+- **Red:** an ordinary errx probe fails because `err.h` and errx are absent.
+- **Accept:** program prefix, message, newline, fd 2, status 1, no fd 1 output,
+  and task-local program identity are explicit and tested.
+
+### PENV-06 — unchanged NetBSD `printenv`
+
+- **Status:** Blocked on PENV-02, PENV-03, PENV-04, and PENV-05
+- **Base:** integrated dependencies
+- **Hypothesis:** the exact pinned NetBSD source will compile unchanged and run
+  entirely through the cannedBSD libc and runtime.
+- **Red:** the source/import boundary fails while the file is absent.
+- **Accept:** pin source and license, hash and provenance it, register its
+  descriptor, reject host symbol imports, and test named, missing, empty,
+  enumerate-all, `=` error, usage, pipeline, and redirection behavior. The raw
+  pinned file's expected SHA-256 is
+  `d355c07fc5a351d38e2f8552899b456f1300a61408ebf2e2af47c5f52de974db`.
+
+### VFS-02 — runtime-visible executable nodes
+
+- **Status:** Blocked on VFS-01
+- **Base:** main plus VFS-01
+- **Hypothesis:** registered programs can appear as executable VFS objects and
+  shell lookup can resolve those objects instead of a hidden path registry.
+- **Red:** prove `/bin/sh` and registered commands cannot currently be statted
+  or opened as executable nodes.
+- **Accept:** lookup distinguishes ENOENT, EACCES, and ENOEXEC; open and unlink
+  lifetime is specified; spawn/exec atomicity and registry-source cleanup pass.
+
+### VFS-03 — directory iteration and libc `dirent`
+
+- **Status:** Blocked on VFS-01
+- **Base:** main plus VFS-01
+- **Hypothesis:** a versioned node iterator can expose directories without
+  leaking RAMFS representation.
+- **Red:** an ordinary opendir/readdir/closedir probe fails to compile.
+- **Accept:** root enumeration, EOF versus error, independent cursors, mutation
+  policy, allocation failure, and cleanup are tested before inventorying `ls`.
+
+### IO-01 — public descriptor polling
+
+- **Status:** Blocked pending design review
+- **Base:** main
+- **Hypothesis:** the existing readiness seam can implement poll without host
+  descriptors or busy waiting.
+- **Red:** ordinary source cannot wait on multiple cannedBSD descriptors.
+- **Accept:** regular files, console, pipe data/EOF/EPIPE, invalid descriptors,
+  timeout zero, blocking wakeup, and peer progress are deterministic.
+
+### FS-01 — truncate and ftruncate
+
+- **Status:** Blocked pending design review
+- **Base:** main
+- **Hypothesis:** VFS node/open-file operations can resize regular files while
+  preserving shared open-file offsets and failure atomicity.
+- **Red:** ordinary truncate/ftruncate probes fail to compile.
+- **Accept:** shrink, zero-filled growth, read-only and pipe errors, overflow,
+  allocation failure, and independent/shared descriptor behavior are tested.
+
+### TERM-01 — terminal mode contract
+
+- **Status:** Blocked on IO-01
+- **Base:** integrated dependency
+- **Hypothesis:** task-visible termios state can implement canonical/raw input,
+  echo, erase, and EOF over a deterministic console adapter.
+- **Red:** isatty and tcgetattr/tcsetattr ordinary-source probes are absent.
+- **Accept:** mode transitions and byte delivery are deterministic; then window
+  size, resize notification, PTYs, sessions, and foreground groups get separate
+  backlog IDs before curses or an editor.
+
+### NET-01 — mock connect-only byte stream
+
+- **Status:** Blocked on IO-01
+- **Base:** integrated dependency
+- **Hypothesis:** a socket-like descriptor over a mock transport can establish
+  portable stream semantics before any real host network adapter exists.
+- **Red:** ordinary socket/connect/send/recv source is absent.
+- **Accept:** connect failures, partial I/O, EOF, shutdown, dup/inheritance, and
+  poll readiness are deterministic. SOCKS5, name resolution, real host I/O,
+  listening, datagrams, and virtual NICs remain separate tasks.
+
+## Completed Iterate Bot loops
 
 - [x] **Iteration 1: preserve open RAMFS files across unlink.** Hypothesis: the
   directory unlink path frees a node still referenced by an open-file object.
@@ -106,7 +280,10 @@ runtime model before the human-facing demo grows.
   generic routine unchanged and prove first-match, missing-character, terminal
   NUL, integer conversion, provenance, archive, and ordinary-source behavior.
 
-## Priority 2 — usable-system demo
+## Unrefined roadmap — usable-system demo
+
+These ideas are not claimable until an integrator turns one into a worker item
+with an ID, dependencies, red test, and acceptance boundary above.
 
 - [ ] Represent `/bin/sh` and native commands as real runtime-visible executable
   objects instead of treating the registry as an invisible path oracle.
@@ -119,7 +296,7 @@ runtime model before the human-facing demo grows.
 - [ ] Add a tiny vi-like editor only after filesystem update, terminal mode,
   resize, and signal/cancellation semantics have explicit tests.
 
-## Priority 3 — portability and extensions
+## Unrefined roadmap — portability and extensions
 
 - [x] Initial System 7 / 68K host slice on the isolated `mac-system7` branch:
   dedicated Retro68 Woodpecker build, stack-yield probe, seven guest shell
