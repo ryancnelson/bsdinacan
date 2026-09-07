@@ -93,6 +93,10 @@ runtime model before the human-facing demo grows.
   unchanged under `cb_libc_memcpy`, and prove return value, zero-length, whole
   and offset buffers, and high-bit byte copying without a host `memcpy`
   dependency.
+- [x] **Iteration 24: NetBSD `memmove`.** Reuse the pinned `bcopy.c` engine
+  through the matching unchanged NetBSD wrapper and a private link name. Prove
+  zero-length, returned-pointer, forward-overlap, and backward-overlap behavior
+  from both direct and ordinary-source boundaries.
 
 ## Priority 2 — usable-system demo
 
@@ -142,6 +146,15 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 24 (2026-09-06): NetBSD `memmove`.** The red boundary run
+  failed on the absent pinned wrapper. NetBSD's unchanged `memmove.c` now
+  reuses the existing hash-pinned `bcopy.c` engine, compact implementation,
+  private definition link-name adapter, and archive discipline. Direct tests
+  prove return and zero-length behavior plus overlapping copies in both
+  directions; an ordinary-source object must import only `cb_libc_memmove`.
+  The canonical gate passes locally and in the exact Alpine Woodpecker agent
+  image.
 
 - [x] **Iteration 23 (2026-09-06): NetBSD `memcpy`.** The red source-boundary
   run failed because both pinned inputs were absent. NetBSD's tiny `memcpy.c`

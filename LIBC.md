@@ -47,8 +47,9 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
-- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, and
-  size-optimized `memcpy` under private link names.
+- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`, and
+  `memmove` under private link names; the copy routines use the size-optimized
+  shared implementation.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.

@@ -17,6 +17,17 @@ void *memcpy(void *destination, const void *source, size_t count)
 #define memcpy cb_libc_memcpy
 #endif
 
+#if defined(CANNEDBSD_BUILDING_LIBC_MEMMOVE)
+#if defined(__GNUC__) || defined(__clang__)
+void *memmove(void *destination, const void *source, size_t count)
+    __asm__("cb_libc_memmove");
+#else
+#error "NetBSD memmove import needs a compiler-specific link-name adapter"
+#endif
+#else
+#define memmove cb_libc_memmove
+#endif
+
 #if defined(CANNEDBSD_BUILDING_LIBC_STRCMP)
 #if defined(__GNUC__) || defined(__clang__)
 int strcmp(const char *left, const char *right) __asm__("cb_libc_strcmp");

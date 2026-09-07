@@ -115,6 +115,8 @@ as task-level failure and lifetime tests.
 NetBSD's generic, size-optimized `memcpy` is also a separately archived libc
 object. Its two-file upstream source set is hash-pinned, and an ordinary-source
 probe plus direct byte-copy cases exclude accidental host-libc resolution.
+The matching NetBSD `memmove` wrapper reuses that pinned engine and is tested
+with overlap in both directions.
 
 ## Add a native command
 

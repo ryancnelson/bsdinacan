@@ -18,6 +18,9 @@ bcopy_source=upstream/netbsd/common/lib/libc/string/bcopy.c
 memcpy_object=$build_path/netbsd_memcpy.o
 memcpy_hash=27954650049d23535119c13fec0d333929e6ad17bb80d3c5e33ac9938f57f2a4
 bcopy_hash=915b194678b2855a522755dad71ae4fb4f366d3f0518fd089bc6c2cb35722c44
+memmove_source=upstream/netbsd/common/lib/libc/string/memmove.c
+memmove_object=$build_path/netbsd_memmove.o
+memmove_hash=a28ca02301f0800d67b1d8b35e1d1021b7600deb6b7e82f4179023aa22f7756b
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -118,6 +121,33 @@ if nm -u "$memcpy_object" | rg -q '[[:space:]]U[[:space:]]+memcpy$'; then
 fi
 if ! ar t "$archive_file" | rg -q '^netbsd_memcpy\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memcpy' >&2
+    exit 1
+fi
+if [[ ! -f $memmove_source ]]; then
+    echo 'FAIL: pinned NetBSD memmove source is missing' >&2
+    exit 1
+fi
+actual_memmove_hash=$(sha256sum "$memmove_source" | awk '{print $1}')
+if [[ $actual_memmove_hash != "$memmove_hash" ]]; then
+    echo 'FAIL: NetBSD memmove source changed' >&2
+    exit 1
+fi
+if ! rg -q "$memmove_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD memmove provenance does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $memmove_object ]] ||
+        ! nm "$memmove_object" |
+            rg -q '[[:space:]]T[[:space:]]+cb_libc_memmove$'; then
+    echo 'FAIL: NetBSD memmove was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$memmove_object" | rg -q '[[:space:]]U[[:space:]]+memmove$'; then
+    echo 'FAIL: NetBSD memmove object imports host memmove' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | rg -q '^netbsd_memmove\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD memmove' >&2
     exit 1
 fi
 

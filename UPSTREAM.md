@@ -102,3 +102,22 @@ Hash, object, archive, and ordinary-source tests exclude host `memcpy`. Direct
 tests cover its returned destination, zero length, offset buffers, sentinel
 boundaries, NUL, and high-bit bytes. Overlap is deliberately not tested because
 it is outside the `memcpy` contract.
+
+## NetBSD `memmove`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Wrapper upstream/local path:
+  `common/lib/libc/string/memmove.c` /
+  `upstream/netbsd/common/lib/libc/string/memmove.c`
+- Wrapper SHA-256:
+  `a28ca02301f0800d67b1d8b35e1d1021b7600deb6b7e82f4179023aa22f7756b`
+- Shared implementation and license: the pinned `bcopy.c` entry above.
+- Embedded RCS identifier: `$NetBSD: memmove.c,v 1.2 2013/12/02 21:21:33 joerg Exp $`
+
+The wrapper is byte-for-byte unchanged and selects `MEMMOVE` in the already
+pinned implementation. It uses the same size-optimized branch, private
+GCC/Clang definition link name, archive boundary, and explicitly unimplemented
+future ARM EABI alias adapter as `memcpy`. Direct tests move overlapping bytes
+both forward and backward; the ordinary-source object must resolve `memmove`
+only to `cb_libc_memmove`.

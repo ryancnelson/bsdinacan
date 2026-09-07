@@ -53,6 +53,14 @@ if ! rg -q '\bmemcpy[[:space:]]*\(' "$memory_source" ||
     echo 'FAIL: ordinary memcpy source does not use the private veneer' >&2
     exit 1
 fi
+if ! rg -q '\bmemmove[[:space:]]*\(' "$memory_source" ||
+        nm -u "$memory_object" |
+            rg -q '[[:space:]]U[[:space:]]+memmove$' ||
+        ! nm -u "$memory_object" |
+            rg -q '[[:space:]]U[[:space:]]+cb_libc_memmove$'; then
+    echo 'FAIL: ordinary memmove source does not use the private veneer' >&2
+    exit 1
+fi
 if ! rg -q '\berrno\b' "$source_file"; then
     echo 'FAIL: ordinary command does not exercise the errno lvalue' >&2
     exit 1

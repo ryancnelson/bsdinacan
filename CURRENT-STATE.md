@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 23 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 24 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -228,6 +228,15 @@ zero-length and offset copies, sentinel boundaries, NUL, and high-bit bytes.
 The provenance ledger explicitly leaves ARM EABI alias support for that port.
 The complete gate passes locally and in the exact Alpine Woodpecker agent image.
 
+Iteration 24 added the matching NetBSD `memmove.c` wrapper over the already
+pinned `bcopy.c` engine. The source boundary was first red because the wrapper
+was absent. It now follows the same compact implementation, private GCC/Clang
+definition name, archive, hash, and provenance rules as `memcpy`. Direct tests
+prove its returned pointer, zero-length behavior, and overlapping movement in
+both directions; the ordinary-source probe must resolve only to
+`cb_libc_memmove`. The complete gate passes locally and in the exact Alpine
+Woodpecker agent image.
+
 Iteration 19 crossed the first actual NetBSD-source boundary. Its red command
 test returned status 127 because `yes` was absent. NetBSD
 `usr.bin/yes/yes.c` is pinned to commit `b890038f7ae5` and its exact SHA-256 is
@@ -276,9 +285,9 @@ Woodpecker agent image.
 
 ## What's next
 
-Add NetBSD `memmove.c` only if sharing the now-pinned `bcopy.c` implementation
-survives an overlap-focused red test and the same link-name boundary. Do not
-grow printf or getopt speculatively.
+Re-inventory candidate utilities against the now-larger libc surface and choose
+the next dependency from an actual source build. Do not grow printf, getopt, or
+locale speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

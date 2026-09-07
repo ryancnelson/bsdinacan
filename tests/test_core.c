@@ -2040,11 +2040,25 @@ static void test_netbsd_memcpy(void)
         fail("NetBSD memcpy semantics");
 }
 
+static void test_netbsd_memmove(void)
+{
+    unsigned char backward[] = "abcdef";
+    unsigned char forward[] = "abcdef";
+
+    if (cb_libc_memmove(backward, backward, 0) != backward ||
+        cb_libc_memmove(backward + 2, backward, 4) != backward + 2 ||
+        memcmp(backward, "ababcd", 6) != 0 ||
+        cb_libc_memmove(forward, forward + 2, 4) != forward ||
+        memcmp(forward, "cdefef", 6) != 0)
+        fail("NetBSD memmove overlap semantics");
+}
+
 int main(void)
 {
     test_netbsd_strlen();
     test_netbsd_strcmp();
     test_netbsd_memcpy();
+    test_netbsd_memmove();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();
