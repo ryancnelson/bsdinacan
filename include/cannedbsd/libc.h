@@ -35,6 +35,7 @@ size_t cb_libc_strlen(const char *text);
 int cb_libc_strcmp(const char *left, const char *right);
 void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);
+int cb_libc_memcmp(const void *left, const void *right, size_t count);
 
 #define CB_LIBC_PROGRAM(symbol, command_name, main_function) \
     static int symbol##_start(const struct cb_api_v1 *api, int argc, \

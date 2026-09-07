@@ -6,6 +6,17 @@
 #define strerror cb_libc_strerror
 #define strlen cb_libc_strlen
 
+#if defined(CANNEDBSD_BUILDING_LIBC_MEMCMP)
+#if defined(__GNUC__) || defined(__clang__)
+int memcmp(const void *left, const void *right, size_t count)
+    __asm__("cb_libc_memcmp");
+#else
+#error "NetBSD memcmp import needs a compiler-specific link-name adapter"
+#endif
+#else
+#define memcmp cb_libc_memcmp
+#endif
+
 #if defined(CANNEDBSD_BUILDING_LIBC_MEMCPY)
 #if defined(__GNUC__) || defined(__clang__)
 void *memcpy(void *destination, const void *source, size_t count)

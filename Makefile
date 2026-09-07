@@ -36,10 +36,12 @@ NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
 NETBSD_MEMCPY_OBJECT := $(BUILD)/netbsd_memcpy.o
 NETBSD_MEMMOVE_OBJECT := $(BUILD)/netbsd_memmove.o
+NETBSD_MEMCMP_OBJECT := $(BUILD)/netbsd_memcmp.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
 LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) \
-	$(NETBSD_STRCMP_OBJECT) $(NETBSD_MEMCPY_OBJECT) $(NETBSD_MEMMOVE_OBJECT)
+	$(NETBSD_STRCMP_OBJECT) $(NETBSD_MEMCPY_OBJECT) $(NETBSD_MEMMOVE_OBJECT) \
+	$(NETBSD_MEMCMP_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
 .PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
@@ -93,6 +95,12 @@ $(NETBSD_MEMMOVE_OBJECT): upstream/netbsd/common/lib/libc/string/memmove.c \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -Os \
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE -c $< -o $@
+
+$(NETBSD_MEMCMP_OBJECT): upstream/netbsd/common/lib/libc/string/memcmp.c \
+		compat/netbsd/include/assert.h compat/netbsd/include/sys/types.h \
+		include/cannedbsd/libc.h libc/include/string.h libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-DCANNEDBSD_BUILDING_LIBC_MEMCMP -c $< -o $@
 
 $(LIBC_ARCHIVE): $(LIBC_OBJECTS)
 	$(AR) rcs $@ $^
@@ -181,6 +189,10 @@ analyze:
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memmove.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
+		-DCANNEDBSD_BUILDING_LIBC_MEMCMP \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memcmp.c
 
 ci:
 	$(MAKE) check-publication

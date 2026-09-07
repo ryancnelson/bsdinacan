@@ -10,3 +10,8 @@ void *memory_source_move(void *destination, const void *source, size_t count)
 {
     return memmove(destination, source, count);
 }
+
+int memory_source_compare(const void *left, const void *right, size_t count)
+{
+    return memcmp(left, right, count);
+}

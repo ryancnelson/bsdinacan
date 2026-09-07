@@ -21,6 +21,9 @@ bcopy_hash=915b194678b2855a522755dad71ae4fb4f366d3f0518fd089bc6c2cb35722c44
 memmove_source=upstream/netbsd/common/lib/libc/string/memmove.c
 memmove_object=$build_path/netbsd_memmove.o
 memmove_hash=a28ca02301f0800d67b1d8b35e1d1021b7600deb6b7e82f4179023aa22f7756b
+memcmp_source=upstream/netbsd/common/lib/libc/string/memcmp.c
+memcmp_object=$build_path/netbsd_memcmp.o
+memcmp_hash=a926ba117d7a044631da27bc301769607072bdf42995e4d49dbc00139643d5ce
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -148,6 +151,33 @@ if nm -u "$memmove_object" | rg -q '[[:space:]]U[[:space:]]+memmove$'; then
 fi
 if ! ar t "$archive_file" | rg -q '^netbsd_memmove\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memmove' >&2
+    exit 1
+fi
+if [[ ! -f $memcmp_source ]] ||
+        [[ $(sha256sum "$memcmp_source" | awk '{print $1}') != "$memcmp_hash" ]]; then
+    echo 'FAIL: pinned NetBSD memcmp source is missing or changed' >&2
+    exit 1
+fi
+if ! rg -q "$memcmp_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD memcmp provenance does not match the pin' >&2
+    exit 1
+fi
+if rg -q '\bassert[[:space:]]*\(' "$memcmp_source"; then
+    echo 'FAIL: the import-only assert shim is unsafe for memcmp' >&2
+    exit 1
+fi
+if [[ ! -f $memcmp_object ]] ||
+        ! nm "$memcmp_object" |
+            rg -q '[[:space:]]T[[:space:]]+cb_libc_memcmp$'; then
+    echo 'FAIL: NetBSD memcmp was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$memcmp_object" | rg -q '[[:space:]]U[[:space:]]+memcmp$'; then
+    echo 'FAIL: NetBSD memcmp object imports host memcmp' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | rg -q '^netbsd_memcmp\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD memcmp' >&2
     exit 1
 fi
 

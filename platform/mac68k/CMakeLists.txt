@@ -11,7 +11,7 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
-foreach(routine strlen strcmp memcpy memmove)
+foreach(routine strlen strcmp memcpy memmove memcmp)
     add_library(cb_${routine} OBJECT
         ${ROOT}/upstream/netbsd/common/lib/libc/string/${routine}.c)
     target_include_directories(cb_${routine} PRIVATE
@@ -21,6 +21,7 @@ target_compile_definitions(cb_strlen PRIVATE strlen=cb_libc_strlen)
 target_compile_definitions(cb_strcmp PRIVATE CANNEDBSD_BUILDING_LIBC_STRCMP)
 target_compile_definitions(cb_memcpy PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCPY)
 target_compile_definitions(cb_memmove PRIVATE CANNEDBSD_BUILDING_LIBC_MEMMOVE)
+target_compile_definitions(cb_memcmp PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCMP)
 
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c context.S test_context.c application.r
@@ -32,4 +33,5 @@ target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug)

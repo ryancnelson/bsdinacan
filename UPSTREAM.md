@@ -121,3 +121,21 @@ GCC/Clang definition link name, archive boundary, and explicitly unimplemented
 future ARM EABI alias adapter as `memcpy`. Direct tests move overlapping bytes
 both forward and backward; the ordinary-source object must resolve `memmove`
 only to `cb_libc_memmove`.
+
+## NetBSD `memcmp`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `common/lib/libc/string/memcmp.c` /
+  `upstream/netbsd/common/lib/libc/string/memcmp.c`
+- SHA-256: `a926ba117d7a044631da27bc301769607072bdf42995e4d49dbc00139643d5ce`
+- Embedded RCS identifier: `$NetBSD: memcmp.c,v 1.8 2020/01/29 09:18:26 ad Exp $`
+- License: file-specific two-clause NetBSD Foundation and three-clause Regents
+  licenses, both retained verbatim.
+
+The source is byte-for-byte unchanged. A private GCC/Clang definition link name
+emits `cb_libc_memcmp`; a minimal import-only `sys/types.h` supplies the standard
+size and integer types without importing a host ABI. Hash, object, archive, and
+ordinary-source checks exclude host `memcmp`. Direct tests cover zero length,
+equality, both order directions, and unsigned high-bit bytes. Future ARM EABI
+builds still require the alias support noted for the other memory routines.

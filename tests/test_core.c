@@ -2053,12 +2053,25 @@ static void test_netbsd_memmove(void)
         fail("NetBSD memmove overlap semantics");
 }
 
+static void test_netbsd_memcmp(void)
+{
+    static const unsigned char equal[] = {0x00, 0x7f, 0x80, 0xff};
+    static const unsigned char lower[] = {0x00, 0x7f, 0x80, 0x00};
+
+    if (cb_libc_memcmp(equal, lower, 0) != 0 ||
+        cb_libc_memcmp(equal, equal, sizeof(equal)) != 0 ||
+        cb_libc_memcmp(lower, equal, sizeof(equal)) >= 0 ||
+        cb_libc_memcmp(equal, lower, sizeof(equal)) <= 0)
+        fail("NetBSD memcmp semantics");
+}
+
 int main(void)
 {
     test_netbsd_strlen();
     test_netbsd_strcmp();
     test_netbsd_memcpy();
     test_netbsd_memmove();
+    test_netbsd_memcmp();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();

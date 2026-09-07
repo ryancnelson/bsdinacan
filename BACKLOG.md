@@ -97,6 +97,10 @@ runtime model before the human-facing demo grows.
   through the matching unchanged NetBSD wrapper and a private link name. Prove
   zero-length, returned-pointer, forward-overlap, and backward-overlap behavior
   from both direct and ordinary-source boundaries.
+- [x] **Iteration 25: NetBSD `memcmp`.** A pinned NetBSD `printenv` compile
+  inventory identified `memcmp` as a missing independent dependency. Import
+  the generic routine unchanged under a private link name and prove zero-length,
+  equality, unsigned ordering, archive provenance, and ordinary-source routing.
 
 ## Priority 2 — usable-system demo
 

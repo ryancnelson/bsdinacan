@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-07
-**Iteration count:** 24 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 25 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -299,11 +299,20 @@ both directions; the ordinary-source probe must resolve only to
 `cb_libc_memmove`. The complete gate passes locally and in the exact Alpine
 Woodpecker agent image.
 
+Iteration 25 began from a compile inventory of pinned NetBSD `printenv`, rather
+than speculative libc growth. Its direct behavioral test was first red with an
+undefined `cb_libc_memcmp`. The generic NetBSD `memcmp.c` is now imported
+byte-for-byte unchanged with its own private object and archive member. Direct
+tests prove zero length, equality, both order directions, and unsigned high-bit
+ordering; source tests pin its hash and provenance and require an ordinary
+translation unit to resolve only to `cb_libc_memcmp`. The complete Linux gate
+passes in the Alpine runner environment, and the Retro68 application builds.
+
 ## What's next
 
-Re-inventory candidate utilities against the now-larger libc surface and choose
-the next dependency from an actual source build. Do not grow printf, getopt, or
-locale speculatively.
+Continue the pinned NetBSD `printenv` compile inventory. After `memcmp`, choose
+the smallest independently testable missing interface from its actual compiler
+diagnostics. Do not grow printf, getopt, or locale speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

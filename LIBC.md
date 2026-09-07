@@ -47,9 +47,9 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
-- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`, and
-  `memmove` under private link names; the copy routines use the size-optimized
-  shared implementation.
+- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
+  `memmove`, and `memcmp` under private link names; the copy routines use the
+  size-optimized shared implementation.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
@@ -102,7 +102,7 @@ unchanged; their build and runtime
 adaptation live entirely in cannedBSD-owned files. The archive retains each
 imported libc routine as a separate object under a private `cb_libc_*` link
 name. GCC and Clang use an assembler-name declaration for sources such as
-`strcmp.c` that deliberately undo macro renaming; other target toolchains must
+`strcmp.c` and `memcmp.c` that deliberately undo macro renaming; other target toolchains must
 supply an equivalent adapter.
 
 ## Compatibility ladder

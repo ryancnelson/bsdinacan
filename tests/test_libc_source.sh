@@ -65,6 +65,14 @@ if ! matches '\bmemmove[[:space:]]*\(' "$memory_source" ||
     echo 'FAIL: ordinary memmove source does not use the private veneer' >&2
     exit 1
 fi
+if ! matches '\bmemcmp[[:space:]]*\(' "$memory_source" ||
+        nm -u "$memory_object" |
+            matches '[[:space:]]U[[:space:]]+memcmp$' ||
+        ! nm -u "$memory_object" |
+            matches '[[:space:]]U[[:space:]]+cb_libc_memcmp$'; then
+    echo 'FAIL: ordinary memcmp source does not use the private veneer' >&2
+    exit 1
+fi
 if ! matches '\berrno\b' "$source_file"; then
     echo 'FAIL: ordinary command does not exercise the errno lvalue' >&2
     exit 1
