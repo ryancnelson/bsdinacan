@@ -317,43 +317,72 @@ static void expect_invalid_host(const struct cb_host_ops_v1 *host,
     }
 }
 
-static void test_host_contract(void)
+struct harness_oversized_host {
+    struct cb_host_ops_v1 core;
+    void (*future_callback)(void);
+};
+
+static struct cb_host_context *harness_root_ctx;
+static struct cb_host_context *harness_child_ctx;
+static const struct cb_host_ops_v1 *harness_current_adapter;
+static int harness_context_ran;
+
+static void harness_context_entry(void *arg)
 {
-    const struct cb_host_ops_v1 *linux_host = cb_linux_host_ops();
+    if (arg != (void *)0x1234)
+        fail("Context argument mismatch");
+    harness_context_ran = 1;
+    harness_current_adapter->context_switch(harness_child_ctx, harness_root_ctx);
+}
+
+static void run_host_conformance_harness(const struct cb_host_ops_v1 *adapter)
+{
     struct cb_host_ops_v1 host;
+    struct harness_oversized_host oversized;
+    struct cb_kernel *kernel;
     uint64_t before;
     uint64_t after;
 
-    if (linux_host == NULL ||
-        linux_host->abi_version != CB_ABI_VERSION_V1 ||
-        linux_host->struct_size != sizeof(*linux_host) ||
-        linux_host->allocate == NULL || linux_host->resize == NULL ||
-        linux_host->release == NULL || linux_host->context_root == NULL ||
-        linux_host->context_create == NULL ||
-        linux_host->context_switch == NULL ||
-        linux_host->context_destroy == NULL ||
-        linux_host->console_poll == NULL ||
-        linux_host->console_read == NULL ||
-        linux_host->console_write == NULL ||
-        linux_host->monotonic_millis == NULL ||
-        linux_host->wall_clock_millis == NULL ||
-        linux_host->yield_host == NULL || linux_host->fatal == NULL)
-        fail("Linux host operation table");
-    before = linux_host->monotonic_millis();
-    linux_host->yield_host();
-    after = linux_host->monotonic_millis();
-    if (before == 0 || after < before || linux_host->wall_clock_millis() == 0)
-        fail("Linux host clocks");
+    if (adapter == NULL ||
+        adapter->abi_version != CB_ABI_VERSION_V1 ||
+        adapter->struct_size < sizeof(struct cb_host_ops_v1) ||
+        adapter->allocate == NULL || adapter->resize == NULL ||
+        adapter->release == NULL || adapter->context_root == NULL ||
+        adapter->context_create == NULL ||
+        adapter->context_switch == NULL ||
+        adapter->context_destroy == NULL ||
+        adapter->console_poll == NULL ||
+        adapter->console_read == NULL ||
+        adapter->console_write == NULL ||
+        adapter->monotonic_millis == NULL ||
+        adapter->wall_clock_millis == NULL ||
+        adapter->yield_host == NULL || adapter->fatal == NULL)
+        fail("Host operation table incomplete or invalid");
+
+    before = adapter->monotonic_millis();
+    adapter->yield_host();
+    after = adapter->monotonic_millis();
+    if (before == 0 || after < before || adapter->wall_clock_millis() == 0)
+        fail("Host clocks behave incorrectly");
 
     expect_invalid_host(NULL, "null table");
-    host = *linux_host;
+    host = *adapter;
     host.abi_version = 0;
     expect_invalid_host(&host, "version");
-    host = *linux_host;
+    host = *adapter;
     host.struct_size = sizeof(host) - 1;
     expect_invalid_host(&host, "size");
+
+    memset(&oversized, 0, sizeof(oversized));
+    oversized.core = *adapter;
+    oversized.core.struct_size = sizeof(oversized);
+    kernel = cb_kernel_create(&oversized.core);
+    if (kernel == NULL)
+        fail("Oversized table rejected");
+    cb_kernel_destroy(kernel);
+
 #define EXPECT_NULL_HOST_CALLBACK(member) do { \
-    host = *linux_host; \
+    host = *adapter; \
     host.member = NULL; \
     expect_invalid_host(&host, #member); \
 } while (0)
@@ -372,7 +401,95 @@ static void test_host_contract(void)
     EXPECT_NULL_HOST_CALLBACK(yield_host);
     EXPECT_NULL_HOST_CALLBACK(fatal);
 #undef EXPECT_NULL_HOST_CALLBACK
+
+    harness_current_adapter = adapter;
+    harness_context_ran = 0;
+    harness_root_ctx = adapter->context_root();
+    harness_child_ctx = adapter->context_create(harness_context_entry, (void *)0x1234, 65536);
+    if (harness_root_ctx == NULL || harness_child_ctx == NULL)
+        fail("Host context creation failed");
+    adapter->context_switch(harness_root_ctx, harness_child_ctx);
+    if (!harness_context_ran)
+        fail("Host context did not run or return");
+    adapter->context_destroy(harness_child_ctx);
 }
+
+struct mock_context {
+    void (*entry)(void *);
+    void *arg;
+    int is_root;
+};
+
+static void *mock_allocate(size_t size) { return malloc(size); }
+static void *mock_resize(void *ptr, size_t size) { return realloc(ptr, size); }
+static void mock_release(void *ptr) { free(ptr); }
+
+static struct mock_context mock_root_ctx = { NULL, NULL, 1 };
+static struct cb_host_context *mock_context_root(void) {
+    return (struct cb_host_context *)&mock_root_ctx;
+}
+
+static struct cb_host_context *mock_context_create(void (*entry)(void *), void *arg, size_t stack_size) {
+    struct mock_context *ctx;
+    (void)stack_size;
+    ctx = malloc(sizeof(*ctx));
+    if (ctx != NULL) {
+        ctx->entry = entry;
+        ctx->arg = arg;
+        ctx->is_root = 0;
+    }
+    return (struct cb_host_context *)ctx;
+}
+
+static void mock_context_switch(struct cb_host_context *from_opaque, struct cb_host_context *to_opaque) {
+    struct mock_context *to = (struct mock_context *)to_opaque;
+    (void)from_opaque;
+    if (to->entry != NULL) {
+        void (*entry)(void *) = to->entry;
+        to->entry = NULL;
+        entry(to->arg);
+    }
+}
+
+static void mock_context_destroy(struct cb_host_context *ctx_opaque) {
+    struct mock_context *ctx = (struct mock_context *)ctx_opaque;
+    if (!ctx->is_root)
+        free(ctx);
+}
+
+static int mock_console_poll(int timeout_ms) { (void)timeout_ms; return 0; }
+static cb_ssize_t mock_console_read(void *buf, size_t count) { (void)buf; (void)count; return 0; }
+static cb_ssize_t mock_console_write(int stream, const void *buf, size_t count) { (void)stream; (void)buf; return (cb_ssize_t)count; }
+static uint64_t mock_monotonic(void) { return 1000; }
+static uint64_t mock_wall(void) { return 1000000; }
+static void mock_yield(void) { }
+static void mock_fatal(const char *msg) { (void)msg; exit(1); }
+
+static const struct cb_host_ops_v1 mock_host_ops = {
+    CB_ABI_VERSION_V1,
+    sizeof(struct cb_host_ops_v1),
+    mock_allocate,
+    mock_resize,
+    mock_release,
+    mock_context_root,
+    mock_context_create,
+    mock_context_switch,
+    mock_context_destroy,
+    mock_console_poll,
+    mock_console_read,
+    mock_console_write,
+    mock_monotonic,
+    mock_wall,
+    mock_yield,
+    mock_fatal
+};
+
+static void test_host_contract(void)
+{
+    run_host_conformance_harness(&mock_host_ops);
+    run_host_conformance_harness(cb_linux_host_ops());
+}
+
 
 static struct cb_vfs_node *null_mount_root(struct cb_vfs_mount *mount)
 {
