@@ -5,5 +5,7 @@
     typedef char cb_copyright_notice[(sizeof(message) > 0) ? 1 : -1]
 #define __RCSID(message) \
     typedef char cb_rcsid_notice[(sizeof(message) > 0) ? 1 : -1]
+#define __strong_alias(alias, symbol)
+#define __UNCONST(pointer) ((void *)(uintptr_t)(const void *)(pointer))
 
 #endif

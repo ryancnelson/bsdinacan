@@ -73,6 +73,14 @@ if ! matches '\bmemcmp[[:space:]]*\(' "$memory_source" ||
     echo 'FAIL: ordinary memcmp source does not use the private veneer' >&2
     exit 1
 fi
+if ! matches '\bstrchr[[:space:]]*\(' "$memory_source" ||
+        nm -u "$memory_object" |
+            matches '[[:space:]]U[[:space:]]+strchr$' ||
+        ! nm -u "$memory_object" |
+            matches '[[:space:]]U[[:space:]]+cb_libc_strchr$'; then
+    echo 'FAIL: ordinary strchr source does not use the private veneer' >&2
+    exit 1
+fi
 if ! matches '\berrno\b' "$source_file"; then
     echo 'FAIL: ordinary command does not exercise the errno lvalue' >&2
     exit 1

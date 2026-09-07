@@ -104,7 +104,7 @@ calculation from NetBSD's separately archived, also-unmodified generic
 [LIBC.md](LIBC.md) for the compatibility hierarchy, heap ownership contract,
 and route toward pkgsrc.
 
-The same pattern now supplies NetBSD `strcmp` and `memcmp`; ordinary source uses
+The same pattern now supplies NetBSD `strcmp`, `memcmp`, and `strchr`; ordinary source uses
 their standard spellings while linking only to private cannedBSD symbols.
 
 The allocation veneer now includes overflow-checked `calloc` and

@@ -2065,6 +2065,18 @@ static void test_netbsd_memcmp(void)
         fail("NetBSD memcmp semantics");
 }
 
+static void test_netbsd_strchr(void)
+{
+    char text[] = "abca";
+
+    if (cb_libc_strchr(text, 'a') != text ||
+        cb_libc_strchr(text, 'c') != text + 2 ||
+        cb_libc_strchr(text, '\0') != text + 4 ||
+        cb_libc_strchr(text, 'z') != NULL ||
+        cb_libc_strchr(text, 0x161) != text + 0)
+        fail("NetBSD strchr semantics");
+}
+
 int main(void)
 {
     test_netbsd_strlen();
@@ -2072,6 +2084,7 @@ int main(void)
     test_netbsd_memcpy();
     test_netbsd_memmove();
     test_netbsd_memcmp();
+    test_netbsd_strchr();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();

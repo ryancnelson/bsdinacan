@@ -24,6 +24,9 @@ memmove_hash=a28ca02301f0800d67b1d8b35e1d1021b7600deb6b7e82f4179023aa22f7756b
 memcmp_source=upstream/netbsd/common/lib/libc/string/memcmp.c
 memcmp_object=$build_path/netbsd_memcmp.o
 memcmp_hash=a926ba117d7a044631da27bc301769607072bdf42995e4d49dbc00139643d5ce
+strchr_source=upstream/netbsd/common/lib/libc/string/strchr.c
+strchr_object=$build_path/netbsd_strchr.o
+strchr_hash=ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -178,6 +181,33 @@ if nm -u "$memcmp_object" | rg -q '[[:space:]]U[[:space:]]+memcmp$'; then
 fi
 if ! ar t "$archive_file" | rg -q '^netbsd_memcmp\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memcmp' >&2
+    exit 1
+fi
+if [[ ! -f $strchr_source ]] ||
+        [[ $(sha256sum "$strchr_source" | awk '{print $1}') != "$strchr_hash" ]]; then
+    echo 'FAIL: pinned NetBSD strchr source is missing or changed' >&2
+    exit 1
+fi
+if ! rg -q "$strchr_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD strchr provenance does not match the pin' >&2
+    exit 1
+fi
+if rg -q '\bassert[[:space:]]*\(' "$strchr_source"; then
+    echo 'FAIL: the import-only assert shim is unsafe for strchr' >&2
+    exit 1
+fi
+if [[ ! -f $strchr_object ]] ||
+        ! nm "$strchr_object" |
+            rg -q '[[:space:]]T[[:space:]]+cb_libc_strchr$'; then
+    echo 'FAIL: NetBSD strchr was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$strchr_object" | rg -q '[[:space:]]U[[:space:]]+strchr$'; then
+    echo 'FAIL: NetBSD strchr object imports host strchr' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | rg -q '^netbsd_strchr\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD strchr' >&2
     exit 1
 fi
 

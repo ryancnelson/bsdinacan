@@ -15,3 +15,8 @@ int memory_source_compare(const void *left, const void *right, size_t count)
 {
     return memcmp(left, right, count);
 }
+
+char *memory_source_find(const char *text, int character)
+{
+    return strchr(text, character);
+}

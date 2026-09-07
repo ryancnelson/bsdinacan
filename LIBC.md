@@ -48,7 +48,7 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
-  `memmove`, and `memcmp` under private link names; the copy routines use the
+  `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.

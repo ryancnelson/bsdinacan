@@ -101,6 +101,10 @@ runtime model before the human-facing demo grows.
   inventory identified `memcmp` as a missing independent dependency. Import
   the generic routine unchanged under a private link name and prove zero-length,
   equality, unsigned ordering, archive provenance, and ordinary-source routing.
+- [x] **Iteration 26: NetBSD `strchr`.** Continue the pinned `printenv` inventory
+  with its smallest independent missing string operation. Import NetBSD's
+  generic routine unchanged and prove first-match, missing-character, terminal
+  NUL, integer conversion, provenance, archive, and ordinary-source behavior.
 
 ## Priority 2 — usable-system demo
 

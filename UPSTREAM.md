@@ -139,3 +139,19 @@ size and integer types without importing a host ABI. Hash, object, archive, and
 ordinary-source checks exclude host `memcmp`. Direct tests cover zero length,
 equality, both order directions, and unsigned high-bit bytes. Future ARM EABI
 builds still require the alias support noted for the other memory routines.
+
+## NetBSD `strchr`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `common/lib/libc/string/strchr.c` /
+  `upstream/netbsd/common/lib/libc/string/strchr.c`
+- SHA-256: `ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9`
+- Embedded RCS identifier: `$NetBSD: strchr.c,v 1.7 2020/04/07 08:07:58 skrll Exp $`
+- License: file-specific three-clause Regents license, retained verbatim.
+
+The source is byte-for-byte unchanged and builds as `cb_libc_strchr`. A minimal
+import-only `namespace.h` avoids pulling NetBSD's complete internal namespace
+into cannedBSD; the upstream `index` alias is not part of the advertised libc
+surface. Direct and ordinary-source tests cover first match, later match,
+terminal NUL, absence, and conversion of the search `int` to `char`.

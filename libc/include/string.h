@@ -5,6 +5,7 @@
 
 #define strerror cb_libc_strerror
 #define strlen cb_libc_strlen
+#define strchr cb_libc_strchr
 
 #if defined(CANNEDBSD_BUILDING_LIBC_MEMCMP)
 #if defined(__GNUC__) || defined(__clang__)

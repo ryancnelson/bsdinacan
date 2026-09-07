@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-07
-**Iteration count:** 25 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 26 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -308,9 +308,17 @@ ordering; source tests pin its hash and provenance and require an ordinary
 translation unit to resolve only to `cb_libc_memcmp`. The complete Linux gate
 passes in the Alpine runner environment, and the Retro68 application builds.
 
+Iteration 26 continued that inventory with its smallest independent missing
+operation, `strchr`. The behavioral test was first red with an undefined
+`cb_libc_strchr`. NetBSD's generic source is now imported byte-for-byte unchanged
+with a minimal import namespace shim; its unused `index` alias is deliberately
+outside the advertised libc surface. Direct tests cover first and later matches,
+missing input, the terminal NUL, and conversion of `int` to `char`. Source tests
+pin provenance and require private ordinary-source and archive symbols.
+
 ## What's next
 
-Continue the pinned NetBSD `printenv` compile inventory. After `memcmp`, choose
+Continue the pinned NetBSD `printenv` compile inventory. After `strchr`, choose
 the smallest independently testable missing interface from its actual compiler
 diagnostics. Do not grow printf, getopt, or locale speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
