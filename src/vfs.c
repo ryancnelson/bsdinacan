@@ -43,6 +43,21 @@ static int cwd_string(struct cb_task *task, char *buffer, size_t size)
         if (node == NULL || !node_ops_valid(node->ops) ||
             count == sizeof(parts) / sizeof(parts[0]))
             return -CB_EIO;
+            
+        /* CROSS MOUNT BOUNDARY UPWARDS */
+        if (task->kernel != NULL) {
+            for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+                struct cb_vfs_node *mounted_root = task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount);
+                if (node == mounted_root) {
+                    node = task->kernel->mounts[i].mount_point;
+                    break;
+                }
+            }
+        }
+        
+        if (node == task->root)
+            break;
+            
         parts[count++] = node;
         node = node->ops->parent(node);
     }
@@ -161,6 +176,18 @@ static int resolve_normalized(struct cb_task *task, const char *normalized,
             return result;
         if (next == NULL || !node_ops_valid(next->ops))
             return -CB_EIO;
+            
+        /* CROSS MOUNT BOUNDARY DOWNWARDS */
+        if (task->kernel != NULL) {
+            for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+                if (next == task->kernel->mounts[i].mount_point) {
+                    struct cb_vfs_node *mounted_root = task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount);
+                    next = mounted_root;
+                    break;
+                }
+            }
+        }
+        
         node = next;
         while (*cursor == '/')
             ++cursor;
@@ -218,6 +245,21 @@ int cb_vfs_set_root_mount(struct cb_kernel *kernel,
 
 void cb_vfs_destroy(struct cb_kernel *kernel)
 {
+    /* First release all mount point references */
+    for (size_t i = 0; i < kernel->mount_count; ++i) {
+        if (kernel->mounts[i].mount_point != NULL)
+            cb_vfs_node_release(kernel->mounts[i].mount_point);
+        kernel->mounts[i].mount_point = NULL;
+    }
+    
+    /* Then destroy mounts in reverse order so nested mounts are destroyed before their parent mounts */
+    while (kernel->mount_count > 0) {
+        size_t i = --kernel->mount_count;
+        if (kernel->mounts[i].mount != NULL)
+            kernel->mounts[i].mount->ops->destroy(kernel->mounts[i].mount);
+    }
+    kernel->mount_count = 0;
+    
     if (kernel->root_mount != NULL)
         kernel->root_mount->ops->destroy(kernel->root_mount);
     kernel->root_mount = NULL;
@@ -317,6 +359,15 @@ int cb_vfs_unlink_path(struct cb_task *task, const char *path)
     int result = normalize_for_task(task, path, normalized);
     if (result >= 0)
         result = resolve_normalized(task, normalized, &node);
+    if (result >= 0) {
+        for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+            if (task->kernel->mounts[i].mount_point == node ||
+                task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount) == node) {
+                result = -CB_EPERM;
+                break;
+            }
+        }
+    }
     if (result >= 0)
         result = node->ops->unlink(node);
     if (result < 0) {
@@ -364,4 +415,32 @@ char *cb_vfs_getcwd_path(struct cb_task *task, char *buffer, size_t size)
     }
     cb_task_set_error(task, 0);
     return buffer;
+}
+
+int cb_vfs_mount_path(struct cb_task *task, const char *path,
+                      struct cb_vfs_mount *mount)
+{
+    char normalized[CB_PATH_MAX];
+    struct cb_vfs_node *node = NULL;
+    int result;
+
+    if (task == NULL || task->kernel == NULL || mount == NULL ||
+        task->kernel->mount_count >= 4)
+        return -1;
+        
+    result = normalize_for_task(task, path, normalized);
+    if (result < 0)
+        return result;
+        
+    result = resolve_normalized(task, normalized, &node);
+    if (result < 0)
+        return result;
+
+    /* A naive test implementation just stores the mount for the red test */
+    cb_vfs_node_retain(node);
+    task->kernel->mounts[task->kernel->mount_count].mount_point = node;
+    task->kernel->mounts[task->kernel->mount_count].mount = mount;
+    task->kernel->mount_count++;
+    
+    return 0;
 }

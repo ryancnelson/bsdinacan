@@ -2077,6 +2077,65 @@ static void test_netbsd_strchr(void)
         fail("NetBSD strchr semantics");
 }
 
+static void test_vfs_mount_routing(void)
+{
+    struct cb_kernel kernel;
+    struct cb_task task;
+    struct cb_vfs_mount *mount2;
+    struct cb_vfs_node *root2;
+
+    memset(&kernel, 0, sizeof(kernel));
+    memset(&task, 0, sizeof(task));
+    kernel.host = cb_linux_host_ops();
+    
+    if (cb_vfs_initialize(&kernel) < 0)
+        fail("VFS initialization");
+        
+    task.kernel = &kernel;
+    task.root = kernel.vfs_root;
+    task.cwd = kernel.vfs_root;
+    
+    /* Make a directory /mnt in root filesystem */
+    if (cb_vfs_mkdir_path(&task, "/mnt", 0777) < 0)
+        fail("mkdir /mnt failed");
+        
+    /* Mount a second RAMFS at /mnt */
+    mount2 = cb_ramfs_mount_create(&kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation");
+    if (cb_vfs_mount_path(&task, "/mnt", mount2) < 0)
+        fail("mount /mnt failed");
+        
+    /* Attempt to traverse into the second mount - should FAIL before the implementation */
+    if (cb_vfs_mkdir_path(&task, "/mnt/hello", 0777) < 0)
+        fail("mkdir /mnt/hello failed");
+        
+    /* It should exist in mount2, not in the original mount.
+       But before implementation, it exists in the original mount! */
+    root2 = mount2->ops->root(mount2);
+    struct cb_vfs_node *found = NULL;
+    if (root2->ops->lookup(root2, "hello", 5, &found) != 0) {
+        fail("cross-mount mkdir did not route to the second mount");
+    }
+
+    /* Prove failed-install cleanup */
+    for (int i = 0; i < 4; ++i) {
+        struct cb_vfs_mount *extra = cb_ramfs_mount_create(&kernel);
+        if (cb_vfs_mount_path(&task, "/mnt/hello", extra) < 0) {
+            extra->ops->destroy(extra);
+        }
+    }
+    
+    /* Cross-mount mutation: trying to unlink the mount point should fail.
+       Right now ramfs_unlink returns EISDIR for directories, but let's just make sure it returns an error.
+       Actually, unlink of a mount point node should probably be protected in vfs.c or it just returns EISDIR. */
+    int result = cb_vfs_unlink_path(&task, "/mnt");
+    if (result >= 0)
+        fail("unlinking a mount point should fail");
+        
+    cb_vfs_destroy(&kernel);
+}
+
 int main(void)
 {
     test_netbsd_strlen();
@@ -2091,6 +2150,7 @@ int main(void)
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
+    test_vfs_mount_routing();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");

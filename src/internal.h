@@ -111,6 +111,10 @@ struct cb_vfs_node_ops {
     const char *(*name)(struct cb_vfs_node *node);
 };
 
+struct cb_vfs_mount_entry {
+    struct cb_vfs_node *mount_point;
+    struct cb_vfs_mount *mount;
+};
 struct cb_vfs_mount {
     const struct cb_vfs_mount_ops *ops;
     struct cb_kernel *kernel;
@@ -200,6 +204,8 @@ struct cb_kernel {
     int boot_status;
     int boot_finished;
     struct cb_vfs_mount *root_mount;
+    struct cb_vfs_mount_entry mounts[4];
+    size_t mount_count;
     struct cb_vfs_node *vfs_root;
     uint64_t next_inode;
     struct cb_program *programs[CB_MAX_PROGRAMS];
@@ -235,6 +241,8 @@ void cb_executor_program_destroy(struct cb_kernel *kernel,
 int cb_vfs_initialize(struct cb_kernel *kernel);
 int cb_vfs_set_root_mount(struct cb_kernel *kernel,
                           struct cb_vfs_mount *mount);
+int cb_vfs_mount_path(struct cb_task *task, const char *path,
+                      struct cb_vfs_mount *mount);
 void cb_vfs_destroy(struct cb_kernel *kernel);
 struct cb_open_file *cb_vfs_open(struct cb_task *task, const char *path,
                                  int flags, uint32_t mode);
