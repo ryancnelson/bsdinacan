@@ -45,6 +45,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
+- `stdlib.h`: a non-returning `exit`, declared `__dead`
+  (`sys/cdefs.h`), that reuses the existing task-exit ABI operation, so heap
+  and descriptor reclamation are identical to a program simply returning from
+  `main`.
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
