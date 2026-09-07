@@ -8,7 +8,8 @@
 cannedBSD is a small user-space operating system hosted inside one native process.
 Its portable core owns tasks, descriptors, pipes, paths, files, and shell semantics;
 a narrow host adapter supplies irreducible platform services. The first host is
-Linux. The design deliberately avoids CPU emulation and does not pretend that
+Linux; Solaris 9 SPARC now passes the shared native runtime gate. The design
+deliberately avoids CPU emulation and does not pretend that
 internal tasks are host processes.
 
 The normative v0.1 contract is in `SPEC.md`. Historical research and design
@@ -93,6 +94,26 @@ on the original scheduler stack fixed the interactive run. Guest acceptance is
 separate from CI compilation; see `platform/mac68k/README.md` for the transfer
 and evidence procedure. This is initial System 7 evidence, not verification of
 other classic hosts or the full Linux suite on the Mac.
+
+The September 7 review corrections pass the complete Linux `make ci` gate:
+
+- `openfailureprobe` proves descriptor exhaustion and open-object allocation
+  failure preserve existing file contents under `O_TRUNC`; descriptor exhaustion
+  also prevents accidental creation.
+- A failed early pipeline redirection preserves the shell's inherited stdin,
+  tested through both the launcher and interactive shell.
+- `pathwalkprobe` proves path lookup checks missing and non-directory prefixes
+  before processing `..`, while preserving valid root confinement and mkdir
+  with trailing slashes.
+- Analyzer builds now compile objects instead of combining `-fanalyzer` with
+  `-fsyntax-only`. A known null dereference must fail with the analyzer's own
+  diagnostic, and a valid control must produce an object.
+
+The shared POSIX backend adds the Solaris 9 stack convention and clocks.
+On September 7, `/bin/ksh tools/solaris9-build.sh` passed a clean native build,
+the complete core suite, launcher regression, and acceptance pipelines using
+GCC 3.4.6 on SunOS 5.9 sun4m. The artifact is ELF 32-bit MSB SPARC.
+Preparation and bounded qualification evidence are in `SOLARIS9.md`.
 
 ```text
 $ make test
@@ -369,7 +390,7 @@ The original bounded bootstrap `wc` remains scaffolding.
 | Portable runtime core | `src/core.c` |
 | Generic VFS | `src/vfs.c` |
 | RAM filesystem backend | `src/ramfs.c` |
-| Linux host adapter | `src/host_linux.c` |
+| Linux/Solaris 9 POSIX host adapter | `src/host_posix.c` |
 | Native commands | `src/programs.c` |
 | Shell | `src/shell.c` |
 | Tests | `tests/test_core.c` |

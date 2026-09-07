@@ -1,5 +1,12 @@
 CC ?= cc
 AR ?= ar
+HOST ?= linux
+ifeq ($(HOST),solaris9)
+SHELL := /bin/ksh
+CPPFLAGS ?= -D_XOPEN_SOURCE=600 -D__EXTENSIONS__ -DCANNEDBSD_SOLARIS9 -Icompat/solaris9/include -Iinclude -Isrc
+CFLAGS ?= -std=gnu99 -Wall -Wextra -Werror -pedantic -g -O2
+LDLIBS ?= -lrt
+endif
 CPPFLAGS ?= -D_XOPEN_SOURCE=700 -Iinclude -Isrc
 CFLAGS ?= -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O2
 LDFLAGS ?=
@@ -22,7 +29,7 @@ CORE_SOURCES := \
 	commands/printenv_module.c \
 	src/core.c \
 	src/executor.c \
-	src/host_linux.c \
+	src/host_posix.c \
 	src/programs.c \
 	src/ramfs.c \
 	src/shell.c \
@@ -211,9 +218,9 @@ $(LIBC_POLL_TEST_OBJECT): tests/libc_poll_source.c include/cannedbsd/abi.h \
 
 check-architecture:
 	@! rg -n '\b(fork|vfork|execve|posix_spawn|system|popen)[[:space:]]*\(' src include \
-		-g '!host_linux.c' || { echo 'forbidden host process API found'; exit 1; }
+		-g '!host_posix.c' || { echo 'forbidden host process API found'; exit 1; }
 	@! rg -n '#include[[:space:]]*<((sys/|linux/)|unistd\.h)' src include \
-		-g '!host_linux.c' || { echo 'host header leaked outside backend'; exit 1; }
+		-g '!host_posix.c' || { echo 'host header leaked outside backend'; exit 1; }
 	tests/test_architecture.sh
 
 check-build-modes:
@@ -222,18 +229,14 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
-test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
+test-core: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
-		$(LIBC_STDIO_TEST_OBJECT) check-architecture
+		$(LIBC_STDIO_TEST_OBJECT)
 	$(TEST_PROGRAM)
-	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
-	CC='$(CC)' tests/test_mac_autorun.sh
-	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
-	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
-	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh
-	BUILD_PATH='$(BUILD)' tests/test_netbsd_source.sh
-	BUILD_PATH='$(BUILD)' tests/test_netbsd_libc_source.sh
-	PROGRAM_PATH='$(PROGRAM)' tests/test_printenv_behavior.sh
+
+.PHONY: test-core test-runtime
+test-runtime: test-core
+	PROGRAM_PATH='$(PROGRAM)' $(SHELL) tests/test_launcher.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
@@ -243,75 +246,40 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
 		test "$$output" = 5 || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
 
+test: test-runtime check-architecture
+	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
+	CC='$(CC)' tests/test_mac_autorun.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
+	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh
+	BUILD_PATH='$(BUILD)' tests/test_netbsd_source.sh
+	BUILD_PATH='$(BUILD)' tests/test_netbsd_libc_source.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_printenv_behavior.sh
+
 sanitize:
 	$(MAKE) clean
 	$(MAKE) CC='$(SANITIZE_CC)' BUILD_VARIANT=sanitize CFLAGS='-std=c99 -Wall -Wextra -Werror -Wpedantic -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined' LDFLAGS='-fsanitize=address,undefined' test
 
-analyze:
-	$(CC) $(CPPFLAGS) -std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only libc/cb_libc.c \
-		$(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_wc_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only commands/wc.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_yes_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/yes/yes.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_printenv_main \
-		-Wno-strict-prototypes \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/printenv/printenv.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
-		-Dstrlen=cb_libc_strlen \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strlen.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
-		-DCANNEDBSD_BUILDING_LIBC_STRCMP \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strcmp.c
-	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_allocation_source.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
-		-DCANNEDBSD_BUILDING_LIBC_MEMCPY \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memcpy.c
-	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_memory_source.c
-	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_environ_source.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_exitprobe_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_exit_probe.c
-	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_stdio_source.c
+ANALYZE_SOURCES ?= libc/cb_libc.c $(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
+ANALYZE_OBJECTS = $(patsubst %.c,$(BUILD)/analysis/%.o,$(ANALYZE_SOURCES))
 
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_getoptprobe_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_getopt_probe.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_errxprobe_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_errx_probe.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
-		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memmove.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
-		-DCANNEDBSD_BUILDING_LIBC_MEMCMP \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/memcmp.c
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strchr.c
-	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_truncate_probe.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_err_probe_main \
-		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_err_probe.c
+$(BUILD)/analysis/%.o: %.c include/cannedbsd/abi.h src/internal.h
+	mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+.PHONY: analyze-objects check-analyzer
+analyze-objects: $(ANALYZE_OBJECTS) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) \
+		$(PRINTENV_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) \
+		$(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) \
+		$(ERRPROBE_COMMAND_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
+		$(LIBC_POLL_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
+		$(LIBC_STDIO_TEST_OBJECT) \
+		$(LIBC_OBJECTS) $(LIBC_ALLOCATION_TEST_OBJECT) $(LIBC_MEMORY_TEST_OBJECT)
+
+analyze:
+	$(MAKE) BUILD_VARIANT=analyze CFLAGS='-std=c99 -Wall -Wextra -Werror -Wpedantic -g -O0 -fanalyzer' analyze-objects
+
+check-analyzer:
+	tests/test_analyzer.sh
 
 ci:
 	python3 tests/test_mac_guest.py
@@ -321,6 +289,7 @@ ci:
 	$(MAKE) check-build-modes
 	$(MAKE) clean test
 	$(MAKE) analyze
+	$(MAKE) check-analyzer
 
 clean:
 	rm -rf $(BUILD_ROOT)

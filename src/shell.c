@@ -477,6 +477,8 @@ static int run_pipeline(const struct cb_api_v1 *api, struct stage *stages,
     for (index = 0; index < stage_count; ++index) {
         inputs[index] = -1;
         outputs[index] = -1;
+    }
+    for (index = 0; index < stage_count; ++index) {
         if (open_redirections(api, &stages[index], &inputs[index],
                               &outputs[index]) < 0) {
             shell_error(api, api->strerror(api->get_errno()));

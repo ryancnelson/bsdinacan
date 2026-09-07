@@ -19,7 +19,7 @@ int main(int argc, char **argv)
         usage(argv[0]);
         return 2;
     }
-    kernel = cb_kernel_create(cb_linux_host_ops());
+    kernel = cb_kernel_create(cb_posix_host_ops());
     if (kernel == NULL) {
         fprintf(stderr, "cannedBSD: cannot create kernel\n");
         return 1;

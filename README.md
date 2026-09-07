@@ -76,6 +76,10 @@ sanitizer-linked artifact.
 `make ci` is the canonical pre-push and Woodpecker gate. See
 [CI.md](CI.md) for its exact stages and safety constraints.
 
+For the native Solaris 9 SPARC build, toolchain preparation, and guest runtime
+gate, see [SOLARIS9.md](SOLARIS9.md). It uses the shared POSIX host adapter with
+the original Solaris 9 context-stack convention.
+
 Coding agents start with [AGENTS.md](AGENTS.md), claim work only from
 [BACKLOG.md](BACKLOG.md), and use [CAPABILITY-MAP.md](CAPABILITY-MAP.md) to
 understand later dependencies.

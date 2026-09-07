@@ -145,36 +145,79 @@ int cb_test_path_normalize(const char *cwd, const char *path,
     return 0;
 }
 
-static int normalize_for_task(struct cb_task *task, const char *path,
-                              char normalized[CB_PATH_MAX])
+/* Preserve components until lookup: file/.. and missing/.. are errors. */
+static int absolute_for_task(struct cb_task *task, const char *path,
+                             char absolute[CB_PATH_MAX])
 {
     char cwd[CB_PATH_MAX];
-    int result = cwd_string(task, cwd, sizeof(cwd));
+    int result;
+    if (path == NULL)
+        return -CB_EINVAL;
+    if (path[0] == '\0')
+        return -CB_ENOENT;
+    if (path[0] == '/') {
+        if (strlen(path) >= CB_PATH_MAX)
+            return -CB_ENAMETOOLONG;
+        strcpy(absolute, path);
+        return 0;
+    }
+    result = cwd_string(task, cwd, sizeof(cwd));
     if (result < 0)
         return result;
-    return cb_test_path_normalize(cwd, path, normalized, CB_PATH_MAX);
+    result = snprintf(absolute, CB_PATH_MAX, "%s%s%s", cwd,
+                      strcmp(cwd, "/") == 0 ? "" : "/", path);
+    return result < 0 || result >= CB_PATH_MAX ? -CB_ENAMETOOLONG : 0;
 }
 
-static int resolve_normalized(struct cb_task *task, const char *normalized,
-                              struct cb_vfs_node **node_out)
+static int require_directory(struct cb_vfs_node *node)
+{
+    struct cb_stat_v1 info;
+    int result;
+    if (node == NULL || !node_ops_valid(node->ops))
+        return -CB_EIO;
+    result = node->ops->stat(node, &info);
+    if (result < 0)
+        return result;
+    return info.type == CB_NODE_DIRECTORY ? 0 : -CB_ENOTDIR;
+}
+
+static int resolve_path(struct cb_task *task, const char *path,
+                        struct cb_vfs_node **node_out)
 {
     struct cb_vfs_node *node = task->root;
-    const char *cursor = normalized;
+    const char *cursor = path;
     while (*cursor == '/')
         ++cursor;
     while (*cursor != '\0') {
         const char *start = cursor;
         struct cb_vfs_node *next = NULL;
         size_t length;
-        int result;
+        int result = require_directory(node);
+        if (result < 0)
+            return result;
         while (*cursor != '\0' && *cursor != '/')
             ++cursor;
         length = (size_t)(cursor - start);
-        if (node == NULL || !node_ops_valid(node->ops))
-            return -CB_EIO;
-        result = node->ops->lookup(node, start, length, &next);
-        if (result < 0)
-            return result;
+        if (length == 1 && start[0] == '.') {
+            next = node;
+        } else if (length == 2 && start[0] == '.' && start[1] == '.') {
+            /* ".." at a mount root resumes from the covered mount point. */
+            struct cb_vfs_node *from = node;
+            if (task->kernel != NULL) {
+                for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+                    struct cb_vfs_mount *mount = task->kernel->mounts[i].mount;
+                    if (from == mount->ops->root(mount)) {
+                        from = task->kernel->mounts[i].mount_point;
+                        break;
+                    }
+                }
+            }
+            next = from == task->root ? from : from->ops->parent(from);
+        } else {
+            result = node->ops->lookup(node, start, length, &next);
+            if (result < 0)
+                return result;
+        }
         if (next == NULL || !node_ops_valid(next->ops))
             return -CB_EIO;
 
@@ -190,6 +233,11 @@ static int resolve_normalized(struct cb_task *task, const char *normalized,
         }
 
         node = next;
+        if (*cursor == '/') {
+            result = require_directory(node);
+            if (result < 0)
+                return result;
+        }
         while (*cursor == '/')
             ++cursor;
     }
@@ -214,7 +262,7 @@ static int resolve_parent(struct cb_task *task, const char *normalized,
         memcpy(parent_path, normalized, length);
         parent_path[length] = '\0';
     }
-    return resolve_normalized(task, parent_path, parent_out);
+    return resolve_path(task, parent_path, parent_out);
 }
 
 int cb_vfs_initialize(struct cb_kernel *kernel)
@@ -273,10 +321,10 @@ struct cb_open_file *cb_vfs_open(struct cb_task *task, const char *path,
     char normalized[CB_PATH_MAX];
     struct cb_vfs_node *node = NULL;
     struct cb_open_file *file = NULL;
-    int result = normalize_for_task(task, path, normalized);
+    int result = absolute_for_task(task, path, normalized);
     if (result < 0)
         goto fail;
-    result = resolve_normalized(task, normalized, &node);
+    result = resolve_path(task, normalized, &node);
     if (result == -CB_ENOENT && (flags & CB_O_CREAT)) {
         struct cb_vfs_node *parent;
         const char *name;
@@ -309,9 +357,9 @@ int cb_vfs_stat_path(struct cb_task *task, const char *path,
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
-    result = normalize_for_task(task, path, normalized);
+    result = absolute_for_task(task, path, normalized);
     if (result >= 0)
-        result = resolve_normalized(task, normalized, &node);
+        result = resolve_path(task, normalized, &node);
     if (result >= 0)
         result = node->ops->stat(node, stat_buffer);
     if (result < 0) {
@@ -354,9 +402,9 @@ int cb_vfs_truncate_path(struct cb_task *task, const char *path,
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
-    result = normalize_for_task(task, path, normalized);
+    result = absolute_for_task(task, path, normalized);
     if (result >= 0)
-        result = resolve_normalized(task, normalized, &node);
+        result = resolve_path(task, normalized, &node);
     if (result >= 0)
         result = cb_vfs_truncate_node(node, length);
     cb_task_set_error(task, result < 0 ? -result : 0);
@@ -369,16 +417,22 @@ int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode)
     struct cb_vfs_node *node;
     struct cb_vfs_node *parent;
     const char *name;
-    int result = normalize_for_task(task, path, normalized);
+    int result = absolute_for_task(task, path, normalized);
     if (result < 0)
         goto fail;
-    result = resolve_normalized(task, normalized, &node);
+    result = resolve_path(task, normalized, &node);
     if (result == 0) {
         result = -CB_EEXIST;
         goto fail;
     }
     if (result != -CB_ENOENT)
         goto fail;
+    /* A trailing slash requires a directory, which mkdir is creating. */
+    {
+        size_t length = strlen(normalized);
+        while (length > 1 && normalized[length - 1] == '/')
+            normalized[--length] = '\0';
+    }
     result = resolve_parent(task, normalized, &parent, &name);
     if (result < 0)
         goto fail;
@@ -398,9 +452,9 @@ int cb_vfs_unlink_path(struct cb_task *task, const char *path)
 {
     char normalized[CB_PATH_MAX];
     struct cb_vfs_node *node;
-    int result = normalize_for_task(task, path, normalized);
+    int result = absolute_for_task(task, path, normalized);
     if (result >= 0)
-        result = resolve_normalized(task, normalized, &node);
+        result = resolve_path(task, normalized, &node);
     if (result >= 0) {
         for (size_t i = 0; i < task->kernel->mount_count; ++i) {
             if (task->kernel->mounts[i].mount_point == node ||
@@ -425,9 +479,9 @@ int cb_vfs_chdir_path(struct cb_task *task, const char *path)
     char normalized[CB_PATH_MAX];
     struct cb_vfs_node *node;
     struct cb_stat_v1 stat_buffer;
-    int result = normalize_for_task(task, path, normalized);
+    int result = absolute_for_task(task, path, normalized);
     if (result >= 0)
-        result = resolve_normalized(task, normalized, &node);
+        result = resolve_path(task, normalized, &node);
     if (result >= 0)
         result = node->ops->stat(node, &stat_buffer);
     if (result >= 0 && stat_buffer.type != CB_NODE_DIRECTORY)
@@ -493,11 +547,11 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     if (task->kernel->mount_count >= 4)
         return -CB_ENOMEM;
 
-    result = normalize_for_task(task, path, normalized);
+    result = absolute_for_task(task, path, normalized);
     if (result < 0)
         return result;
 
-    result = resolve_normalized(task, normalized, &node);
+    result = resolve_path(task, normalized, &node);
     if (result < 0)
         return result;
 

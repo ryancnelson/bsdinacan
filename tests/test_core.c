@@ -266,7 +266,7 @@ static void expect_path(const char *cwd, const char *path,
 
 static void test_allocation_cleanup(void)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
     base_allocate = host.allocate;
@@ -298,7 +298,7 @@ static void test_allocation_cleanup(void)
 
 static void test_uninitialized_host_memory(void)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
     base_allocate = host.allocate;
@@ -327,7 +327,7 @@ static void test_uninitialized_host_memory(void)
 static void test_host_contract(void)
 {
     cb_harness_run_mock_api_validation(cb_kernel_create, cb_kernel_destroy);
-    cb_harness_test_real_conformance_contract(cb_linux_host_ops());
+    cb_harness_test_real_conformance_contract(cb_posix_host_ops());
 }
 
 static struct cb_vfs_node *null_mount_root(struct cb_vfs_mount *mount)
@@ -361,8 +361,8 @@ static void test_vfs_contract(void)
 
     memset(&kernel, 0, sizeof(kernel));
     memset(&other_kernel, 0, sizeof(other_kernel));
-    kernel.host = cb_linux_host_ops();
-    other_kernel.host = cb_linux_host_ops();
+    kernel.host = cb_posix_host_ops();
+    other_kernel.host = cb_posix_host_ops();
     mount = cb_ramfs_mount_create(&kernel);
     if (mount == NULL)
         fail("RAMFS mount creation");
@@ -452,7 +452,7 @@ static void test_vfs_contract(void)
 
 static void test_truncate_vfs_contract(void)
 {
-    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    struct cb_kernel *kernel = cb_kernel_create(cb_posix_host_ops());
     struct cb_task task;
     struct cb_open_file *file;
     struct cb_vfs_node *node;
@@ -473,6 +473,13 @@ static void test_truncate_vfs_contract(void)
         fail("truncate adapter file");
     node = file->object.node;
     original = node->ops;
+    /* The allocation ends at the old prefix: ASan catches tail-member reads.
+       That deliberate short size is what CWE-131 flags, so scope the pragma to
+       the old-ABI table rather than relaxing the analyzer elsewhere. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wanalyzer-allocation-size"
+#endif
     old = malloc(old_size);
     if (old == NULL)
         fail("old VFS table allocation");
@@ -480,7 +487,9 @@ static void test_truncate_vfs_contract(void)
     copy.struct_size = (uint32_t)old_size;
     memcpy(old, &copy, old_size);
     node->ops = old;
-    /* The allocation ends at the old prefix: ASan catches tail-member reads. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
     if (cb_vfs_stat_path(&task, "/tmp/optional", &status) != 0 ||
         cb_vfs_truncate_path(&task, "/tmp/optional", 2) != -1 ||
         error != CB_ENOSYS || file->ops->truncate(file, &task, 2) != -1 ||
@@ -514,7 +523,7 @@ static void test_truncate_vfs_contract(void)
 
 static void test_registration_contract(void)
 {
-    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    struct cb_kernel *kernel = cb_kernel_create(cb_posix_host_ops());
     struct cb_program_v1 candidate = {
         CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "candidate", 0,
         64 * 1024, registration_stub_main
@@ -599,7 +608,7 @@ static void test_executor_contract(void)
         CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), source_name, 0,
         64 * 1024, executor_lifecycle_main
     };
-    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    struct cb_kernel *kernel = cb_kernel_create(cb_posix_host_ops());
     int status;
 
     if (native == NULL || native->abi_version != CB_ABI_VERSION_V1 ||
@@ -1977,12 +1986,23 @@ static int overflowprobe_main(const struct cb_api_v1 *api, int argc,
                            CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0600);
     if (descriptor < 0)
         return 191;
+#if SIZE_MAX > INT64_MAX
     if (api->read(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 192;
     if (api->write(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 193;
+#else
+    /* A 32-bit size_t cannot exceed the ABI's signed 64-bit byte count.
+       Exercise RAMFS addressability without attempting a huge allocation. */
+    if (api->lseek(descriptor, (cb_off_t)SIZE_MAX + 1, CB_SEEK_SET) < 0 ||
+        api->read(descriptor, &byte, 1) != -1 ||
+        api->get_errno() != CB_EINVAL ||
+        api->write(descriptor, &byte, 1) != -1 ||
+        api->get_errno() != CB_ENOSPC)
+        return 192;
+#endif
     if (api->lseek(descriptor, INT64_MAX, CB_SEEK_SET) != INT64_MAX ||
         api->lseek(descriptor, 1, CB_SEEK_CUR) != -1 ||
         api->get_errno() != CB_EINVAL)
@@ -2199,8 +2219,8 @@ static int yesprobe_main(const struct cb_api_v1 *api, int argc,
     int descriptors[2];
     char *yes_argv[] = {(char *)"yes", (char *)"ok", NULL};
     char *reader_argv[] = {(char *)"yesreader", NULL};
-    struct cb_spawn_action_v1 yes_actions[3] = {{0}};
-    struct cb_spawn_action_v1 reader_actions[3] = {{0}};
+    struct cb_spawn_action_v1 yes_actions[3];
+    struct cb_spawn_action_v1 reader_actions[3];
     cb_pid_t yes_pid;
     cb_pid_t reader_pid;
     int yes_status;
@@ -2210,6 +2230,8 @@ static int yesprobe_main(const struct cb_api_v1 *api, int argc,
     (void)argv;
     if (api->pipe(descriptors) < 0)
         return 229;
+    memset(yes_actions, 0, sizeof(yes_actions));
+    memset(reader_actions, 0, sizeof(reader_actions));
     for (index = 0; index < 3; ++index) {
         yes_actions[index].abi_version = CB_ABI_VERSION_V1;
         yes_actions[index].struct_size = sizeof(yes_actions[index]);
@@ -2281,6 +2303,112 @@ static int stdioepipeprobe_main(const struct cb_api_v1 *api, int argc,
         return 238;
     return 0;
 }
+
+static int pathwalkprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    struct cb_stat_v1 info;
+    char cwd[CB_PATH_MAX];
+    char byte;
+    int fd;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    fd = api->open("/tmp/file", CB_O_RDWR | CB_O_CREAT, 0600);
+    if (fd < 0 || api->write(fd, "x", 1) != 1)
+        return 1;
+    if (api->stat("/tmp/file/../file", &info) != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->stat("/tmp/file/.", &info) != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->stat("/tmp/file/", &info) != -1 ||
+        api->get_errno() != CB_ENOTDIR)
+        return 2;
+    if (api->chdir("/missing/../tmp") != -1 ||
+        api->get_errno() != CB_ENOENT ||
+        api->stat("/missing/..", &info) != -1 ||
+        api->get_errno() != CB_ENOENT)
+        return 3;
+    if (api->open("/tmp/file/../file", CB_O_WRONLY | CB_O_TRUNC, 0) != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->unlink("/tmp/file/../file") != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->mkdir("/missing/../created", 0700) != -1 ||
+        api->get_errno() != CB_ENOENT ||
+        api->open("/missing/../created", CB_O_WRONLY | CB_O_CREAT, 0600) != -1 ||
+        api->get_errno() != CB_ENOENT)
+        return 4;
+    if (api->fstat(fd, &info) < 0 || info.size != 1 ||
+        api->lseek(fd, 0, CB_SEEK_SET) != 0 || api->read(fd, &byte, 1) != 1 ||
+        byte != 'x' || api->stat("/created", &info) != -1 ||
+        api->get_errno() != CB_ENOENT)
+        return 5;
+    if (api->chdir("/tmp") < 0 || api->stat("file/../file", &info) != -1 ||
+        api->get_errno() != CB_ENOTDIR ||
+        api->stat("../tmp/./file", &info) < 0 || info.size != 1 ||
+        api->chdir("../../../../tmp//.") < 0 ||
+        api->getcwd(cwd, sizeof(cwd)) == NULL || strcmp(cwd, "/tmp") != 0)
+        return 6;
+    if (api->mkdir("/tmp/new///", 0700) < 0 ||
+        api->stat("/tmp/new/", &info) < 0 || info.type != CB_NODE_DIRECTORY)
+        return 7;
+    return api->close(fd) < 0 ? 8 : 0;
+}
+
+static const struct cb_program_v1 pathwalkprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pathwalkprobe", 0,
+    64 * 1024, pathwalkprobe_main
+};
+
+static int openfailureprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    struct cb_stat_v1 info;
+    char bytes[8];
+    int copies[CB_MAX_FDS];
+    int count = 0;
+    int fd;
+    int result;
+    int error;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    fd = api->open("/tmp/precious", CB_O_RDWR | CB_O_CREAT, 0600);
+    if (fd < 0 || api->write(fd, "precious", 8) != 8)
+        return 1;
+    while (count < CB_MAX_FDS && (result = api->dup(fd)) >= 0)
+        copies[count++] = result;
+    if (api->open("/tmp/precious", CB_O_WRONLY | CB_O_TRUNC, 0) != -1 ||
+        api->get_errno() != CB_EMFILE || api->fstat(fd, &info) < 0 ||
+        info.size != 8)
+        return 2;
+    if (api->open("/tmp/not-created", CB_O_WRONLY | CB_O_CREAT, 0600) != -1 ||
+        api->get_errno() != CB_EMFILE ||
+        api->stat("/tmp/not-created", &info) != -1 ||
+        api->get_errno() != CB_ENOENT)
+        return 3;
+    while (count > 0)
+        api->close(copies[--count]);
+    allocation_failure_countdown = 0;
+    result = api->open("/tmp/precious", CB_O_WRONLY | CB_O_TRUNC, 0);
+    error = api->get_errno();
+    allocation_failure_countdown = -1;
+    if (result != -1 || error != CB_ENOMEM || api->fstat(fd, &info) < 0 ||
+        info.size != 8 || api->lseek(fd, 0, CB_SEEK_SET) != 0 ||
+        api->read(fd, bytes, sizeof(bytes)) != 8 ||
+        memcmp(bytes, "precious", 8) != 0)
+        return 4;
+    result = api->open("/tmp/precious", CB_O_WRONLY | CB_O_TRUNC, 0);
+    if (result < 0 || api->fstat(fd, &info) < 0 || info.size != 0)
+        return 5;
+    api->close(result);
+    return api->close(fd) < 0 ? 6 : 0;
+}
+
+static const struct cb_program_v1 openfailureprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "openfailureprobe", 0,
+    64 * 1024, openfailureprobe_main
+};
 
 static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
                            char *const argv[], char *const envp[])
@@ -2991,7 +3119,7 @@ static const struct cb_program_v1 truncateinterleave_program = {
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
     base_allocate = host.allocate;
@@ -3052,6 +3180,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &processchild_program) < 0 ||
             cb_kernel_register(kernel, &processprobe_program) < 0 ||
             cb_kernel_register(kernel, &ramfsprobe_program) < 0 ||
+            cb_kernel_register(kernel, &pathwalkprobe_program) < 0 ||
+            cb_kernel_register(kernel, &openfailureprobe_program) < 0 ||
             cb_kernel_register(kernel, &errnochild_program) < 0 ||
             cb_kernel_register(kernel, &abiprobe_program) < 0 ||
             cb_kernel_register(kernel, &overflowprobe_program) < 0 ||
@@ -3083,7 +3213,7 @@ static void run_interactive_case(const char *input, const char *expected_stdout,
                                  const char *expected_stderr,
                                  int expected_status)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
     base_allocate = host.allocate;
@@ -3215,7 +3345,7 @@ static void test_vfs_mount_routing(void)
 
     memset(&kernel, 0, sizeof(kernel));
     memset(&task, 0, sizeof(task));
-    kernel.host = cb_linux_host_ops();
+    kernel.host = cb_posix_host_ops();
 
     if (cb_vfs_initialize(&kernel) < 0)
         fail("VFS initialization");
@@ -3293,7 +3423,7 @@ static void test_vfs_mount_routing(void)
 
     /* wrong-kernel */
     memset(&wrong_kernel, 0, sizeof(wrong_kernel));
-    wrong_kernel.host = cb_linux_host_ops();
+    wrong_kernel.host = cb_posix_host_ops();
     struct cb_vfs_mount *wrong_mount = cb_ramfs_mount_create(&wrong_kernel);
     if (cb_vfs_mount_path(&task, "/mnt/hello", wrong_mount) != -CB_EINVAL)
         fail("wrong kernel mount did not return EINVAL");
@@ -3435,7 +3565,7 @@ static int clockloss_console_poll(int timeout)
 
 static void test_poll_clockloss(void)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
 
@@ -3472,7 +3602,7 @@ static uint64_t advancing_clock_monotonic(void)
 
 static void test_poll_runnable_timeout(void)
 {
-    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_host_ops_v1 host = *cb_posix_host_ops();
     struct cb_kernel *kernel;
     int status;
 
@@ -3656,6 +3786,8 @@ int main(int argc, char **argv)
     test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
+    run_case("openfailureprobe", "", 0, 1);
+    run_case("pathwalkprobe", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
@@ -3676,6 +3808,9 @@ int main(int argc, char **argv)
         strcmp(captured_streams[2],
                "sh: missing-command: no such file or directory\n") != 0)
         fail("stdout/stderr separation");
+    run_interactive_case("cat < /missing | cat; echo $?\necho alive\nexit 3\n",
+                         "cannedBSD$ 1\ncannedBSD$ alive\ncannedBSD$ ",
+                         "sh: no such file or directory\n", 3);
     run_interactive_case("echo hello\nexit 3\n",
                          "cannedBSD$ hello\ncannedBSD$ ", "", 3);
     puts("all core tests passed");

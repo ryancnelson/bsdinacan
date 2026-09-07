@@ -19,7 +19,7 @@ non-goal rather than unfinished v0.1 work.
 | Versioned program API and descriptors | Proven | `abiprobe` checks the complete `cb_api_v1`; `test_registration_contract` covers wrong version/size, null and empty names, unknown flags, null entry points, duplicates, valid entries, and capacity. |
 | Explicit native executor boundary | Proven | `test_executor_contract` wraps the native executor and observes prepare, instance create, repeated start/resume, suspend, requested termination, instance destruction, and program destruction. `tests/test_architecture.sh` rejects direct native-entry and task-context handling in `core.c`. |
 | Explicit VFS node/mount boundary | Proven | `test_vfs_contract` validates complete versioned mount/node tables, root ownership/install/destroy, root lookup, metadata, and retain/release. `tests/test_architecture.sh` rejects RAMFS symbols or representations in `core.c`; all RAMFS behavior probes run through `vfs.c`. |
-| Linux-specific mechanisms confined to backend | Proven | `make check-architecture` scans forbidden headers and process calls; `host_linux.c` owns `ucontext`, poll, host read/write, and clocks. |
+| Host-specific mechanisms confined to backend | Proven | `make check-architecture` scans forbidden headers and process calls; `host_posix.c` owns `ucontext`, poll, host read/write, and clocks. |
 
 ## Tasks and processes
 

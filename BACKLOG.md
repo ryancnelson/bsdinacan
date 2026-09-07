@@ -433,6 +433,19 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ## Completed
 
+- [x] **Solaris 9 SPARC runtime gate (2026-09-07).** Installed and qualified
+  GCC 3.4.6/GNU make 3.81 in an isolated sun4m guest. The shared POSIX backend
+  handles Solaris 9's high-stack `makecontext` convention and `gethrtime`.
+  GNU C99, the private integer-header adapter, ksh, and 32-bit-safe overflow
+  tests allow the full native core/launcher/acceptance gate to pass. Linux
+  `make ci` also passes. See `SOLARIS9.md`; classic Mac remains future work.
+
+- [x] **Review corrections (2026-09-07).** Preserve file contents when truncating
+  open fails for descriptor exhaustion or allocation failure; initialize every
+  pipeline descriptor before redirection setup; walk path components before
+  applying `..`; and make GCC analysis compile real objects with diagnostic
+  controls. Focused regressions and the complete Linux `make ci` gate pass.
+
 - [x] **Iteration 24 (2026-09-06): NetBSD `memmove`.** The red boundary run
   failed on the absent pinned wrapper. NetBSD's unchanged `memmove.c` now
   reuses the existing hash-pinned `bcopy.c` engine, compact implementation,

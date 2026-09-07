@@ -17,4 +17,11 @@ if [ "$output" != launcher ]; then
     exit 1
 fi
 
+# A failed early stage must leave the shell's inherited stdin usable.
+if ! output=$(printf 'still-open\n' | "$program" -c \
+    'cat < /missing | cat; cat' 2>/dev/null) || [ "$output" != still-open ]; then
+    echo 'FAIL: pipeline failure damaged stdin' >&2
+    exit 1
+fi
+
 echo "launcher test passed"

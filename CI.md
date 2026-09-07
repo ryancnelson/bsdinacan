@@ -20,7 +20,9 @@ secret-dependent steps.
 5. The build-mode regression proving ordinary tests do not reuse sanitizer
    artifacts.
 6. A second clean optimized suite.
-7. GCC's static analyzer and the architecture boundary scan.
+7. GCC's static analyzer compiling separate objects, the architecture boundary
+   scan, and positive/negative controls proving the analyzer diagnoses a known
+   null dereference while accepting valid code.
 
 The complete suite includes a Linux `/proc` integration: it holds an internal
 three-task shell pipeline open, then proves the running `bsdinacan` application
@@ -32,7 +34,13 @@ dependencies baked in: `bash`, `build-base`, `clang20`, `compiler-rt`, `git`,
 package installation; it links `libucontext`, selects Clang for the sanitizer
 build because Alpine's GCC package omits sanitizer runtimes, and invokes the
 canonical gate. These are build dependencies, not cannedBSD runtime APIs. The
-Linux backend remains the only source file allowed to use `ucontext`.
+shared POSIX backend remains the only source file allowed to use `ucontext`.
+
+The separate Solaris 9 guest gate is `/bin/ksh tools/solaris9-build.sh`, described
+in [SOLARIS9.md](SOLARIS9.md). It runs `test-runtime`: the core suite, ordinary
+source compilation probes, launcher checks, and acceptance pipelines. Linux
+`/proc`, sanitizer, analyzer, and source-provenance checks remain in `make ci`.
+The hosted pipeline does not launch the Solaris VM.
 
 ## Safety and reproducibility
 

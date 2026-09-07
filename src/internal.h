@@ -29,7 +29,7 @@ struct cb_host_ops_v1 {
     void (*fatal)(const char *message);
 };
 
-const struct cb_host_ops_v1 *cb_linux_host_ops(void);
+const struct cb_host_ops_v1 *cb_posix_host_ops(void);
 
 struct cb_kernel;
 struct cb_task;
@@ -201,7 +201,7 @@ struct cb_task {
     struct cb_task *next;
 };
 
-#define CB_MAX_PROGRAMS 64
+#define CB_MAX_PROGRAMS 96
 
 struct cb_kernel {
     const struct cb_host_ops_v1 *host;

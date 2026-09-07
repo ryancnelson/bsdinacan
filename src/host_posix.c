@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef CANNEDBSD_SOLARIS9
+#include <sys/time.h>
+#endif
 #include <ucontext.h>
 #include <unistd.h>
 
@@ -71,8 +74,14 @@ static struct cb_host_context *host_context_create(void (*entry)(void *),
         free(context);
         return NULL;
     }
+#ifdef CANNEDBSD_SOLARIS9
+    /* Solaris 9's original makecontext ABI takes the high stack address. */
+    context->native.uc_stack.ss_sp = (char *)context->stack + stack_size - 8;
+#else
     context->native.uc_stack.ss_sp = context->stack;
+#endif
     context->native.uc_stack.ss_size = context->stack_size;
+    context->native.uc_stack.ss_flags = 0;
     context->native.uc_link = NULL;
     makecontext(&context->native, (void (*)(void))host_context_trampoline, 2,
                 (uintptr_t)entry, (uintptr_t)arg);
@@ -139,11 +148,15 @@ static cb_ssize_t host_console_write(int stream, const void *buffer,
 
 static uint64_t host_monotonic_millis(void)
 {
+#ifdef CANNEDBSD_SOLARIS9
+    return (uint64_t)gethrtime() / UINT64_C(1000000);
+#else
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
         return 0;
     return (uint64_t)now.tv_sec * UINT64_C(1000) +
            (uint64_t)now.tv_nsec / UINT64_C(1000000);
+#endif
 }
 
 static uint64_t host_wall_clock_millis(void)
@@ -167,9 +180,9 @@ static void host_fatal(const char *message)
     abort();
 }
 
-static const struct cb_host_ops_v1 linux_ops = {
+static const struct cb_host_ops_v1 posix_ops = {
     CB_ABI_VERSION_V1,
-    sizeof(linux_ops),
+    sizeof(posix_ops),
     host_allocate,
     host_resize,
     host_release,
@@ -186,7 +199,7 @@ static const struct cb_host_ops_v1 linux_ops = {
     host_fatal
 };
 
-const struct cb_host_ops_v1 *cb_linux_host_ops(void)
+const struct cb_host_ops_v1 *cb_posix_host_ops(void)
 {
-    return &linux_ops;
+    return &posix_ops;
 }

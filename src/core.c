@@ -192,19 +192,24 @@ static int fd_install_at(struct cb_task *task, struct cb_open_file *file,
     return descriptor;
 }
 
-static int fd_install(struct cb_task *task, struct cb_open_file *file,
-                      int minimum)
+static int fd_find_free(struct cb_task *task, int minimum)
 {
     int descriptor;
     for (descriptor = minimum; descriptor < CB_MAX_FDS; ++descriptor) {
-        if (task->descriptors[descriptor].file == NULL) {
-            task->descriptors[descriptor].file = file;
-            task->descriptors[descriptor].close_on_exec = 0;
+        if (task->descriptors[descriptor].file == NULL)
             return descriptor;
-        }
     }
     cb_task_set_error(task, CB_EMFILE);
     return -1;
+}
+
+static int fd_install(struct cb_task *task, struct cb_open_file *file,
+                      int minimum)
+{
+    int descriptor = fd_find_free(task, minimum);
+    if (descriptor < 0)
+        return -1;
+    return fd_install_at(task, file, descriptor, 0);
 }
 
 static int fd_close(struct cb_task *task, int descriptor)
@@ -986,14 +991,14 @@ static int api_poll(struct cb_pollfd *fds, size_t nfds, int timeout)
 static int api_open(const char *path, int flags, uint32_t mode)
 {
     struct cb_task *task = active_kernel->current;
-    struct cb_open_file *file = cb_vfs_open(task, path, flags, mode);
-    int descriptor;
+    struct cb_open_file *file;
+    int descriptor = fd_find_free(task, 0);
+    if (descriptor < 0)
+        return -1;
+    file = cb_vfs_open(task, path, flags, mode);
     if (file == NULL)
         return -1;
-    descriptor = fd_install(task, file, 0);
-    if (descriptor < 0)
-        cb_open_file_release(file);
-    return descriptor;
+    return fd_install_at(task, file, descriptor, 0);
 }
 
 static int api_close(int descriptor)
@@ -1015,10 +1020,12 @@ static cb_ssize_t api_read(int descriptor, void *buffer, size_t count)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+#if SIZE_MAX > INT64_MAX
     if (count > INT64_MAX) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+#endif
     if (count != 0 && buffer == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
@@ -1036,10 +1043,12 @@ static cb_ssize_t api_write(int descriptor, const void *buffer, size_t count)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+#if SIZE_MAX > INT64_MAX
     if (count > INT64_MAX) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+#endif
     if (count != 0 && buffer == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;

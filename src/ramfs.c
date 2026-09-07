@@ -231,11 +231,11 @@ static int ramfs_open(struct cb_vfs_node *common, struct cb_task *task,
     struct cb_open_file *file;
     if (node->type == CB_NODE_DIRECTORY)
         return -CB_EISDIR;
-    if ((flags & CB_O_TRUNC) && (flags & CB_O_ACCMODE) != CB_O_RDONLY)
-        node->size = 0;
     file = cb_open_file_create(task->kernel, &node_file_ops, flags);
     if (file == NULL)
         return -CB_ENOMEM;
+    if ((flags & CB_O_TRUNC) && (flags & CB_O_ACCMODE) != CB_O_RDONLY)
+        node->size = 0;
     file->object.node = common;
     ramfs_node_retain(common);
     file->offset = (flags & CB_O_APPEND) ? (cb_off_t)node->size : 0;
