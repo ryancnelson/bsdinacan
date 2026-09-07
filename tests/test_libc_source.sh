@@ -16,6 +16,8 @@ allocation_source=tests/libc_allocation_source.c
 allocation_object=$build_path/libc_allocation_source.o
 memory_source=tests/libc_memory_source.c
 memory_object=$build_path/libc_memory_source.o
+environ_source=tests/libc_environ_source.c
+environ_object=$build_path/libc_environ_source.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -107,6 +109,23 @@ for symbol in cb_libc_strlen cb_libc_strcmp; do
         exit 1
     fi
 done
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$environ_source"; then
+    echo 'FAIL: environ source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! matches '\benviron\b' "$environ_source"; then
+    echo 'FAIL: environ source probe does not reference environ' >&2
+    exit 1
+fi
+if nm -u "$environ_object" | matches '[[:space:]]U[[:space:]]+environ$'; then
+    echo 'FAIL: environ probe imports a host-facing environ symbol' >&2
+    exit 1
+fi
+if ! nm -u "$environ_object" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_environ_location$'; then
+    echo 'FAIL: environ probe does not use the private veneer accessor' >&2
+    exit 1
+fi
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then
     echo 'FAIL: allocation source probe uses cannedBSD-specific names' >&2
     exit 1

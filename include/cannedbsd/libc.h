@@ -29,6 +29,7 @@ void *cb_libc_calloc(size_t count, size_t size);
 void *cb_libc_realloc(void *pointer, size_t size);
 void cb_libc_free(void *pointer);
 int *cb_libc_errno_location(void);
+char ***cb_libc_environ_location(void);
 char *cb_libc_strerror(int error);
 int cb_libc_puts(const char *text);
 size_t cb_libc_strlen(const char *text);

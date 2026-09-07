@@ -13,4 +13,6 @@ typedef cb_ssize_t ssize_t;
 #define write cb_libc_write
 #define close cb_libc_close
 
+#define environ (*cb_libc_environ_location())
+
 #endif
