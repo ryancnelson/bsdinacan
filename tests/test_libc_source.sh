@@ -18,6 +18,8 @@ memory_source=tests/libc_memory_source.c
 memory_object=$build_path/libc_memory_source.o
 environ_source=tests/libc_environ_source.c
 environ_object=$build_path/libc_environ_source.o
+getopt_source=tests/libc_getopt_probe.c
+getopt_object=$build_path/getoptprobe_command.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -124,6 +126,23 @@ fi
 if ! nm -u "$environ_object" |
         matches '[[:space:]]U[[:space:]]+cb_libc_environ_location$'; then
     echo 'FAIL: environ probe does not use the private veneer accessor' >&2
+    exit 1
+fi
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$getopt_source"; then
+    echo 'FAIL: getopt source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! matches '\bgetopt[[:space:]]*\(' "$getopt_source"; then
+    echo 'FAIL: getopt source probe does not call getopt()' >&2
+    exit 1
+fi
+if nm -u "$getopt_object" | matches '[[:space:]]U[[:space:]]+getopt$'; then
+    echo 'FAIL: getopt probe imports a host-facing getopt symbol' >&2
+    exit 1
+fi
+if ! nm -u "$getopt_object" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_getopt$'; then
+    echo 'FAIL: getopt probe does not use the private veneer function' >&2
     exit 1
 fi
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then

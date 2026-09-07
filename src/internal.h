@@ -172,6 +172,7 @@ struct cb_task {
     char **argv;
     int argc;
     char **environment;
+    struct cb_getopt_state_v1 getopt_state;
     struct cb_fd_entry descriptors[CB_MAX_FDS];
     struct cb_vfs_node *root;
     struct cb_vfs_node *cwd;

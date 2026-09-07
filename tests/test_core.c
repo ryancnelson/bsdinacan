@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern const struct cb_program_v1 cb_getoptprobe_program;
+
 static char captured[32768];
 static size_t captured_size;
 static char captured_streams[3][32768];
@@ -685,6 +687,11 @@ static int pidcheck_main(const struct cb_api_v1 *api, int argc,
         strcmp((*api->environ_location())[0], "EXECVAR=after-exec") != 0 ||
         (*api->environ_location())[1] != NULL)
         return 26;
+    if (api->getopt_state_location()->optind != 1 ||
+        api->getopt_state_location()->opterr != 1 ||
+        api->getopt_state_location()->optopt != 0 ||
+        api->getopt_state_location()->optarg != NULL)
+        return 27;
     return 7;
 }
 
@@ -709,6 +716,12 @@ static int execprobe_main(const struct cb_api_v1 *api, int argc,
         api->chdir("/tmp") < 0 ||
         api->setenv("EXECVAR", "before-exec", 1) < 0)
         return 10;
+    /* Mutate this task's getopt state away from its defaults so the exec
+       below can be shown to reset it rather than leaking it forward. */
+    api->getopt_state_location()->optind = 5;
+    api->getopt_state_location()->opterr = 0;
+    api->getopt_state_location()->optopt = (int)'q';
+    api->getopt_state_location()->optarg = pid;
     snprintf(pid, sizeof(pid), "%d", (int)api->getpid());
     snprintf(closed_descriptor, sizeof(closed_descriptor), "%d", closed_fd);
     snprintf(retained_descriptor, sizeof(retained_descriptor), "%d",
@@ -1129,6 +1142,114 @@ static int environprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int getoptwaitprobe_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    char report_a_fd[32];
+    char report_b_fd[32];
+    char sync_write_fd[32];
+    char sync_read_fd[32];
+    char *argv_a[6];
+    char *argv_b[8];
+    int report_a[2];
+    int report_b[2];
+    int sync_pipe[2];
+    struct cb_spawn_action_v1 close_for_a[4];
+    struct cb_spawn_action_v1 close_for_b[4];
+    cb_pid_t child_a;
+    cb_pid_t child_b;
+    int status;
+    size_t index;
+    unsigned char results[2];
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->pipe(report_a) < 0 || api->pipe(report_b) < 0 ||
+        api->pipe(sync_pipe) < 0)
+        return 300;
+    snprintf(report_a_fd, sizeof(report_a_fd), "%d", report_a[1]);
+    snprintf(report_b_fd, sizeof(report_b_fd), "%d", report_b[1]);
+    snprintf(sync_write_fd, sizeof(sync_write_fd), "%d", sync_pipe[1]);
+    snprintf(sync_read_fd, sizeof(sync_read_fd), "%d", sync_pipe[0]);
+
+    /* Spawn copies this task's entire descriptor table, so without these,
+       each child would also inherit the OTHER child's pipe ends -- in
+       particular role B would inherit its own peer's sync-pipe write end,
+       so its own drain loop could never see EOF (a real deadlock this
+       caught on the first run). Each child keeps only the two descriptors
+       named in its own argv. */
+    close_for_a[0].from_fd = report_a[0];
+    close_for_a[1].from_fd = report_b[0];
+    close_for_a[2].from_fd = report_b[1];
+    close_for_a[3].from_fd = sync_pipe[0];
+    close_for_b[0].from_fd = report_a[0];
+    close_for_b[1].from_fd = report_a[1];
+    close_for_b[2].from_fd = report_b[0];
+    close_for_b[3].from_fd = sync_pipe[1];
+    for (index = 0; index < 4; ++index) {
+        close_for_a[index].abi_version = CB_ABI_VERSION_V1;
+        close_for_a[index].struct_size = sizeof(close_for_a[index]);
+        close_for_a[index].type = CB_SPAWN_CLOSE;
+        close_for_a[index].to_fd = -1;
+        close_for_b[index].abi_version = CB_ABI_VERSION_V1;
+        close_for_b[index].struct_size = sizeof(close_for_b[index]);
+        close_for_b[index].type = CB_SPAWN_CLOSE;
+        close_for_b[index].to_fd = -1;
+    }
+
+    argv_a[0] = (char *)"libcgetoptprobe";
+    argv_a[1] = (char *)"A";
+    argv_a[2] = report_a_fd;
+    argv_a[3] = sync_write_fd;
+    argv_a[4] = (char *)"plain";
+    argv_a[5] = NULL;
+    if (api->spawn("libcgetoptprobe", argv_a, NULL, close_for_a, 4,
+                   &child_a) < 0)
+        return 301;
+
+    argv_b[0] = (char *)"libcgetoptprobe";
+    argv_b[1] = (char *)"B";
+    argv_b[2] = report_b_fd;
+    argv_b[3] = sync_read_fd;
+    argv_b[4] = (char *)"-x";
+    argv_b[5] = (char *)"--";
+    argv_b[6] = (char *)"z";
+    argv_b[7] = NULL;
+    if (api->spawn("libcgetoptprobe", argv_b, NULL, close_for_b, 4,
+                   &child_b) < 0)
+        return 302;
+
+    /* Close this task's own copies; only the children's inherited copies
+       must remain, so pipe EOF and blocking behave as intended below. */
+    if (api->close(report_a[1]) < 0 || api->close(report_b[1]) < 0 ||
+        api->close(sync_pipe[0]) < 0 || api->close(sync_pipe[1]) < 0)
+        return 303;
+
+    if (api->waitpid(child_a, &status) != child_a || status != 0)
+        return 304;
+    if (api->read(report_a[0], results, sizeof(results)) != 2)
+        return 305;
+    /* Both of role A's "no options" checks (before and after role B ran
+       its own getopt() calls in between) must have observed optind == 1:
+       role B's task-local state never leaked into role A's. */
+    if (results[0] != '1' || results[1] != '1')
+        return 306;
+    if (api->close(report_a[0]) < 0)
+        return 307;
+
+    if (api->waitpid(child_b, &status) != child_b || status != 0)
+        return 308;
+    if (api->read(report_b[0], results, sizeof(results)) != 2)
+        return 309;
+    /* Role B's unknown-option and "--" checks. */
+    if (results[0] != '1' || results[1] != '1')
+        return 310;
+    if (api->close(report_b[0]) < 0)
+        return 311;
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -1419,7 +1540,7 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->set_errno == NULL || api->capabilities == NULL ||
         api->allocate == NULL || api->resize == NULL ||
         api->release == NULL || api->errno_location == NULL ||
-        api->environ_location == NULL)
+        api->environ_location == NULL || api->getopt_state_location == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -1950,6 +2071,11 @@ static const struct cb_program_v1 environprobe_program = {
     64 * 1024, environprobe_main
 };
 
+static const struct cb_program_v1 getoptwaitprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "getoptwaitprobe", 0,
+    64 * 1024, getoptwaitprobe_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -2066,6 +2192,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &pipecapacityprobe_program) < 0 ||
             cb_kernel_register(kernel, &environpeer_program) < 0 ||
             cb_kernel_register(kernel, &environprobe_program) < 0 ||
+            cb_kernel_register(kernel, &cb_getoptprobe_program) < 0 ||
+            cb_kernel_register(kernel, &getoptwaitprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -2328,6 +2456,7 @@ int main(void)
     run_case("pipeedgeprobe", "", 0, 1);
     run_case("pipecapacityprobe", "", 0, 1);
     run_case("environprobe", "", 0, 1);
+    run_case("getoptwaitprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);

@@ -28,9 +28,10 @@ CORE_SOURCES := \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/test_core.c $(CORE_SOURCES)
+TEST_SOURCES := tests/test_core.c tests/libc_getopt_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
+GETOPTPROBE_COMMAND_OBJECT := $(BUILD)/getoptprobe_command.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
@@ -69,6 +70,11 @@ $(YES_COMMAND_OBJECT): upstream/netbsd/usr.bin/yes/yes.c \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_yes_main \
 		-c upstream/netbsd/usr.bin/yes/yes.c -o $@
+
+$(GETOPTPROBE_COMMAND_OBJECT): tests/libc_getopt_probe.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/string.h libc/include/unistd.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_getoptprobe_main \
+		-c tests/libc_getopt_probe.c -o $@
 
 $(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h | $(BUILD)
@@ -132,9 +138,9 @@ $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC
 		$(YES_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 check-architecture:
@@ -202,6 +208,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_environ_source.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_getoptprobe_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_getopt_probe.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \

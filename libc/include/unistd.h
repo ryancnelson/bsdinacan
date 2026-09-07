@@ -15,4 +15,10 @@ typedef cb_ssize_t ssize_t;
 
 #define environ (*cb_libc_environ_location())
 
+#define optind (cb_libc_getopt_state_location()->optind)
+#define opterr (cb_libc_getopt_state_location()->opterr)
+#define optopt (cb_libc_getopt_state_location()->optopt)
+#define optarg (cb_libc_getopt_state_location()->optarg)
+#define getopt cb_libc_getopt
+
 #endif

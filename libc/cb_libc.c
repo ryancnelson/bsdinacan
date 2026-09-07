@@ -12,7 +12,8 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
            api->resize != NULL && api->release != NULL &&
-           api->errno_location != NULL && api->environ_location != NULL;
+           api->errno_location != NULL && api->environ_location != NULL &&
+           api->getopt_state_location != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -122,6 +123,54 @@ int *cb_libc_errno_location(void)
 char ***cb_libc_environ_location(void)
 {
     return bound_api->environ_location();
+}
+
+struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void)
+{
+    return bound_api->getopt_state_location();
+}
+
+int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
+{
+    struct cb_getopt_state_v1 *state = bound_api->getopt_state_location();
+    const char *option;
+
+    if (*state->place == '\0') {
+        if (state->optind >= argc || argv[state->optind][0] != '-' ||
+            argv[state->optind][1] == '\0')
+            return -1;
+        if (argv[state->optind][1] == '-' && argv[state->optind][2] == '\0') {
+            ++state->optind;
+            return -1;
+        }
+        state->place = argv[state->optind] + 1;
+    }
+
+    state->optopt = (int)*state->place++;
+    option = cb_libc_strchr(optstring, state->optopt);
+    if (state->optopt == (int)':' || option == NULL) {
+        if (*state->place == '\0')
+            ++state->optind;
+        return (int)'?';
+    }
+    ++option;
+    if (*option != ':') {
+        state->optarg = NULL;
+        if (*state->place == '\0')
+            ++state->optind;
+    } else {
+        if (*state->place != '\0') {
+            state->optarg = state->place;
+        } else if (argc > ++state->optind) {
+            state->optarg = argv[state->optind];
+        } else {
+            state->place = (char *)"";
+            return *optstring == ':' ? (int)':' : (int)'?';
+        }
+        state->place = (char *)"";
+        ++state->optind;
+    }
+    return state->optopt;
 }
 
 char *cb_libc_strerror(int error)

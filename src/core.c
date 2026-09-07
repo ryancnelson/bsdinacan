@@ -565,6 +565,11 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
     if (task->argv == NULL || task->environment == NULL)
         goto fail;
+    task->getopt_state.optind = 1;
+    task->getopt_state.opterr = 1;
+    task->getopt_state.optopt = 0;
+    task->getopt_state.optarg = NULL;
+    task->getopt_state.place = (char *)"";
     task->root = parent == NULL ? kernel->vfs_root : parent->root;
     task->cwd = parent == NULL ? kernel->vfs_root : parent->cwd;
     cb_vfs_node_retain(task->root);
@@ -633,6 +638,11 @@ static void task_finish_exec(struct cb_task *task)
     task->pending_environment = NULL;
     task->pending_argc = 0;
     *task->error_cell = 0;
+    task->getopt_state.optind = 1;
+    task->getopt_state.opterr = 1;
+    task->getopt_state.optopt = 0;
+    task->getopt_state.optarg = NULL;
+    task->getopt_state.place = (char *)"";
     task->execution = cb_executor_instance_create(task, task->program);
     if (task->execution == NULL)
         kernel->host->fatal("unable to create execution after exec");
@@ -1218,6 +1228,11 @@ static char ***api_environ_location(void)
     return &active_kernel->current->environment;
 }
 
+static struct cb_getopt_state_v1 *api_getopt_state_location(void)
+{
+    return &active_kernel->current->getopt_state;
+}
+
 static const struct cb_capabilities_v1 *api_capabilities(void)
 {
     return &active_kernel->capabilities;
@@ -1347,6 +1362,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->release = api_release;
     api->errno_location = api_errno_location;
     api->environ_location = api_environ_location;
+    api->getopt_state_location = api_getopt_state_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)
