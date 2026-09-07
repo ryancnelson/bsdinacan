@@ -38,7 +38,7 @@ Memory uses non-relocatable Toolbox pointers. The application heap is expanded
 before entering any coroutine stack. Cooperative stack switching saves
 the 68K C ABI's callee-saved registers, including the A5 application world.
 The default compiler ABI uses software floating point. The host pumps Toolbox
-events at scheduler yield points and provides line-buffered ASCII input.
+events on the original scheduler stack and provides line-buffered ASCII input.
 TickCount supplies monotonic time; UTC wall time is unavailable and returns
 zero as allowed by the host ABI.
 
