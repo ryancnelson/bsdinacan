@@ -1,6 +1,16 @@
 #include "cannedbsd/libc.h"
 
+#include <limits.h>
 #include <stdarg.h>
+
+struct cb_libc_file {
+    int descriptor;
+};
+
+static struct cb_libc_file stdout_file = {1};
+static struct cb_libc_file stderr_file = {2};
+struct cb_libc_file *const cb_libc_stdout_stream = &stdout_file;
+struct cb_libc_file *const cb_libc_stderr_stream = &stderr_file;
 
 static const struct cb_api_v1 *bound_api;
 
@@ -147,4 +157,80 @@ int cb_libc_puts(const char *text)
     if (write_all(1, text, length) < 0 || write_all(1, "\n", 1) < 0)
         return -1;
     return 0;
+}
+
+static int add_output(int descriptor, const char *text, size_t length,
+                      int *total)
+{
+    if (length > (size_t)(INT_MAX - *total)) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    if (write_all(descriptor, text, length) < 0)
+        return -1;
+    *total += (int)length;
+    return 0;
+}
+
+static int format_output(int descriptor, const char *format,
+                         va_list arguments)
+{
+    const char *cursor = format;
+    int total = 0;
+
+    if (format == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    while (*cursor != '\0') {
+        const char *literal = cursor;
+        while (*cursor != '\0' && *cursor != '%')
+            ++cursor;
+        if (add_output(descriptor, literal, (size_t)(cursor - literal),
+                       &total) < 0)
+            return -1;
+        if (*cursor == '\0')
+            break;
+        ++cursor;
+        if (*cursor == '%') {
+            if (add_output(descriptor, "%", 1, &total) < 0)
+                return -1;
+            ++cursor;
+        } else if (*cursor == 's') {
+            const char *text = va_arg(arguments, const char *);
+            if (text == NULL)
+                text = "(null)";
+            if (add_output(descriptor, text, cb_libc_strlen(text), &total) < 0)
+                return -1;
+            ++cursor;
+        } else {
+            bound_api->set_errno(CB_EINVAL);
+            return -1;
+        }
+    }
+    return total;
+}
+
+int cb_libc_printf(const char *format, ...)
+{
+    va_list arguments;
+    int result;
+    va_start(arguments, format);
+    result = format_output(1, format, arguments);
+    va_end(arguments);
+    return result;
+}
+
+int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...)
+{
+    va_list arguments;
+    int result;
+    if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    va_start(arguments, format);
+    result = format_output(stream->descriptor, format, arguments);
+    va_end(arguments);
+    return result;
 }

@@ -18,6 +18,8 @@ memory_source=tests/libc_memory_source.c
 memory_object=$build_path/libc_memory_source.o
 environ_source=tests/libc_environ_source.c
 environ_object=$build_path/libc_environ_source.o
+stdio_source=tests/libc_stdio_source.c
+stdio_object=$build_path/libc_stdio_source.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -126,6 +128,30 @@ if ! nm -u "$environ_object" |
     echo 'FAIL: environ probe does not use the private veneer accessor' >&2
     exit 1
 fi
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$stdio_source"; then
+    echo 'FAIL: stdio source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+for symbol in printf fprintf; do
+    if ! matches "\\b${symbol}[[:space:]]*\\(" "$stdio_source" ||
+            nm -u "$stdio_object" |
+                matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$stdio_object" |
+                matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary %s source does not use the private veneer\n' \
+            "$symbol" >&2
+        exit 1
+    fi
+done
+for stream in stdout stderr; do
+    if ! matches "\\b${stream}\\b" "$stdio_source" ||
+            ! nm -u "$stdio_object" |
+                matches "[[:space:]]U[[:space:]]+cb_libc_${stream}_stream$"; then
+        printf 'FAIL: ordinary stdio source does not use private %s\n' \
+            "$stream" >&2
+        exit 1
+    fi
+done
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then
     echo 'FAIL: allocation source probe uses cannedBSD-specific names' >&2
     exit 1
