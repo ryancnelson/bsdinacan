@@ -36,6 +36,8 @@ static char input[1024];
 static size_t input_used, input_ready, input_read;
 static uint32_t last_ticks;
 static uint64_t elapsed_ticks;
+static struct cb_host_context *root_context;
+static int on_root_stack = 1;
 
 static void redraw(void)
 {
@@ -124,11 +126,25 @@ static void context_entry(struct cb_host_context *context)
     host_fatal("a stackful context returned");
 }
 
-static struct cb_host_context *context_root(void)
+static struct cb_host_context *new_context(void)
 {
     struct cb_host_context *context = host_allocate(sizeof(*context));
     if (context != NULL) memset(context, 0, sizeof(*context));
     return context;
+}
+
+static struct cb_host_context *context_root(void)
+{
+    root_context = new_context();
+    on_root_stack = 1;
+    return root_context;
+}
+
+static void context_switch(struct cb_host_context *from,
+                           struct cb_host_context *to)
+{
+    on_root_stack = to == root_context;
+    cb_mac_context_swap(from, to);
 }
 
 static struct cb_host_context *context_create(void (*entry)(void *),
@@ -138,7 +154,7 @@ static struct cb_host_context *context_create(void (*entry)(void *),
     uint32_t *frame;
     if (entry == NULL || stack_size < 1024 || stack_size > INT32_MAX - 4)
         return NULL;
-    context = context_root();
+    context = new_context();
     if (context == NULL) return NULL;
     context->stack = host_allocate(stack_size + 4);
     if (context->stack == NULL) { host_release(context); return NULL; }
@@ -157,6 +173,7 @@ static struct cb_host_context *context_create(void (*entry)(void *),
 static void context_destroy(struct cb_host_context *context)
 {
     if (context == NULL) return;
+    if (context == root_context) { root_context = NULL; on_root_stack = 1; }
     host_release(context->stack);
     host_release(context);
 }
@@ -165,6 +182,10 @@ void cb_mac_pump(int timeout_ms)
 {
     EventRecord event;
     unsigned long ticks = timeout_ms < 0 ? 1 : (unsigned long)timeout_ms * 60 / 1000;
+    /* System 7 checks the application stack during WaitNextEvent. The core
+     * polls again on its root scheduler stack before waking blocked readers;
+     * task-side nonblocking polls only inspect already buffered input. */
+    if (!on_root_stack) return;
     if (WaitNextEvent(everyEvent, &event, ticks, NULL)) {
         if (event.what == updateEvt) {
             BeginUpdate(window); redraw(); EndUpdate(window);
@@ -245,7 +266,7 @@ static void yield_host(void) { cb_mac_pump(1); }
 static const struct cb_host_ops_v1 mac_ops = {
     CB_ABI_VERSION_V1, sizeof(mac_ops),
     host_allocate, host_resize, host_release,
-    context_root, context_create, cb_mac_context_swap, context_destroy,
+    context_root, context_create, context_switch, context_destroy,
     console_poll, console_read, console_write,
     monotonic_millis, wall_clock_millis, yield_host, host_fatal
 };
