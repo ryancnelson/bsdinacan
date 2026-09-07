@@ -13,8 +13,13 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current ready order:** `PENV-02`, `PENV-03`, `PENV-04`, `PORT-01`.
+**Current ready order:** `PENV-02`, `PENV-03`, `PENV-04`, `PORT-01`, `MAC-01`.
 `VFS-01` is already claimed.
+
+Mac guest acceptance is a serialized gate rather than a worker claim. After a
+required `mac68k` build succeeds, the coordinator assigns one agent to test that
+exact artifact in Basilisk II before integration. Other workers continue on
+independent backlog items while the emulator is occupied.
 
 ### PENV-01 — task-local libc process state and `environ`
 
@@ -57,6 +62,20 @@ their paths do not overlap.
 - **Accept:** the same deterministic harness can be invoked by Linux and future
   host ports; it tests undersized/oversized tables and absent capabilities; it
   adds no host API to the portable core and changes no runtime behavior.
+
+### MAC-01 — repeatable Basilisk II artifact acceptance
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** none
+- **Hypothesis:** a host-side runner can stage and identify the exact Woodpecker
+  artifact and collect fresh guest evidence without relying on manual notes.
+- **Red:** demonstrate that the current manual procedure can leave an old
+  `cannedbsd-result.txt` or lose the tested commit/checksum association.
+- **Accept:** one command verifies `SHA256SUMS`, stages the resource metadata,
+  removes stale evidence, records commit and artifact checksum, and rejects a
+  missing or non-`ALL PASS` fresh result. GUI launch may remain serialized and
+  manual until Basilisk II exposes a reliable automation seam.
 
 ## Dependency-ordered queue
 
