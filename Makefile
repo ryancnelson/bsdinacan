@@ -215,6 +215,7 @@ analyze:
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strchr.c
 
 ci:
+	python3 tests/test_mac_guest.py
 	$(MAKE) check-publication
 	$(MAKE) clean test
 	$(MAKE) sanitize
