@@ -63,4 +63,8 @@ accompanied by `commit.txt` and `SHA256SUMS`.
 This gate proves the Mac application compiles and packages successfully. Guest
 execution is a separate acceptance check: retrieve the CI artifact, verify its
 checksum, and run it under System 7 as described in `platform/mac68k/README.md`.
-CI does not install the application into an emulator.
+CI does not install the application into an emulator. The Iterate Bot workflow
+requires this guest check for the exact artifact from every runtime, libc, VFS,
+shell, command, or Mac-host behavior change. The coordinator serializes noVNC
+access and records the tested commit and checksum so a successful build cannot
+be mistaken for successful System 7 execution.
