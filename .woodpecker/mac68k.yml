@@ -1,0 +1,13 @@
+when:
+  - event: push
+  - event: pull_request
+
+labels:
+  role: retro68
+  backend: docker
+
+steps:
+  - name: build-mac68k
+    image: ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019
+    commands:
+      - bash platform/mac68k/ci-build.sh

@@ -15,6 +15,56 @@ This is not CPU emulation. A 68000 target runs native 68000 programs, a
 PowerPC target runs native PowerPC programs, and so forth. Userland programs
 are rebuilt against the cannedBSD API and runtime for each target.
 
+## Verified System 7 implementation (2026-09-07)
+
+The Linux reference implementation now has an experimental native 68K Mac
+backend in `platform/mac68k`. It uses the existing portable core, shell,
+commands, and RAM filesystem. The backend supplies Toolbox memory allocation,
+cooperative stack switching, monotonic time, and a basic window with
+line-buffered ASCII input. The application requests an 8 MiB partition.
+
+The first target tested is System 7.5.3 in Basilisk II. The application itself
+contains native 68K code; Basilisk II supplies the test machine. Two independent
+task stacks passed 512 child yields. Seven startup acceptance cases verified
+pipelines, redirection, `wc`, append, shell status, working directory, and exit
+status. The decisive `echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result`
+command returned `HELLO`. An interactive pipeline also returned the expected
+output. Woodpecker pipeline #18 passed both build workflows, and its application
+passed the guest startup checks.
+
+Two classic Mac constraints were found through guest execution: the application
+heap must be expanded with `MaxApplZone` before switching onto heap-backed task
+stacks, and Toolbox event pumping must run on the original scheduler stack to
+avoid System 7 error 28. Stack switching preserves the C ABI's callee-saved
+registers, including A5. The initial build uses software floating point.
+
+### Builds and transfer
+
+Woodpecker runs the Linux gate and a separate Retro68 cross-build on every push
+and pull request. The Mac workflow pins the toolchain image by digest and uses
+a dedicated Docker runner selected by the mandatory `!role=retro68` label.
+The existing local runner continues to handle its existing workflows. Retained
+artifacts are identified by pipeline, source commit, and run, with checksums.
+See `CI.md` and `platform/mac68k/README.md` for the build and acceptance procedure.
+
+Basilisk II's `Unix` disk is its host shared folder; in the container setup,
+that host is the container and the folder is bind-mounted from the workstation.
+Transfer the application data fork together with its `.rsrc` and `.finf`
+metadata, or use the packaged MacBinary or HFS disk image. The application
+writes `Unix:cannedbsd-result.txt` as guest execution evidence. This sharing
+mechanism is separate from cannedBSD's internal RAM filesystem.
+
+### Remaining Mac work
+
+Guest execution is currently a separate acceptance check, not an automated
+Woodpecker step. The frontend has a bounded text display and no terminal escape
+processing, persistent filesystem, networking, or forced task preemption. UTC
+wall time is unavailable. Other classic Mac versions and hardware are untested.
+
+[Symantec C++ 7.0](https://macintoshgarden.org/apps/symantec-c-70) is recorded as
+a possible compiler for self-hosted development inside the Mac. It has not been
+installed or validated for this project; current builds use Retro68.
+
 ## Historical model
 
 ### MacMINIX
@@ -622,8 +672,8 @@ already a small Unix.
 
 ## Open decisions
 
-- Which initial target best validates the design: classic m68k Mac OS,
-  PowerPC Mac OS, or a modern POSIX reference backend?
+- Which host should follow the working Linux reference and initial classic
+  m68k Mac OS backend, and what acceptance coverage should it require?
 - How much NetBSD libc should be reused initially?
 - Should the root filesystem use rump FFS, a simpler image filesystem, or
   another NetBSD filesystem?

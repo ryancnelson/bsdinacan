@@ -1,6 +1,6 @@
 # Current State — cannedBSD
 
-**Last verified:** 2026-09-06
+**Last verified:** 2026-09-07
 **Iteration count:** 24 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
@@ -55,6 +55,22 @@ POSIX semantics, memory safety under untested operations, classic-host
 portability, networking, dynamic modules, or WASM execution.
 
 ## Current evidence
+
+The experimental `mac-system7` branch adds `platform/mac68k` without changing
+the Linux backend or portable core. Woodpecker pipeline #16 passed the existing
+Linux gate and the separate pinned Retro68 cross-build. Its checksum-verified
+artifact ran in Basilisk II / System 7.5.3: two independent stacks completed
+512 child yields, all seven startup shell cases passed, and an interactive
+`echo ci | tr a-z A-Z` returned `CI`.
+
+The first guest run exposed failed allocations after moving onto heap-backed
+task stacks; expanding the application heap with `MaxApplZone` before the first
+switch fixed those failures. A second run passed the shell cases but System 7
+reported error 28 when event handling ran on a task stack. Pumping events only
+on the original scheduler stack fixed the interactive run. Guest acceptance is
+separate from CI compilation; see `platform/mac68k/README.md` for the transfer
+and evidence procedure. This is initial System 7 evidence, not verification of
+other classic hosts or the full Linux suite on the Mac.
 
 ```text
 $ make test

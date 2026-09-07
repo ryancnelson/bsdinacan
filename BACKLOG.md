@@ -113,6 +113,11 @@ runtime model before the human-facing demo grows.
 
 ## Priority 3 — portability and extensions
 
+- [x] Initial System 7 / 68K host slice on the isolated `mac-system7` branch:
+  dedicated Retro68 Woodpecker build, stack-yield probe, seven guest shell
+  acceptance cases, and interactive pipeline verified on 2026-09-07.
+  Broader classic-host coverage remains open below.
+
 - [ ] Split and test a classic-host adapter contract for Mac OS 7/9, NeXTSTEP,
   AmigaOS, OS/2, Solaris 9/sun4m, and other targets in `TARGETS.md`.
 - [ ] Prototype outbound TCP through a host-provided SOCKS service. Specify it as
