@@ -30,7 +30,7 @@ if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$source_file"; then
     echo 'FAIL: ordinary command source depends on cannedBSD-specific names' >&2
     exit 1
 fi
-for interface in read write open malloc free strerror; do
+for interface in read write open malloc free strerror strlen strcmp; do
     if ! rg -q "\\b${interface}[[:space:]]*\\(" "$source_file"; then
         printf 'FAIL: ordinary command does not exercise %s()\n' \
             "$interface" >&2
@@ -49,10 +49,17 @@ if nm "$object_file" | rg -q '[[:space:]]T[[:space:]]+main$'; then
     echo 'FAIL: external command exports the enclosing application main' >&2
     exit 1
 fi
-for symbol in read write open close malloc free strerror; do
+for symbol in read write open close malloc free strerror strlen strcmp; do
     if nm -u "$object_file" | rg -q "[[:space:]]U[[:space:]]+${symbol}$"; then
         printf 'FAIL: command object imports host-facing %s instead of the prefixed veneer\n' \
             "$symbol" >&2
+        exit 1
+    fi
+done
+for symbol in cb_libc_strlen cb_libc_strcmp; do
+    if ! nm -u "$object_file" |
+            rg -q "[[:space:]]U[[:space:]]+${symbol}$"; then
+        printf 'FAIL: command object does not import %s\n' "$symbol" >&2
         exit 1
     fi
 done

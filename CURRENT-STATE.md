@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 20 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 21 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -47,6 +47,7 @@ On 2026-09-06, the existing suite completed successfully and demonstrated:
 - task-owned program allocations and a separately compiled libc-backed `wc`;
 - a pinned, byte-for-byte unmodified NetBSD `yes` using the libc veneer;
 - a separately archived, unmodified NetBSD generic `strlen` used by `puts`;
+- a separately archived, unmodified NetBSD generic `strcmp` used by `wc`;
 - the v0.1 acceptance command producing `HELLO`.
 
 That statement is bounded by the current tests. It is not evidence of complete
@@ -239,11 +240,23 @@ direct semantic tests exclude the host symbol and cover empty and embedded-NUL
 inputs. The complete gate passes locally and in the exact Alpine Woodpecker
 agent image.
 
+Iteration 21 repeated the narrow libc-import loop for NetBSD's generic
+`strcmp.c`. The boundary test was first red because the pinned source was
+absent. Its first implementation then failed to link: the upstream file
+deliberately undefines `strcmp`, defeating a command-line macro rename.
+cannedBSD's GCC/Clang header adapter now assigns the standard declaration a
+private assembler link name, leaving the hash-pinned source untouched; other
+compilers will require an equivalent porting hook. The original `wc` source now
+uses standard `strcmp` and `strlen` calls and is required to import only the
+private symbols. Direct tests cover equality, prefixes, both ordering
+directions, and high-bit bytes with unsigned-byte ordering. The complete gate
+passes locally and in the exact Alpine Woodpecker agent image.
+
 ## What's next
 
-Import NetBSD's generic `strcmp` as the next isolated libc primitive, with the
-same source, symbol, and semantic tests. Do not grow printf or getopt
-speculatively.
+Add tested `calloc` and `realloc` over the already-present task-owned allocation
+operations, including overflow, atomic failure, ownership, and errno behavior.
+Do not grow printf or getopt speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

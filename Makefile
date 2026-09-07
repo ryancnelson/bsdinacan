@@ -33,7 +33,8 @@ WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
-LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT)
+NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
+LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) $(NETBSD_STRCMP_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
 .PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
@@ -67,6 +68,12 @@ $(NETBSD_STRLEN_OBJECT): upstream/netbsd/common/lib/libc/string/strlen.c \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
 		-Dstrlen=cb_libc_strlen -c $< -o $@
+
+$(NETBSD_STRCMP_OBJECT): upstream/netbsd/common/lib/libc/string/strcmp.c \
+		compat/netbsd/include/assert.h include/cannedbsd/libc.h libc/include/string.h \
+		libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-DCANNEDBSD_BUILDING_LIBC_STRCMP -c $< -o $@
 
 $(LIBC_ARCHIVE): $(LIBC_OBJECTS)
 	$(AR) rcs $@ $^
@@ -128,6 +135,10 @@ analyze:
 		-Dstrlen=cb_libc_strlen \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strlen.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
+		-DCANNEDBSD_BUILDING_LIBC_STRCMP \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strcmp.c
 
 ci:
 	$(MAKE) check-publication

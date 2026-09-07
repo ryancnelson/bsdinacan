@@ -79,6 +79,11 @@ runtime model before the human-facing demo grows.
   file license, and compile it byte-for-byte unchanged under the private
   `cb_libc_strlen` link name. Require `libcannedbsd.a` to contain the separate
   object, prevent a host `strlen` import, and route `puts` through the routine.
+- [x] **Iteration 21: NetBSD `strcmp`.** Pin the matching generic NetBSD source,
+  compile it unchanged as a distinct `cb_libc_strcmp` archive member, and prove
+  signedness-sensitive ordering semantics. Replace the bootstrap `wc` command's
+  private string comparison with the standard interface and exclude a host
+  `strcmp` dependency.
 
 ## Priority 2 — usable-system demo
 
@@ -128,6 +133,18 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 21 (2026-09-06): NetBSD `strcmp`.** The red boundary test
+  failed on the absent pinned source. NetBSD's generic `strcmp.c` is now
+  hash-pinned, compiled unchanged, and archived separately as
+  `cb_libc_strcmp`. A naïve macro rename then failed to link because upstream
+  deliberately undefines `strcmp`; the GCC/Clang header adapter now assigns the
+  private assembler link name without touching the source, and the portability
+  ledger records the need for an equivalent on other compilers. The ordinary
+  bootstrap `wc` now imports private NetBSD `strcmp` and `strlen` through their
+  standard spellings. Direct tests include unsigned-byte and prefix ordering.
+  The canonical gate passes locally and in the exact Alpine Woodpecker agent
+  image.
 
 - [x] **Iteration 20 (2026-09-06): first unmodified NetBSD libc routine.** The
   red boundary test failed because the pinned `strlen.c` source was absent.

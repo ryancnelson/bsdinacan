@@ -5,15 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 
-static int strings_equal(const char *left, const char *right)
-{
-    while (*left != '\0' && *left == *right) {
-        ++left;
-        ++right;
-    }
-    return *left == *right;
-}
-
 static int write_all(int descriptor, const void *buffer, size_t count)
 {
     const unsigned char *cursor = buffer;
@@ -47,12 +38,8 @@ static void report_error(const char *subject)
     static const char newline[] = "\n";
     int saved_error = errno;
     const char *message = strerror(saved_error);
-    size_t subject_length = 0;
-    size_t message_length = 0;
-    while (subject[subject_length] != '\0')
-        ++subject_length;
-    while (message[message_length] != '\0')
-        ++message_length;
+    size_t subject_length = strlen(subject);
+    size_t message_length = strlen(message);
     write_all(STDERR_FILENO, prefix, sizeof(prefix) - 1);
     write_all(STDERR_FILENO, subject, subject_length);
     write_all(STDERR_FILENO, separator, sizeof(separator) - 1);
@@ -92,7 +79,7 @@ int main(int argc, char *argv[])
     int file_argument = 0;
     const char *subject = "standard input";
     uint64_t count;
-    if (argc < 2 || !strings_equal(argv[1], "-c") || argc > 3) {
+    if (argc < 2 || strcmp(argv[1], "-c") != 0 || argc > 3) {
         write_all(STDERR_FILENO, usage, sizeof(usage) - 1);
         return 2;
     }

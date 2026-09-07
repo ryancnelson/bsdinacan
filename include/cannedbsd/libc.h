@@ -30,6 +30,7 @@ int *cb_libc_errno_location(void);
 char *cb_libc_strerror(int error);
 int cb_libc_puts(const char *text);
 size_t cb_libc_strlen(const char *text);
+int cb_libc_strcmp(const char *left, const char *right);
 
 #define CB_LIBC_PROGRAM(symbol, command_name, main_function) \
     static int symbol##_start(const struct cb_api_v1 *api, int argc, \

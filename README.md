@@ -104,6 +104,10 @@ calculation from NetBSD's separately archived, also-unmodified generic
 [LIBC.md](LIBC.md) for the compatibility hierarchy, heap ownership contract,
 and route toward pkgsrc.
 
+The same pattern now supplies NetBSD `strcmp`; the ordinary bootstrap `wc.c`
+uses standard `strcmp` and `strlen` spellings while linking only to private
+cannedBSD symbols.
+
 ## Add a native command
 
 A v0.1 command is a C function that receives only the versioned cannedBSD API,

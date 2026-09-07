@@ -45,3 +45,28 @@ The boundary test pins the source and provenance hashes, checks the private
 symbol and archive member, rejects a host `strlen` import, and requires
 cannedBSD `puts` to consume the imported routine. Direct tests cover empty,
 ordinary, embedded-NUL, and interior-pointer inputs.
+
+## NetBSD `strcmp`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/strcmp.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/strcmp.c`
+- SHA-256: `f06298e20a2c02e9fbe11aeb06123d8b2ad6c8d5a9a04ad68fdae2aa142524f6`
+- Embedded RCS identifier: `$NetBSD: strcmp.c,v 1.4 2018/02/04 20:22:17 mrg Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged and archived separately as
+`netbsd_strcmp.o`. Because it deliberately undefines the C preprocessor name
+before its definition, `-Dstrcmp=cb_libc_strcmp` cannot rename it. On GCC and
+Clang, the definition build asks cannedBSD's `string.h` to declare the standard
+C name with the private assembler link name; application builds macro-map calls
+to the private symbol so compiler builtins cannot bypass the veneer. Another
+compiler will need an equivalent definition-side toolchain adapter. This is a
+known porting concern, not part of the cannedBSD runtime ABI.
+
+Hash and symbol tests reject source drift and host `strcmp`. The ordinary
+bootstrap `wc.c` now uses standard `strcmp` and `strlen` spellings and its
+object must import both private implementations. Direct tests cover equality,
+prefix ordering, both order directions, and unsigned-byte ordering.

@@ -1934,9 +1934,22 @@ static void test_netbsd_strlen(void)
         fail("NetBSD strlen semantics");
 }
 
+static void test_netbsd_strcmp(void)
+{
+    static const char high[] = {(char)0x80, '\0'};
+    static const char low[] = {(char)0x7f, '\0'};
+
+    if (cb_libc_strcmp("", "") != 0 || cb_libc_strcmp("same", "same") != 0 ||
+        cb_libc_strcmp("a", "b") >= 0 || cb_libc_strcmp("b", "a") <= 0 ||
+        cb_libc_strcmp("a", "aa") >= 0 || cb_libc_strcmp("aa", "a") <= 0 ||
+        cb_libc_strcmp(high, low) <= 0)
+        fail("NetBSD strcmp semantics");
+}
+
 int main(void)
 {
     test_netbsd_strlen();
+    test_netbsd_strcmp();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();
