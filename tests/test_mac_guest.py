@@ -57,8 +57,17 @@ class GuestTests(unittest.TestCase):
             guest.check(self.state)
         self.assertFalse((run / 'acceptance.json').exists())
 
+    def test_empty_placeholder_rejected_until_guest_rewrites_it(self):
+        run = self.stage()
+        self.assertEqual((run / 'shared/cannedbsd-result.txt').read_bytes(), b'')
+        with self.assertRaisesRegex(guest.Rejection, 'stale|ALL PASS'):
+            guest.check(self.state)
+        self.result(run)
+        self.assertEqual(guest.check(self.state)['result'], 'ALL PASS')
+
     def test_missing_and_failed_results_rejected(self):
         run = self.stage()
+        (run / 'shared/cannedbsd-result.txt').unlink()
         with self.assertRaisesRegex(guest.Rejection, 'missing'):
             guest.check(self.state)
         self.result(run, conclusion='FAILED')
@@ -81,7 +90,7 @@ class GuestTests(unittest.TestCase):
         guest.release(self.state, lambda paths: False)
         second = self.stage()
         self.assertNotEqual(run, second)
-        self.assertFalse((second / 'shared/cannedbsd-result.txt').exists())
+        self.assertEqual((second / 'shared/cannedbsd-result.txt').read_bytes(), b'')
         self.assertEqual((run / 'CannedBSD.dsk').read_bytes(), b'HFS!')
         with self.assertRaisesRegex(guest.Rejection, 'open'):
             guest.release(self.state, lambda paths: True)
@@ -93,6 +102,22 @@ class GuestTests(unittest.TestCase):
         run = guest.stage(self.artifact, self.state, 'a' * 40, seed)
         (run / 'System.dsk').write_bytes(b'changed')
         self.assertEqual(seed.read_bytes(), b'boot')
+
+    def test_native_config_uses_only_staged_disks_and_export(self):
+        seed = self.root / 'seed.dsk'
+        seed.write_bytes(b'boot')
+        rom = self.root / 'Mac.ROM'
+        rom.write_bytes(b'rom')
+        template = self.root / 'old-prefs'
+        template.write_text('disk /old/system\ndisk /old/app\nextfs /old/share\nrom /old/rom\nramsize 134217728\n')
+        run = guest.stage(self.artifact, self.state, 'a' * 40, seed, template, rom)
+        config = (run / 'basilisk_prefs').read_text()
+        self.assertNotIn('/old/', config)
+        self.assertIn('ramsize 134217728\n', config)
+        self.assertIn('disk ' + str(run / 'System.dsk') + '\n', config)
+        self.assertIn('disk ' + str(run / 'CannedBSD.dsk') + '\n', config)
+        self.assertIn('extfs ' + str(run / 'shared') + '\n', config)
+        self.assertIn('rom ' + str(rom.resolve()) + '\n', config)
 
     def test_duplicate_disk_member_rejected(self):
         with tarfile.open(self.artifact / 'CannedBSD.tar.gz', 'w:gz') as archive:

@@ -41,18 +41,32 @@ python3 platform/mac68k/guest.py stage \
   --artifact /path/to/downloaded-ci-run \
   --commit FULL_40_CHARACTER_COMMIT_SHA \
   --state /path/to/shared-guest-state \
-  --boot-seed /path/to/clean-shutdown-System7.dsk
+  --boot-seed /path/to/clean-shutdown-System7.dsk \
+  --native-template /path/to/current-basilisk-prefs \
+  --rom /path/to/Mac.ROM
 ```
 
 This verifies `commit.txt` and `SHA256SUMS`, reserves the guest slot, and prints
 a fresh run directory. It copies the verified HFS application image, optionally
-copies the boot seed to `System.dsk`, creates an empty `shared/` directory, and
-records commit, checksums, and staging time in `manifest.json`. The seed stays
-untouched. No prior result can survive into the new shared folder. Keep the
-seed from a verified clean guest shutdown; a copied damaged disk remains damaged.
+copies the boot seed to `System.dsk`, creates a fresh `shared/` directory with an
+empty result placeholder, and records commit, checksums, and staging time in `manifest.json`. The seed stays
+untouched. No prior result can survive into the new shared folder. The empty
+placeholder exists before the staging timestamp and cannot pass validation. It accommodates
+native extfs implementations where opening an existing host file works but
+creating the fully qualified result path fails; it must exist before boot. Keep
+the seed from a verified clean guest shutdown; a copied damaged disk remains damaged.
 
-With the emulator stopped, configure its `disk` entries to use this run's
-`System.dsk` and `CannedBSD.dsk`, and its `extfs` entry to use this run's
+For native Basilisk, the optional `--native-template` and `--rom` pair requires
+`--boot-seed` and generates `basilisk_prefs` inside the run. It preserves hardware
+settings and replaces every disk, export, and ROM entry. Launch with the stable
+installed app path (never a temporary AppTranslocation path):
+
+```sh
+open -na /path/to/BasiliskII.app --args --config /path/to/run/basilisk_prefs
+```
+
+For other setups, with the emulator stopped, configure its `disk` entries to use
+this run's `System.dsk` and `CannedBSD.dsk`, and its `extfs` entry to use this run's
 `shared/`. Keep the existing ROM and hardware settings. Launch Basilisk II,
 open the `CannedBSD` disk, select the application and use Finder's File > Open.
 Native computer-use keyboards accept `super+o` for Command-O. Verify the screen
@@ -75,13 +89,14 @@ application and new shared folder, or manually copying/touching an old result,
 can defeat that association. Verify the mounted disk and avoid concurrent guest
 instances. Do not move, rename, or delete exported host files while the guest is
 running: extfs may retain a stale directory entry and fail the next result write.
-Create the fresh share before boot and retain it until shutdown. A future guest nonce protocol can strengthen this boundary.
+Create the fresh share before boot and retain it until shutdown. A future guest
+nonce protocol can strengthen this boundary.
 
 After testing, exit CannedBSD. In native Basilisk II, choose BasiliskII > Quit
 BasiliskII; inspect the System 7 confirmation and click Shut Down. Finder's
 Special > Shut Down is another guest path; inspect and confirm its dialog too.
-Verify the guest shutdown completed and the emulator process exited. A still-running process alone is
-not a reason to terminate it. Do not kill the emulator or overwrite mounted disks.
+Verify the guest shutdown completed and the emulator process exited. A
+still-running process alone is not a reason to terminate it. Do not kill the emulator or overwrite mounted disks.
 
 ```sh
 python3 platform/mac68k/guest.py release --state /path/to/shared-guest-state

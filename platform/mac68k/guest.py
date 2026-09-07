@@ -29,8 +29,18 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def stage(artifact, state, expected_commit, boot_seed):
+def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom=None):
     artifact, state = Path(artifact).resolve(), Path(state).resolve()
+    native_settings = None
+    if native_template is not None or rom is not None:
+        if native_template is None or rom is None or boot_seed is None:
+            raise Rejection('native configuration needs --native-template, --rom, and --boot-seed')
+        rom = Path(rom).resolve()
+        if not rom.is_file() or any('\n' in str(path) or '\r' in str(path) for path in (state, rom)):
+            raise Rejection('native configuration needs an existing ROM and single-line paths')
+        native_settings = '\n'.join(
+            line for line in Path(native_template).read_text().splitlines()
+            if not line.split() or line.split()[0] not in ('disk', 'extfs', 'rom'))
     commit = (artifact / 'commit.txt').read_text().strip()
     if not re.fullmatch('[0-9a-f]{40}', expected_commit) or commit != expected_commit:
         raise Rejection('commit.txt does not match the expected full commit SHA')
@@ -54,6 +64,9 @@ def stage(artifact, state, expected_commit, boot_seed):
         try:
             run = Path(tempfile.mkdtemp(prefix='run-', dir=state))
             (run / 'shared').mkdir()
+            # Native extfs can open an existing result more reliably than HCreate.
+            # This empty placeholder predates staging and can never pass check.
+            (run / 'shared/cannedbsd-result.txt').write_bytes(b'')
             shutil.copyfile(archive_path, run / 'CannedBSD.tar.gz')
             if digest(run / 'CannedBSD.tar.gz') != archive_sha:
                 raise Rejection('artifact changed during staging (checksum mismatch)')
@@ -62,6 +75,12 @@ def stage(artifact, state, expected_commit, boot_seed):
                     shutil.copyfileobj(source, dest)
             if boot_seed is not None:
                 shutil.copyfile(Path(boot_seed).resolve(), run / 'System.dsk')
+            if native_settings is not None:
+                (run / 'basilisk_prefs').write_text(
+                    'disk ' + str(run / 'System.dsk') + '\n'
+                    'disk ' + str(run / 'CannedBSD.dsk') + '\n'
+                    'extfs ' + str(run / 'shared') + '\n'
+                    'rom ' + str(rom) + '\n' + native_settings + '\n')
             manifest = {'commit': commit, 'artifact_sha256': archive_sha,
                         'disk_sha256': digest(run / 'CannedBSD.dsk'),
                         'staged_ns': time.time_ns(), 'run_directory': str(run),
@@ -139,14 +158,20 @@ def main():
     prepare.add_argument('--state', type=Path, required=True)
     prepare.add_argument('--commit', required=True, help='expected full Woodpecker commit SHA')
     prepare.add_argument('--boot-seed', type=Path, help='copy a known-good shutdown boot disk into this run')
+    prepare.add_argument('--native-template', type=Path, help='existing Basilisk preferences; disk/extfs/rom entries replaced')
+    prepare.add_argument('--rom', type=Path, help='ROM to use with --native-template and --boot-seed')
     for command in ('check', 'status', 'release'):
         sub.add_parser(command).add_argument('--state', type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == 'stage':
-            run = stage(args.artifact, args.state, args.commit, args.boot_seed)
+            run = stage(args.artifact, args.state, args.commit, args.boot_seed, args.native_template, args.rom)
             print(run)
+            if args.boot_seed is not None:
+                print('Boot disk: ' + str(run / 'System.dsk'))
             print('Mount disk: ' + str(run / 'CannedBSD.dsk'))
+            if args.native_template is not None:
+                print('Native configuration: ' + str(run / 'basilisk_prefs'))
             print('Set extfs: ' + str(run / 'shared'))
         elif args.command == 'check':
             print(json.dumps(check(args.state), indent=2))
