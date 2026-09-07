@@ -60,8 +60,15 @@ unless the coordinating prompt explicitly asks for it.
    overflow, and tests that assert implementation details instead of behavior.
 6. Commit one behavior change and push the feature branch. Wait for both the
    Linux `ci` and `mac68k` Woodpecker workflows on the exact commit. A local
-   build is not Woodpecker evidence. Guest System 7 execution is additionally
-   required when Mac runtime behavior or `platform/mac68k` changes.
+   build is not Woodpecker evidence.
+7. For every runtime, libc, VFS, shell, command, or `platform/mac68k` behavior
+   change, test the exact `mac68k` Woodpecker artifact in the shared Basilisk II
+   System 7 guest. Verify `SHA256SUMS`, remove the prior result file, require a
+   newly written `ALL PASS`, and record the commit, checksum, and guest result
+   in the iteration note. Only one worker may control noVNC at a time; the
+   coordinator assigns that serialized guest-test slot. Documentation-only and
+   Linux-host-only changes may record guest acceptance as not required with a
+   reason.
 
 If a check fails, diagnose it, add or refine a reproducer when appropriate,
 fix the cause, and rerun every affected check. A pushed fix is not completion;
@@ -93,6 +100,7 @@ the shared rollups in `BACKLOG.md` and `CURRENT-STATE.md` after merging. This
 avoids predictable conflicts between parallel workers.
 
 Report the backlog ID, base SHA, worktree, branch, commit SHA, red command and
-failure, focused green command, full gate, both Woodpecker results, changed
-documentation, and any bounded risk or follow-up. Claim only evidence actually
-observed on the reported commit.
+failure, focused green command, full gate, both Woodpecker results, Mac guest
+artifact checksum and result when required, changed documentation, and any
+bounded risk or follow-up. Claim only evidence actually observed on the
+reported commit.
