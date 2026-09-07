@@ -42,7 +42,7 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 
 - `unistd.h`: `read`, `write`, `close`, and standard descriptor numbers.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
-- `stdlib.h`: `malloc` and `free`.
+- `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
@@ -73,9 +73,12 @@ exits, when a successful `exec` replaces its program image, or when the kernel
 is destroyed early. Zombie collection is therefore not responsible for
 retaining a dead program's heap.
 
-`malloc` and `free` dispatch through those operations. The resize operation is
-available for a later tested `realloc`, but the libc does not expose untested
-surface merely because the underlying primitive exists.
+`malloc`, `realloc`, and `free` dispatch through those operations. `calloc`
+checks multiplication overflow before allocation and clears the complete
+requested extent. Tests inject resize failure and prove that the old allocation
+and contents remain valid. `realloc(pointer, 0)` follows the runtime's chosen
+contract of releasing the allocation and returning null; zero-size allocation
+otherwise returns a task-owned unique pointer.
 
 Each task also owns a separately allocated integer errno cell. It is not an
 address inside the runtime task object. The cell supplies the libc `errno`

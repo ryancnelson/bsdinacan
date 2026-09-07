@@ -34,6 +34,7 @@ YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
+LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) $(NETBSD_STRCMP_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
@@ -78,6 +79,10 @@ $(NETBSD_STRCMP_OBJECT): upstream/netbsd/common/lib/libc/string/strcmp.c \
 $(LIBC_ARCHIVE): $(LIBC_OBJECTS)
 	$(AR) rcs $@ $^
 
+$(LIBC_ALLOCATION_TEST_OBJECT): tests/libc_allocation_source.c \
+		include/cannedbsd/libc.h libc/include/stdlib.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
+
 $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
 		$(YES_COMMAND_OBJECT) \
@@ -101,7 +106,7 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
-test: $(PROGRAM) $(TEST_PROGRAM) check-architecture
+test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) check-architecture
 	$(TEST_PROGRAM)
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
@@ -139,6 +144,9 @@ analyze:
 		-DCANNEDBSD_BUILDING_LIBC_STRCMP \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strcmp.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_allocation_source.c
 
 ci:
 	$(MAKE) check-publication

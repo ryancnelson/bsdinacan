@@ -13,6 +13,7 @@ static void *(*base_allocate)(size_t);
 static void *(*base_resize)(void *, size_t);
 static void (*base_release)(void *);
 static int allocation_failure_countdown = -1;
+static int resize_failure_countdown = -1;
 static long allocation_balance;
 static const unsigned char *console_input;
 static size_t console_input_size;
@@ -124,6 +125,17 @@ static void *controlled_allocate(size_t size)
     if (allocation_failure_countdown > 0)
         --allocation_failure_countdown;
     return base_allocate(size);
+}
+
+static void *controlled_resize(void *pointer, size_t size)
+{
+    if (resize_failure_countdown == 0) {
+        resize_failure_countdown = -1;
+        return NULL;
+    }
+    if (resize_failure_countdown > 0)
+        --resize_failure_countdown;
+    return base_resize(pointer, size);
 }
 
 static void *tracked_allocate(size_t size)
@@ -1473,6 +1485,66 @@ static int allocationprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int libcallocation_main(int argc, char *argv[])
+{
+    unsigned char *zeroed;
+    unsigned char *memory;
+    unsigned char *resized;
+    unsigned char foreign = 0;
+    size_t index;
+    (void)argc;
+    (void)argv;
+
+    zeroed = cb_libc_calloc(3, 5);
+    if (zeroed == NULL)
+        return 234;
+    for (index = 0; index < 15; ++index)
+        if (zeroed[index] != 0)
+            return 235;
+    cb_libc_free(zeroed);
+
+    if (cb_libc_calloc(SIZE_MAX, 2) != NULL ||
+        *cb_libc_errno_location() != CB_ENOMEM)
+        return 236;
+    zeroed = cb_libc_calloc(0, SIZE_MAX);
+    if (zeroed == NULL)
+        return 237;
+    cb_libc_free(zeroed);
+
+    memory = cb_libc_malloc(4);
+    if (memory == NULL)
+        return 238;
+    for (index = 0; index < 4; ++index)
+        memory[index] = (unsigned char)(0x40 + index);
+    resize_failure_countdown = 0;
+    if (cb_libc_realloc(memory, 8) != NULL ||
+        *cb_libc_errno_location() != CB_ENOMEM)
+        return 239;
+    for (index = 0; index < 4; ++index)
+        if (memory[index] != (unsigned char)(0x40 + index))
+            return 240;
+    resized = cb_libc_realloc(memory, 8);
+    if (resized == NULL)
+        return 241;
+    for (index = 0; index < 4; ++index)
+        if (resized[index] != (unsigned char)(0x40 + index))
+            return 242;
+    resized = cb_libc_realloc(resized, 2);
+    if (resized == NULL || resized[0] != 0x40 || resized[1] != 0x41)
+        return 243;
+    if (cb_libc_realloc(resized, 0) != NULL ||
+        *cb_libc_errno_location() != 0)
+        return 244;
+    if (cb_libc_realloc(&foreign, 2) != NULL ||
+        *cb_libc_errno_location() != CB_EINVAL)
+        return 245;
+    memory = cb_libc_realloc(NULL, 3);
+    if (memory == NULL)
+        return 246;
+    cb_libc_free(memory);
+    return 0;
+}
+
 static int yesreader_main(const struct cb_api_v1 *api, int argc,
                           char *const argv[], char *const envp[])
 {
@@ -1808,6 +1880,9 @@ static const struct cb_program_v1 allocationprobe_program = {
     64 * 1024, allocationprobe_main
 };
 
+CB_LIBC_PROGRAM(libcallocprobe_program, "libcallocprobe",
+                libcallocation_main);
+
 static const struct cb_program_v1 yesreader_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "yesreader", 0,
     64 * 1024, yesreader_main
@@ -1825,8 +1900,11 @@ static void run_case(const char *command, const char *expected_output,
     struct cb_kernel *kernel;
     int status;
     base_allocate = host.allocate;
+    base_resize = host.resize;
     host.allocate = controlled_allocate;
+    host.resize = controlled_resize;
     allocation_failure_countdown = -1;
+    resize_failure_countdown = -1;
     host.console_poll = controlled_console_poll;
     host.console_read = controlled_console_read;
     host.console_write = capture_write;
@@ -1860,6 +1938,7 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &libcallocprobe_program) < 0 ||
             cb_kernel_register(kernel, &yesreader_program) < 0 ||
             cb_kernel_register(kernel, &yesprobe_program) < 0)
             fail("test program registration");
@@ -2057,6 +2136,7 @@ int main(void)
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
+    run_case("libcallocprobe", "", 0, 1);
     run_case("yes ok | yesreader", "ok\n", 0, 1);
     run_case("yesprobe", "ok\n", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",

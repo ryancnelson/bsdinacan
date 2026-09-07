@@ -7,6 +7,8 @@
 #define EXIT_FAILURE 1
 
 #define malloc cb_libc_malloc
+#define calloc cb_libc_calloc
+#define realloc cb_libc_realloc
 #define free cb_libc_free
 
 #endif

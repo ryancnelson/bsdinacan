@@ -25,6 +25,8 @@ cb_ssize_t cb_libc_write(int descriptor, const void *buffer, size_t count);
 int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 void *cb_libc_malloc(size_t size);
+void *cb_libc_calloc(size_t count, size_t size);
+void *cb_libc_realloc(void *pointer, size_t size);
 void cb_libc_free(void *pointer);
 int *cb_libc_errno_location(void);
 char *cb_libc_strerror(int error);

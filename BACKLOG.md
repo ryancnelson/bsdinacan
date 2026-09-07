@@ -84,6 +84,10 @@ runtime model before the human-facing demo grows.
   signedness-sensitive ordering semantics. Replace the bootstrap `wc` command's
   private string comparison with the standard interface and exclude a host
   `strcmp` dependency.
+- [x] **Iteration 22: complete the basic allocation veneer.** Add `calloc` and
+  `realloc` over the task-owned program heap. Prove zero fill, multiplication
+  overflow, zero-size behavior, growth and shrink preservation, foreign-pointer
+  rejection, and failed-resize atomicity with deterministic failure injection.
 
 ## Priority 2 — usable-system demo
 
@@ -133,6 +137,17 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 22 (2026-09-06): basic allocation veneer.** The red build
+  failed because `cb_libc_calloc` and `cb_libc_realloc` were absent. `calloc`
+  now rejects multiplication overflow with `ENOMEM`, allocates on the existing
+  task heap, and clears every requested byte; `realloc` delegates to the
+  ownership-enforcing resize operation. A task-level probe covers zero-size
+  allocation, overflow, grow/shrink preservation, foreign pointers, and a
+  deterministically failed resize that leaves the original allocation intact.
+  A separate ordinary-source object spells `calloc` and `realloc` and must
+  import only their private veneer symbols. The canonical gate passes locally
+  and in the exact Alpine Woodpecker agent image.
 
 - [x] **Iteration 21 (2026-09-06): NetBSD `strcmp`.** The red boundary test
   failed on the absent pinned source. NetBSD's generic `strcmp.c` is now

@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 21 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 22 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -252,11 +252,24 @@ private symbols. Direct tests cover equality, prefixes, both ordering
 directions, and high-bit bytes with unsigned-byte ordering. The complete gate
 passes locally and in the exact Alpine Woodpecker agent image.
 
+Iteration 22 completed the basic allocation veneer. Its red build reported
+missing `cb_libc_calloc` and `cb_libc_realloc`. `calloc` now checks product
+overflow, returns `ENOMEM`, and zeroes the requested extent; `realloc` delegates
+to the already ownership-enforcing task resize operation. The libc startup
+check now requires that operation. A deterministic resize failure proves the
+old allocation and bytes survive, while direct cases cover zero-size behavior,
+growth, shrinkage, foreign pointers, and `realloc(NULL, size)`. A separately
+compiled ordinary-source probe must import the prefixed functions rather than
+host allocation. The complete gate passes locally and in the exact Alpine
+Woodpecker agent image.
+
 ## What's next
 
-Add tested `calloc` and `realloc` over the already-present task-owned allocation
-operations, including overflow, atomic failure, ownership, and errno behavior.
-Do not grow printf or getopt speculatively.
+Inventory the next genuinely useful imported utility and implement only its
+next missing libc dependency. `memcpy` is high leverage, but its NetBSD generic
+source includes `bcopy.c`; treat that as an explicit provenance/build-design
+decision rather than a reflexive import. Do not grow printf or getopt
+speculatively.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

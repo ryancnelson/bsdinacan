@@ -108,6 +108,10 @@ The same pattern now supplies NetBSD `strcmp`; the ordinary bootstrap `wc.c`
 uses standard `strcmp` and `strlen` spellings while linking only to private
 cannedBSD symbols.
 
+The allocation veneer now includes overflow-checked `calloc` and
+ownership-preserving `realloc`, with an ordinary-source compile probe as well
+as task-level failure and lifetime tests.
+
 ## Add a native command
 
 A v0.1 command is a C function that receives only the versioned cannedBSD API,

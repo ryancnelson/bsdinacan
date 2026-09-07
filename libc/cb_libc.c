@@ -11,7 +11,8 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->write != NULL && api->open != NULL && api->close != NULL &&
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
-           api->release != NULL && api->errno_location != NULL;
+           api->resize != NULL && api->release != NULL &&
+           api->errno_location != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -81,6 +82,29 @@ int cb_libc_close(int descriptor)
 void *cb_libc_malloc(size_t size)
 {
     return bound_api->allocate(size);
+}
+
+void *cb_libc_calloc(size_t count, size_t size)
+{
+    unsigned char *memory;
+    size_t total;
+    size_t index;
+    if (size != 0 && count > SIZE_MAX / size) {
+        bound_api->set_errno(CB_ENOMEM);
+        return NULL;
+    }
+    total = count * size;
+    memory = bound_api->allocate(total);
+    if (memory == NULL)
+        return NULL;
+    for (index = 0; index < total; ++index)
+        memory[index] = 0;
+    return memory;
+}
+
+void *cb_libc_realloc(void *pointer, size_t size)
+{
+    return bound_api->resize(pointer, size);
 }
 
 void cb_libc_free(void *pointer)
