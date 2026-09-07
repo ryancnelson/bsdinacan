@@ -9,6 +9,7 @@ test -s build-mac68k/.rsrc/CannedBSD.APPL
 artifact_root="/artifacts/${CI_PIPELINE_NUMBER:?}-${CI_COMMIT_SHA:?}"
 mkdir -p "$artifact_root"
 artifact_dir=$(mktemp -d "$artifact_root/run.XXXXXX")
+chmod 755 "$artifact_dir"
 tar -C build-mac68k -czf "$artifact_dir/CannedBSD.tar.gz" \
     CannedBSD.bin CannedBSD.dsk CannedBSD.APPL .rsrc .finf
 printf '%s\n' "$CI_COMMIT_SHA" > "$artifact_dir/commit.txt"

@@ -24,7 +24,7 @@ Docker toolchain. The authoritative build remains the Woodpecker artifact.
 ## Acceptance check
 
 At startup the application exercises two independent stacks with 512 total
-context switches, then checks seven shell cases with exact output and exit
+child yields, then checks seven shell cases with exact output and exit
 status assertions: pipelines and redirection, `wc`, a three-stage pipeline,
 append, shell status, working directory, and a nonzero exit.
 It writes results to `Unix:cannedbsd-result.txt`. Require `ALL PASS` in a newly
@@ -34,7 +34,8 @@ Type `exit`, press Command-Q, or close the window to quit.
 
 ## Host implementation and limits
 
-Memory uses non-relocatable Toolbox pointers. Cooperative stack switching saves
+Memory uses non-relocatable Toolbox pointers. The application heap is expanded
+before entering any coroutine stack. Cooperative stack switching saves
 the 68K C ABI's callee-saved registers, including the A5 application world.
 The default compiler ABI uses software floating point. The host pumps Toolbox
 events at scheduler yield points and provides line-buffered ASCII input.

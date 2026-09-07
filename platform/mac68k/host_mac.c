@@ -258,6 +258,10 @@ int cb_mac_quitting(void) { return quit_requested; }
 int cb_mac_initialize(void)
 {
     Rect bounds = {45, 30, 445, 660};
+    /* Expand the application heap while still on the original Mac stack.
+     * Later coroutine stacks live in heap blocks; heap growth must not infer
+     * its upper limit from one of those temporarily active stack pointers. */
+    MaxApplZone();
     InitGraf(&qd.thePort); InitFonts(); InitWindows(); InitMenus();
     TEInit(); InitDialogs(NULL); InitCursor();
     window = NewWindow(NULL, &bounds, (ConstStringPtr)"\pcannedBSD - System 7 / 68K",
