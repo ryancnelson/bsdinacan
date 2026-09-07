@@ -42,6 +42,8 @@ only while a private heap-backed stack is active, then restored on the original
 application stack. Toolbox calls requested by a task are serviced synchronously
 on that original stack before the same task resumes. The context acceptance
 check holds both private stacks across VBL ticks and exercises memory requests.
+The executable uses Retro68's single-segment mode, so lazy code loading cannot
+invoke Toolbox traps on task stacks; CI checks the emitted CODE resources.
 The default compiler ABI uses software floating point. The host pumps Toolbox
 events on the original scheduler stack and provides line-buffered ASCII input.
 TickCount supplies monotonic time; UTC wall time is unavailable and returns

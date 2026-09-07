@@ -5,6 +5,7 @@ cmake -S platform/mac68k -B build-mac68k \
 cmake --build build-mac68k -j2
 test -s build-mac68k/CannedBSD.bin
 test -s build-mac68k/.rsrc/CannedBSD.APPL
+python3 platform/mac68k/check_code_resources.py build-mac68k/.rsrc/CannedBSD.APPL
 # The dedicated runner mounts its artifact store here. Keep each CI run separate.
 artifact_root="/artifacts/${CI_PIPELINE_NUMBER:?}-${CI_COMMIT_SHA:?}"
 mkdir -p "$artifact_root"

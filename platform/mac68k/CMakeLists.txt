@@ -35,4 +35,7 @@ target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
-target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug)
+# Lazy LoadSeg performs Toolbox work and must never run on a task stack.
+# A single resident CODE segment keeps all runtime calls free of that trap.
+target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug
+    -Wl,--mac-single)
