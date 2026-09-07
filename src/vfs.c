@@ -234,10 +234,10 @@ int cb_vfs_set_root_mount(struct cb_kernel *kernel,
     struct cb_vfs_node *root;
     if (kernel == NULL || mount == NULL || kernel->root_mount != NULL ||
         mount->kernel != kernel || !mount_ops_valid(mount->ops))
-        return -1;
+        return -CB_EINVAL;
     root = mount->ops->root(mount);
     if (root == NULL || !node_ops_valid(root->ops) || root->mount != mount)
-        return -1;
+        return -CB_EINVAL;
     kernel->root_mount = mount;
     kernel->vfs_root = root;
     return 0;
@@ -423,10 +423,16 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     char normalized[CB_PATH_MAX];
     struct cb_vfs_node *node = NULL;
     int result;
+    size_t i;
 
-    if (task == NULL || task->kernel == NULL || mount == NULL ||
-        task->kernel->mount_count >= 4)
-        return -1;
+    if (task == NULL || task->kernel == NULL || path == NULL || mount == NULL)
+        return -CB_EINVAL;
+
+    if (mount->kernel != task->kernel || !mount_ops_valid(mount->ops))
+        return -CB_EINVAL;
+
+    if (task->kernel->mount_count >= 4)
+        return -CB_ENOMEM;
 
     result = normalize_for_task(task, path, normalized);
     if (result < 0)
@@ -436,7 +442,12 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     if (result < 0)
         return result;
 
-    /* A naive test implementation just stores the mount for the red test */
+    for (i = 0; i < task->kernel->mount_count; ++i) {
+        if (task->kernel->mounts[i].mount_point == node) {
+            return -CB_EEXIST;
+        }
+    }
+
     cb_vfs_node_retain(node);
     task->kernel->mounts[task->kernel->mount_count].mount_point = node;
     task->kernel->mounts[task->kernel->mount_count].mount = mount;
