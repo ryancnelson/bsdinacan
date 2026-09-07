@@ -32,4 +32,9 @@ if rg -n -- 'cb_fs_|struct cb_node|\bfs_root\b' src/core.c; then
     exit 1
 fi
 
+if rg -n -- 'internal\.h' libc commands; then
+    printf 'runtime-private header leaked into libc or command layer\n' >&2
+    exit 1
+fi
+
 printf 'architecture boundary checks passed\n'

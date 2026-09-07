@@ -38,6 +38,7 @@ struct cb_program;
 struct cb_execution;
 struct cb_vfs_mount;
 struct cb_vfs_node;
+struct cb_task_allocation;
 
 struct cb_executor_ops {
     uint32_t abi_version;
@@ -182,6 +183,7 @@ struct cb_task {
     char **pending_argv;
     int pending_argc;
     char **pending_environment;
+    struct cb_task_allocation *allocations;
     struct cb_task *next;
 };
 
@@ -269,5 +271,6 @@ int cb_test_path_normalize(const char *cwd, const char *path,
                            char *output, size_t output_size);
 enum cb_wake_reason cb_test_current_wake_reason(void);
 int cb_test_current_descriptor_poll(int descriptor, int events);
+size_t cb_test_task_allocation_count(cb_pid_t pid);
 
 #endif

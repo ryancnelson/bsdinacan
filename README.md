@@ -76,6 +76,24 @@ sanitizer-linked artifact.
 `make ci` is the canonical pre-push and Woodpecker gate. See
 [CI.md](CI.md) for its exact stages and safety constraints.
 
+## First libc source target
+
+The first post-v0.1 compatibility slice compiles `commands/wc.c` as a separate
+translation unit containing an ordinary `main(int, char **)`. Its familiar
+`read`, `write`, `open`, `close`, `malloc`, and `free` names are supplied by
+small cannedBSD headers and the prefixed `libcannedbsd.a` veneer over
+`cb_api_v1`; the command does not include the runtime's private header or call
+host I/O.
+
+```sh
+build/bsdinacan -c 'echo -n hello | wc -c'
+```
+
+The exact output is `5`. The bootstrap command currently implements only
+`wc -c [file]`; it is original code rather than imported NetBSD `wc`. See
+[LIBC.md](LIBC.md) for the compatibility hierarchy, heap ownership contract,
+upstream provenance policy, and route toward NetBSD utilities and pkgsrc.
+
 ## Add a native command
 
 A v0.1 command is a C function that receives only the versioned cannedBSD API,
@@ -105,7 +123,8 @@ static const struct cb_program_v1 hello_program = {
 };
 ```
 
-Add the descriptor to the array in `cb_register_base_programs()` in
+Direct-API commands add the descriptor to the array in
+`cb_register_base_programs()` in
 `src/programs.c`. Registration copies the descriptor and name into a generic
 runtime-owned program object, so execution goes through the native-executor
 lifecycle rather than directly through the registry. Add a black-box command
@@ -143,7 +162,8 @@ backend notes.
 
 Working Linux proof-of-concept. The v0.1 acceptance pipeline passes, and the
 runtime has internal tasks, descriptors, pipes, RAMFS, a native-command
-registry, and a small shell. This is not yet the richer demo: `sed`, `awk`,
+registry, a small shell, task-owned program allocations, and the first
+libc-backed external command. This is not yet the richer demo: `sed`, `awk`,
 curses, a tiny vi, networking, dynamic modules, WASM, and classic-host adapters
 remain planned work. Read [CURRENT-STATE.md](CURRENT-STATE.md) first when
 continuing development, then take the first ready item in

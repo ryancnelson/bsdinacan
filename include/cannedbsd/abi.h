@@ -139,6 +139,10 @@ struct cb_api_v1 {
     int (*get_errno)(void);
     void (*set_errno)(int error);
     const struct cb_capabilities_v1 *(*capabilities)(void);
+
+    void *(*allocate)(size_t size);
+    void *(*resize)(void *pointer, size_t size);
+    void (*release)(void *pointer);
 };
 
 struct cb_program_v1 {

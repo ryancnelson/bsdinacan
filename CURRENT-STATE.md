@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 16 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 17 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -44,6 +44,7 @@ On 2026-09-06, the existing suite completed successfully and demonstrated:
 - an in-memory filesystem, working directories, and shell redirection;
 - Unix-style lifetime for an unlinked RAMFS file that remains open;
 - shell variables, `$?`, `cd`, `pwd`, `export`, and `unset`;
+- task-owned program allocations and a separately compiled libc-backed `wc`;
 - the v0.1 acceptance command producing `HELLO`.
 
 That statement is bounded by the current tests. It is not evidence of complete
@@ -191,17 +192,32 @@ outcomes. Registration-source mutation proves program preparation ownership.
 README instructions now include prerequisites and a native-command example.
 The complete current tree passed inside the exact Alpine Woodpecker agent image.
 
+Iteration 17 began the post-v0.1 source-compatibility ladder. Its first red
+build failed with an undefined task-allocation observer; the core now tracks
+program allocations per internal task and reclaims them on exit, successful
+exec, or teardown. Tests prove resize preservation, zero-size behavior, atomic
+allocation failure, cross-task ownership rejection, exit-before-wait cleanup,
+and exec cleanup. A second red test reported that `commands/wc.c` did not
+exist. It is now compiled as its own ordinary-main translation unit against
+minimal `unistd.h`, `fcntl.h`, and `stdlib.h` veneers. The bootstrap `wc -c`
+uses standard source spellings while its object imports only prefixed
+cannedBSD functions. The canonical gate passes locally and in the exact Alpine
+Woodpecker agent image, including Clang ASan/UBSan.
+
 ## What's next
 
-The normative v0.1 rows in `COMPLIANCE.md` now have direct evidence. Remaining
-items in `BACKLOG.md` are post-v0.1 usability and portability work rather than
-release blockers.
+Expand libc only far enough to compile one unmodified, carefully selected
+NetBSD utility, then record its exact upstream provenance. Do not mistake the
+original bounded bootstrap `wc` for that compatibility proof.
 
 ## Key files and commands
 
 | Purpose | Location or command |
 |---|---|
 | Public ABI | `include/cannedbsd/abi.h` |
+| libc/source compatibility contract | `LIBC.md` |
+| libc veneer and headers | `libc/`, `include/cannedbsd/libc.h` |
+| External command source | `commands/wc.c` |
 | Portable runtime core | `src/core.c` |
 | Generic VFS | `src/vfs.c` |
 | RAM filesystem backend | `src/ramfs.c` |
@@ -219,6 +235,8 @@ release blockers.
 
 - `/bin/sh` and other command paths are resolved through a native program
   registry rather than genuine executable filesystem objects.
+- The libc surface is intentionally tiny and has no conforming `errno`, stdio,
+  directory, time, signal, locale, or terminal APIs yet.
 - `sed`, `awk`, a curses demo, and a tiny vi are the second-stage usability
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,

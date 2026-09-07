@@ -9,6 +9,12 @@ static struct cb_kernel *active_kernel;
 
 static void initialize_api(struct cb_kernel *kernel);
 
+struct cb_task_allocation {
+    void *pointer;
+    size_t size;
+    struct cb_task_allocation *next;
+};
+
 void *cb_allocate(struct cb_kernel *kernel, size_t size)
 {
     void *pointer = kernel->host->allocate(size);
@@ -67,6 +73,24 @@ int cb_test_current_descriptor_poll(int descriptor, int events)
         (file = task->descriptors[descriptor].file) == NULL)
         return -CB_EBADF;
     return file->ops->poll(file, events);
+}
+
+size_t cb_test_task_allocation_count(cb_pid_t pid)
+{
+    struct cb_task *task;
+    size_t count = 0;
+    if (active_kernel == NULL)
+        return SIZE_MAX;
+    for (task = active_kernel->tasks; task != NULL; task = task->next) {
+        struct cb_task_allocation *allocation;
+        if (task->pid != pid)
+            continue;
+        for (allocation = task->allocations; allocation != NULL;
+             allocation = allocation->next)
+            ++count;
+        return count;
+    }
+    return SIZE_MAX;
 }
 
 static size_t string_vector_count(char *const vector[])
@@ -448,9 +472,22 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
     task->state = CB_TASK_RUNNING;
 }
 
+static void task_release_allocations(struct cb_task *task)
+{
+    struct cb_task_allocation *allocation = task->allocations;
+    while (allocation != NULL) {
+        struct cb_task_allocation *next = allocation->next;
+        cb_release(task->kernel, allocation->pointer);
+        cb_release(task->kernel, allocation);
+        allocation = next;
+    }
+    task->allocations = NULL;
+}
+
 static void task_destroy(struct cb_task *task)
 {
     struct cb_kernel *kernel = task->kernel;
+    task_release_allocations(task);
     fd_close_all(task);
     cb_executor_instance_destroy(task->execution);
     string_vector_destroy(kernel, task->argv);
@@ -574,6 +611,7 @@ static void task_finish_exec(struct cb_task *task)
     int descriptor;
     cb_executor_instance_destroy(task->execution);
     task->execution = NULL;
+    task_release_allocations(task);
     for (descriptor = 0; descriptor < CB_MAX_FDS; ++descriptor) {
         if (task->descriptors[descriptor].file != NULL &&
             task->descriptors[descriptor].close_on_exec)
@@ -722,6 +760,7 @@ static int api_exec(const char *program_name, char *const argv[],
 static void api_exit(int status)
 {
     struct cb_task *task = active_kernel->current;
+    task_release_allocations(task);
     fd_close_all(task);
     task->exit_status = status & 0xff;
     task->state = CB_TASK_ZOMBIE;
@@ -1168,6 +1207,91 @@ static const struct cb_capabilities_v1 *api_capabilities(void)
     return &active_kernel->capabilities;
 }
 
+static struct cb_task_allocation **task_allocation_link(
+    struct cb_task *task, void *pointer)
+{
+    struct cb_task_allocation **link = &task->allocations;
+    while (*link != NULL && (*link)->pointer != pointer)
+        link = &(*link)->next;
+    return link;
+}
+
+static void *api_allocate(size_t size)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_task_allocation *allocation;
+    void *pointer;
+    if (size == 0)
+        size = 1;
+    pointer = cb_allocate(task->kernel, size);
+    if (pointer == NULL) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return NULL;
+    }
+    allocation = cb_allocate(task->kernel, sizeof(*allocation));
+    if (allocation == NULL) {
+        cb_release(task->kernel, pointer);
+        cb_task_set_error(task, CB_ENOMEM);
+        return NULL;
+    }
+    allocation->pointer = pointer;
+    allocation->size = size;
+    allocation->next = task->allocations;
+    task->allocations = allocation;
+    cb_task_set_error(task, 0);
+    return pointer;
+}
+
+static void *api_resize(void *pointer, size_t size)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_task_allocation **link;
+    void *resized;
+    if (pointer == NULL)
+        return api_allocate(size);
+    link = task_allocation_link(task, pointer);
+    if (*link == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return NULL;
+    }
+    if (size == 0) {
+        struct cb_task_allocation *allocation = *link;
+        *link = allocation->next;
+        cb_release(task->kernel, allocation->pointer);
+        cb_release(task->kernel, allocation);
+        cb_task_set_error(task, 0);
+        return NULL;
+    }
+    resized = cb_resize(task->kernel, pointer, size);
+    if (resized == NULL) {
+        cb_task_set_error(task, CB_ENOMEM);
+        return NULL;
+    }
+    (*link)->pointer = resized;
+    (*link)->size = size;
+    cb_task_set_error(task, 0);
+    return resized;
+}
+
+static void api_release(void *pointer)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_task_allocation **link;
+    struct cb_task_allocation *allocation;
+    if (pointer == NULL)
+        return;
+    link = task_allocation_link(task, pointer);
+    if (*link == NULL) {
+        cb_task_set_error(task, CB_EINVAL);
+        return;
+    }
+    allocation = *link;
+    *link = allocation->next;
+    cb_release(task->kernel, allocation->pointer);
+    cb_release(task->kernel, allocation);
+    cb_task_set_error(task, 0);
+}
+
 static void initialize_api(struct cb_kernel *kernel)
 {
     struct cb_api_v1 *api = &kernel->api;
@@ -1202,6 +1326,9 @@ static void initialize_api(struct cb_kernel *kernel)
     api->get_errno = api_get_errno;
     api->set_errno = api_set_errno;
     api->capabilities = api_capabilities;
+    api->allocate = api_allocate;
+    api->resize = api_resize;
+    api->release = api_release;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

@@ -59,6 +59,11 @@ runtime model before the human-facing demo grows.
   dirty host-allocation independence, descriptor readiness, signed byte-count
   and offset overflow handling, registration-source ownership, complete README
   instructions, and the exact Alpine Woodpecker command.
+- [x] **Iteration 17: first libc/source-compatibility slice.** Add task-owned
+  allocation operations with exit and exec reclamation. Build a prefixed libc
+  veneer and startup adapter, then compile an external ordinary `main()` in a
+  separate translation unit that includes no runtime-private header. Prove it
+  with `echo -n hello | wc -c` producing exactly `5`.
 
 ## Priority 2 — usable-system demo
 
@@ -109,6 +114,17 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 17 (2026-09-06): first libc/source-compatibility slice.** The
+  allocation contract's red build failed on the absent task-allocation
+  observer. The program API now appends task-owned allocate, resize, and
+  release operations. Focused tests prove atomic failure, ownership, resize,
+  release, exit-before-wait reclamation, successful-exec reclamation, and final
+  teardown. The source-boundary test then failed because no external command
+  existed. `commands/wc.c` now compiles separately with an ordinary `main()`
+  and standard `read`, `write`, `open`, `close`, `malloc`, and `free` spellings
+  provided by a prefixed libc veneer. Its exact integration output is `5`.
+  The complete canonical gate passes locally and in the exact Alpine
+  Woodpecker agent image, including Clang ASan/UBSan.
 - [x] **Iteration 16 (2026-09-06): release evidence and portability audit.**
   `tests/test_one_process.sh` holds a three-task internal pipeline active while
   `/proc` reports one host thread and no host children. An allocation ledger

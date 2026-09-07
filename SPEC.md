@@ -503,6 +503,22 @@ Future work must be able to add features without changing these foundations:
 6. PTYs and X11 use the same descriptors, local sockets, and event model.
 7. `vfork` and selected forms of `fork` may be added by capability tier without
    becoming prerequisites for spawn-oriented programs.
+8. A libc layer exposes standardized POSIX names over the versioned program
+   API. Native command translation units use a private symbol prefix below
+   their headers so libc calls cannot interpose on the enclosing host adapter.
+9. Program heap allocations belong to an internal task. They are reclaimed on
+   exit and successful `exec`, independently of zombie collection, and are
+   reclaimed during kernel teardown if execution stops early.
+
+The first source-compatibility slice appends allocate, resize, and release
+operations to the v1 program API. Appending operations preserves the existing
+v1 prefix as required by the structure-size convention. `allocate(0)` returns
+a releasable allocation when possible; `resize(NULL, size)` allocates;
+`resize(pointer, 0)` releases and returns null; and `release(NULL)` is a no-op.
+A pointer supplied to resize or release must belong to the calling task.
+Invalid ownership sets `EINVAL`; allocation failure sets `ENOMEM` while leaving
+an existing allocation unchanged. Successful resize preserves the shorter of
+the old and new extents.
 
 Networking has two permitted future implementations behind the same
 cannedBSD socket API:

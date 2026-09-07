@@ -1,4 +1,5 @@
 CC ?= cc
+AR ?= ar
 CPPFLAGS ?= -D_XOPEN_SOURCE=700 -Iinclude -Isrc
 CFLAGS ?= -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O2
 LDFLAGS ?=
@@ -16,6 +17,7 @@ PROGRAM := $(BUILD)/bsdinacan
 TEST_PROGRAM := $(BUILD)/test_core
 
 CORE_SOURCES := \
+	commands/wc_module.c \
 	src/core.c \
 	src/executor.c \
 	src/host_linux.c \
@@ -26,6 +28,9 @@ CORE_SOURCES := \
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
 TEST_SOURCES := tests/test_core.c $(CORE_SOURCES)
+WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
+LIBC_OBJECT := $(BUILD)/cb_libc.o
+LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
 .PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
 
@@ -37,11 +42,26 @@ print-program:
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(PROGRAM): $(PROGRAM_SOURCES) include/cannedbsd/abi.h src/internal.h | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(LDFLAGS) -o $@ $(LDLIBS)
+$(WC_COMMAND_OBJECT): commands/wc.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/fcntl.h libc/include/stdlib.h \
+		libc/include/unistd.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_wc_main \
+		-c commands/wc.c -o $@
 
-$(TEST_PROGRAM): $(TEST_SOURCES) include/cannedbsd/abi.h src/internal.h | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(LDFLAGS) -o $@ $(LDLIBS)
+$(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c libc/cb_libc.c -o $@
+
+$(LIBC_ARCHIVE): $(LIBC_OBJECT)
+	$(AR) rcs $@ $<
+
+$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
+		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
+
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
+		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 check-architecture:
 	@! rg -n '\b(fork|vfork|execve|posix_spawn|system|popen)[[:space:]]*\(' src include \
@@ -60,12 +80,15 @@ test: $(PROGRAM) $(TEST_PROGRAM) check-architecture
 	$(TEST_PROGRAM)
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
+	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
 	$(PROGRAM) -c 'echo abc | cat | tr a-z A-Z'
 	$(PROGRAM) -c 'echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x'
 	$(PROGRAM) -c 'cd /tmp; pwd'
+	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
+		test "$$output" = 5 || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
 
 sanitize:
 	$(MAKE) clean
@@ -73,7 +96,11 @@ sanitize:
 
 analyze:
 	$(CC) $(CPPFLAGS) -std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only $(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
+		-fanalyzer -fsyntax-only libc/cb_libc.c \
+		$(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_wc_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only commands/wc.c
 
 ci:
 	$(MAKE) check-publication

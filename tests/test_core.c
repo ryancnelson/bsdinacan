@@ -30,6 +30,8 @@ static int pipe_capacity_read_fd;
 static int pipe_capacity_peer_started;
 static size_t pipe_capacity_bytes_read;
 static int errno_child_phase;
+static int allocation_child_phase;
+static void *allocation_foreign_pointer;
 static const struct cb_executor_ops *executor_delegate;
 static unsigned executor_prepare_count;
 static unsigned executor_create_count;
@@ -251,10 +253,11 @@ static void test_allocation_cleanup(void)
         fail("allocation cleanup kernel creation");
     cb_register_base_programs(kernel);
     if (cb_kernel_boot(kernel,
-            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result") < 0)
+            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result; "
+            "echo -n hello | wc -c") < 0)
         fail("allocation cleanup boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
         fail("allocation cleanup acceptance behavior");
     cb_kernel_destroy(kernel);
     if (allocation_balance != 0)
@@ -277,10 +280,11 @@ static void test_uninitialized_host_memory(void)
         fail("dirty-memory kernel creation");
     cb_register_base_programs(kernel);
     if (cb_kernel_boot(kernel,
-            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result") < 0)
+            "echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result; "
+            "echo -n hello | wc -c") < 0)
         fail("dirty-memory boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
         fail("dirty-memory acceptance behavior");
     cb_kernel_destroy(kernel);
 }
@@ -1266,7 +1270,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->unlink == NULL || api->chdir == NULL || api->getcwd == NULL ||
         api->getenv == NULL || api->setenv == NULL || api->unsetenv == NULL ||
         api->strerror == NULL || api->get_errno == NULL ||
-        api->set_errno == NULL || api->capabilities == NULL)
+        api->set_errno == NULL || api->capabilities == NULL ||
+        api->allocate == NULL || api->resize == NULL || api->release == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -1328,6 +1333,129 @@ static int overflowprobe_main(const struct cb_api_v1 *api, int argc,
         return 194;
     if (api->close(descriptor) < 0)
         return 195;
+    return 0;
+}
+
+static int allocationchild_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    unsigned char *memory;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    api->release(allocation_foreign_pointer);
+    if (api->get_errno() != CB_EINVAL)
+        return 221;
+    memory = api->allocate(16);
+    if (memory == NULL)
+        return 202;
+    memory[0] = 0x5a;
+    allocation_child_phase = 1;
+    api->yield();
+    if (memory[0] != 0x5a)
+        return 203;
+    allocation_child_phase = 2;
+    return 0;
+}
+
+static int allocationafterexec_main(const struct cb_api_v1 *api, int argc,
+                                    char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    return cb_test_task_allocation_count(api->getpid()) == 0 ? 0 : 204;
+}
+
+static int allocationexec_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    char *replacement_argv[] = {(char *)"allocationafterexec", NULL};
+    (void)argc;
+    (void)argv;
+    if (api->allocate(23) == NULL ||
+        cb_test_task_allocation_count(api->getpid()) != 1)
+        return 205;
+    if (api->exec("allocationafterexec", replacement_argv, envp) < 0)
+        return 206;
+    return 207;
+}
+
+static int allocationprobe_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    unsigned char *memory;
+    unsigned char stack_byte = 0;
+    char *child_argv[] = {(char *)"allocationchild", NULL};
+    char *exec_argv[] = {(char *)"allocationexec", NULL};
+    cb_pid_t child;
+    int status;
+    size_t index;
+    (void)argc;
+    (void)argv;
+
+    memory = api->allocate(8);
+    if (memory == NULL || cb_test_task_allocation_count(api->getpid()) != 1)
+        return 208;
+    for (index = 0; index < 8; ++index)
+        memory[index] = (unsigned char)(index + 1);
+    memory = api->resize(memory, 32);
+    if (memory == NULL || cb_test_task_allocation_count(api->getpid()) != 1)
+        return 209;
+    for (index = 0; index < 8; ++index)
+        if (memory[index] != (unsigned char)(index + 1))
+            return 210;
+    api->release(memory);
+    if (api->get_errno() != 0 ||
+        cb_test_task_allocation_count(api->getpid()) != 0)
+        return 211;
+    memory = api->resize(NULL, 0);
+    if (memory == NULL || cb_test_task_allocation_count(api->getpid()) != 1)
+        return 212;
+    if (api->resize(memory, 0) != NULL || api->get_errno() != 0 ||
+        cb_test_task_allocation_count(api->getpid()) != 0)
+        return 213;
+    api->release(NULL);
+    if (api->get_errno() != 0)
+        return 214;
+    api->release(&stack_byte);
+    if (api->get_errno() != CB_EINVAL)
+        return 215;
+
+    allocation_failure_countdown = 0;
+    if (api->allocate(4) != NULL || api->get_errno() != CB_ENOMEM ||
+        cb_test_task_allocation_count(api->getpid()) != 0)
+        return 222;
+    allocation_failure_countdown = 1;
+    if (api->allocate(4) != NULL || api->get_errno() != CB_ENOMEM ||
+        cb_test_task_allocation_count(api->getpid()) != 0)
+        return 223;
+
+    allocation_child_phase = 0;
+    allocation_foreign_pointer = api->allocate(7);
+    if (allocation_foreign_pointer == NULL)
+        return 224;
+    if (api->spawn("allocationchild", child_argv, envp, NULL, 0, &child) < 0)
+        return 216;
+    api->yield();
+    if (allocation_child_phase != 1 ||
+        cb_test_task_allocation_count(child) != 1)
+        return 217;
+    api->yield();
+    if (allocation_child_phase != 2 ||
+        cb_test_task_allocation_count(child) != 0)
+        return 218;
+    if (api->waitpid(child, &status) != child || status != 0)
+        return 219;
+    if (cb_test_task_allocation_count(api->getpid()) != 1)
+        return 225;
+    api->release(allocation_foreign_pointer);
+    allocation_foreign_pointer = NULL;
+
+    if (api->spawn("allocationexec", exec_argv, envp, NULL, 0, &child) < 0 ||
+        api->waitpid(child, &status) != child || status != 0)
+        return 220;
     return 0;
 }
 
@@ -1577,6 +1705,26 @@ static const struct cb_program_v1 overflowprobe_program = {
     64 * 1024, overflowprobe_main
 };
 
+static const struct cb_program_v1 allocationchild_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "allocationchild", 0,
+    64 * 1024, allocationchild_main
+};
+
+static const struct cb_program_v1 allocationafterexec_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "allocationafterexec", 0,
+    64 * 1024, allocationafterexec_main
+};
+
+static const struct cb_program_v1 allocationexec_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "allocationexec", 0,
+    64 * 1024, allocationexec_main
+};
+
+static const struct cb_program_v1 allocationprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "allocationprobe", 0,
+    64 * 1024, allocationprobe_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -1614,7 +1762,11 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &ramfsprobe_program) < 0 ||
             cb_kernel_register(kernel, &errnochild_program) < 0 ||
             cb_kernel_register(kernel, &abiprobe_program) < 0 ||
-            cb_kernel_register(kernel, &overflowprobe_program) < 0)
+            cb_kernel_register(kernel, &overflowprobe_program) < 0 ||
+            cb_kernel_register(kernel, &allocationchild_program) < 0 ||
+            cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
+            cb_kernel_register(kernel, &allocationexec_program) < 0 ||
+            cb_kernel_register(kernel, &allocationprobe_program) < 0)
             fail("test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
@@ -1698,6 +1850,13 @@ int main(void)
     run_case("echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x",
              "one\ntwo\n", 0, 0);
     run_case("cd /tmp; pwd", "/tmp\n", 0, 0);
+    run_case("echo -n hello | wc -c", "5\n", 0, 0);
+    run_case("echo -n | wc -c", "0\n", 0, 0);
+    run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "6\n", 0, 0);
+    run_case("wc -c /missing", "wc: input error\n", 1, 0);
+    expect_streams("", "wc: input error\n");
+    run_case("wc", "usage: wc -c [file]\n", 2, 0);
+    expect_streams("", "usage: wc -c [file]\n");
     run_case("export WORD=works; echo $WORD", "works\n", 0, 0);
     run_case("echo input > /tmp/in; cat < /tmp/in", "input\n", 0, 0);
     run_case("echo '' \"\" a\\ b 'c d' \"e f\" ';' '|'",
@@ -1778,6 +1937,7 @@ int main(void)
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
+    run_case("allocationprobe", "", 0, 1);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||
