@@ -31,6 +31,9 @@ static int pipe_edge_peer_state;
 static int pipe_capacity_read_fd;
 static int pipe_capacity_peer_started;
 static size_t pipe_capacity_bytes_read;
+static int environ_pipe_read_fd;
+static int environ_peer_started;
+static size_t environ_peer_bytes_read;
 static int errno_child_phase;
 static int *errno_child_address;
 static int allocation_child_phase;
@@ -677,6 +680,11 @@ static int pidcheck_main(const struct cb_api_v1 *api, int argc,
     if (exec_value == NULL || strcmp(exec_value, "after-exec") != 0 ||
         api->getenv("HOME") != NULL)
         return 25;
+    if (*api->environ_location() == NULL ||
+        (*api->environ_location())[0] == NULL ||
+        strcmp((*api->environ_location())[0], "EXECVAR=after-exec") != 0 ||
+        (*api->environ_location())[1] != NULL)
+        return 26;
     return 7;
 }
 
@@ -1000,6 +1008,127 @@ static int pipecapacityprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int environpeer_main(const struct cb_api_v1 *api, int argc,
+                            char *const argv[], char *const envp[])
+{
+    unsigned char buffer[777];
+    size_t total = 0;
+    const char *token;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (*api->environ_location() == NULL)
+        return 260;
+    token = api->getenv("TOKEN");
+    if (token == NULL || strcmp(token, "parent-before-block") != 0 ||
+        api->getenv("PEERONLY") != NULL)
+        return 261;
+    if (api->setenv("TOKEN", "peer-environment", 1) < 0 ||
+        api->setenv("PEERONLY", "yes", 1) < 0)
+        return 262;
+    environ_peer_started = 1;
+    for (;;) {
+        cb_ssize_t count = api->read(environ_pipe_read_fd, buffer,
+                                     sizeof(buffer));
+        size_t index;
+        if (count < 0)
+            return 263;
+        if (count == 0)
+            break;
+        for (index = 0; index < (size_t)count; ++index) {
+            if (buffer[index] != pipe_pattern(total + index))
+                return 264;
+        }
+        total += (size_t)count;
+    }
+    environ_peer_bytes_read = total;
+    token = api->getenv("TOKEN");
+    if (token == NULL || strcmp(token, "peer-environment") != 0 ||
+        api->getenv("PEERONLY") == NULL)
+        return 265;
+    return total == 10000 ? 0 : 266;
+}
+
+static int environprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    unsigned char payload[10000];
+    char *peer_argv[] = {(char *)"environpeer", NULL};
+    struct cb_spawn_action_v1 close_writer;
+    char ***location;
+    char **environment_before;
+    cb_pid_t peer;
+    int descriptors[2];
+    int status;
+    size_t index;
+    const char *token;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    location = api->environ_location();
+    if (location == NULL || *location == NULL)
+        return 270;
+    if (api->setenv("TOKEN", "parent-before-block", 1) < 0 ||
+        api->unsetenv("PEERONLY") < 0)
+        return 271;
+    environment_before = *location;
+
+    for (index = 0; index < sizeof(payload); ++index)
+        payload[index] = pipe_pattern(index);
+    if (api->pipe(descriptors) < 0)
+        return 272;
+    environ_pipe_read_fd = descriptors[0];
+    environ_peer_started = 0;
+    environ_peer_bytes_read = 0;
+    close_writer.abi_version = CB_ABI_VERSION_V1;
+    close_writer.struct_size = sizeof(close_writer);
+    close_writer.type = CB_SPAWN_CLOSE;
+    close_writer.from_fd = descriptors[1];
+    close_writer.to_fd = -1;
+    /* Passing NULL (not this task's own stale startup envp) makes the peer
+       inherit this task's *current* environment, as mutated above. */
+    if (api->spawn("environpeer", peer_argv, NULL, &close_writer, 1,
+                   &peer) < 0)
+        return 273;
+    if (api->close(descriptors[0]) < 0)
+        return 274;
+    if (environ_peer_started)
+        return 275;
+    /* Force this task to block mid-write so the peer runs and mutates its
+       own environment before this task resumes. */
+    if (api->write(descriptors[1], payload, sizeof(payload)) !=
+        (cb_ssize_t)sizeof(payload))
+        return 276;
+    if (!environ_peer_started)
+        return 277;
+    if (api->close(descriptors[1]) < 0)
+        return 278;
+
+    /* The peer's mutations must not have leaked into this task's vector. */
+    if (*location != environment_before)
+        return 279;
+    token = api->getenv("TOKEN");
+    if (token == NULL || strcmp(token, "parent-before-block") != 0 ||
+        api->getenv("PEERONLY") != NULL)
+        return 280;
+
+    if (api->waitpid(peer, &status) != peer || status != 0)
+        return 281;
+    if (environ_peer_bytes_read != sizeof(payload))
+        return 282;
+
+    /* setenv/unsetenv after the peer exited are still reflected locally,
+       through the same live vector this task observed all along. */
+    if (api->setenv("TOKEN", "parent-after-wait", 1) < 0)
+        return 283;
+    token = api->getenv("TOKEN");
+    if (token == NULL || strcmp(token, "parent-after-wait") != 0)
+        return 284;
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -1289,7 +1418,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->strerror == NULL || api->get_errno == NULL ||
         api->set_errno == NULL || api->capabilities == NULL ||
         api->allocate == NULL || api->resize == NULL ||
-        api->release == NULL || api->errno_location == NULL)
+        api->release == NULL || api->errno_location == NULL ||
+        api->environ_location == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -1810,6 +1940,16 @@ static const struct cb_program_v1 pipecapacityprobe_program = {
     64 * 1024, pipecapacityprobe_main
 };
 
+static const struct cb_program_v1 environpeer_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "environpeer", 0,
+    64 * 1024, environpeer_main
+};
+
+static const struct cb_program_v1 environprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "environprobe", 0,
+    64 * 1024, environprobe_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -1924,6 +2064,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &pipeedgeprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacitypeer_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacityprobe_program) < 0 ||
+            cb_kernel_register(kernel, &environpeer_program) < 0 ||
+            cb_kernel_register(kernel, &environprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -2245,6 +2387,7 @@ int main(void)
     run_case("pipezeroprobe", "", 0, 1);
     run_case("pipeedgeprobe", "", 0, 1);
     run_case("pipecapacityprobe", "", 0, 1);
+    run_case("environprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);

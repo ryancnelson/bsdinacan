@@ -1213,6 +1213,11 @@ static int *api_errno_location(void)
     return active_kernel->current->error_cell;
 }
 
+static char ***api_environ_location(void)
+{
+    return &active_kernel->current->environment;
+}
+
 static const struct cb_capabilities_v1 *api_capabilities(void)
 {
     return &active_kernel->capabilities;
@@ -1341,6 +1346,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->resize = api_resize;
     api->release = api_release;
     api->errno_location = api_errno_location;
+    api->environ_location = api_environ_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

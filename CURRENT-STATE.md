@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-07
-**Iteration count:** 26 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 27 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -40,6 +40,8 @@ On 2026-09-06, the existing suite completed successfully and demonstrated:
 - a pinned, byte-for-byte unmodified NetBSD `yes` using the libc veneer;
 - a separately archived, unmodified NetBSD generic `strlen` used by `puts`;
 - a separately archived, unmodified NetBSD generic `strcmp` used by `wc`;
+- a task-local libc `environ` view that follows mutation and exec without
+  leaking across cooperative task interleaving;
 - the v0.1 acceptance command producing `HELLO`.
 
 That statement is bounded by the current tests. It is not evidence of complete
@@ -308,13 +310,22 @@ outside the advertised libc surface. Direct tests cover first and later matches,
 missing input, the terminal NUL, and conversion of `int` to `char`. Source tests
 pin provenance and require private ordinary-source and archive symbols.
 
+Iteration 27 added a task-local libc `environ` location through an append-only
+program API operation. Its test first failed because the ABI accessor was
+absent, then forced a 10,000-byte pipe write to block while a peer mutated its
+own environment. The resumed task retained its original vector and values;
+setenv, unsetenv, spawn inheritance, and successful exec all expose the live
+task-owned environment. An ordinary-source probe resolves `environ` only
+through the private libc veneer. Woodpecker pipeline #28 passed both the Linux
+gate and Retro68 cross-build on the final evidence commit.
+
 ## What's next
 
-Start with `PENV-01` in `BACKLOG.md`: establish task-local libc process state
-and expose `environ`. Its test must force cooperative interleaving because a
-single process-global pointer would leak one cannedBSD task's environment into
-another. The remaining pinned NetBSD `printenv` dependencies are recorded as
-separate, dependency-ordered loops rather than speculative libc growth.
+`PENV-02`, `PENV-03`, and `PENV-04` are now independent ready tasks for
+`exit(3)` plus `__dead`, the exact empty-option `getopt` slice, and bounded
+unbuffered formatted output. `VFS-01` remains claimed until its branch is clean
+and both Woodpecker workflows pass. The remaining pinned NetBSD `printenv`
+dependencies stay gated by those worker-sized loops.
 The original bounded bootstrap `wc` remains scaffolding, not imported-source
 provenance evidence.
 

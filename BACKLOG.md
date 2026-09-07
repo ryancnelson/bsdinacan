@@ -10,12 +10,15 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 ## Ready worker queue
 
 The order is intentional. Choose the first ready item unless a coordinator
-assigns an ID. The `PENV` items are serial; items in the `VFS` and `PORT` lanes
-may proceed in parallel when their paths do not overlap.
+assigns an ID. Items whose dependencies are Done may proceed in parallel when
+their paths do not overlap.
+
+**Current ready order:** `PENV-02`, `PENV-03`, `PENV-04`, `PORT-01`.
+`VFS-01` is already claimed.
 
 ### PENV-01 — task-local libc process state and `environ`
 
-- **Status:** Ready
+- **Status:** Done in iteration 27
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a task-local libc location/accessor can expose the current
@@ -25,11 +28,12 @@ may proceed in parallel when their paths do not overlap.
   writer past pipe capacity so it blocks, mutate an environment, and cover exec.
 - **Accept:** each task observes only its own current vector before and after
   resumption; setenv/unsetenv and exec are reflected; startup no longer discards
-  envp; old ABI sizes remain valid. A single unscoped host global is not enough.
+  the environment by relying on an envp snapshot; old ABI sizes remain valid.
+  A single unscoped host global is not enough.
 
 ### VFS-01 — two-mount routing boundary
 
-- **Status:** Ready
+- **Status:** Claimed on `work/VFS-01`
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** path traversal can cross a mount boundary without exposing a
@@ -61,8 +65,9 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-02 — `exit(3)` and `__dead`
 
-- **Status:** Blocked on PENV-01
-- **Base:** main plus PENV-01
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** PENV-01 (Done)
 - **Hypothesis:** the existing task-exit operation can provide a non-returning
   ordinary C `exit` while preserving task cleanup.
 - **Red:** ordinary source calling `exit(7)` fails to link.
@@ -71,8 +76,9 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-03 — empty-option `getopt`
 
-- **Status:** Blocked on PENV-01
-- **Base:** main plus PENV-01
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** PENV-01 (Done)
 - **Hypothesis:** task-local getopt state can support the exact empty optstring
   used by pinned `printenv` without claiming the full extension surface.
 - **Red:** compile and run an ordinary argv probe for no options, `--`, and an
@@ -82,8 +88,9 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-04 — bounded unbuffered formatted output
 
-- **Status:** Blocked on PENV-01
-- **Base:** main plus PENV-01
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** PENV-01 (Done)
 - **Hypothesis:** literals, `%%`, and `%s` are sufficient for every format in
   pinned `printenv` and can preserve descriptor errors without buffered state.
 - **Red:** ordinary printenv-format probes fail because printf, fprintf, stdout,

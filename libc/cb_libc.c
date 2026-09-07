@@ -12,7 +12,7 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
            api->resize != NULL && api->release != NULL &&
-           api->errno_location != NULL;
+           api->errno_location != NULL && api->environ_location != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -117,6 +117,11 @@ void cb_libc_free(void *pointer)
 int *cb_libc_errno_location(void)
 {
     return bound_api->errno_location();
+}
+
+char ***cb_libc_environ_location(void)
+{
+    return bound_api->environ_location();
 }
 
 char *cb_libc_strerror(int error)

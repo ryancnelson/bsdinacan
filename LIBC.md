@@ -40,7 +40,8 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 
 ## Implemented first slice
 
-- `unistd.h`: `read`, `write`, `close`, and standard descriptor numbers.
+- `unistd.h`: `read`, `write`, `close`, standard descriptor numbers, and a
+  task-local `environ` lvalue.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
@@ -85,6 +86,13 @@ Each task also owns a separately allocated integer errno cell. It is not an
 address inside the runtime task object. The cell supplies the libc `errno`
 lvalue, is shared with the low-level get/set operations, remains distinct
 during cooperative interleaving, and is reset on successful exec.
+
+`environ` is exposed the same way: `environ_location()` returns the address of
+the current task's own environment-vector field, so the libc `environ` lvalue
+always observes that task's latest vector, is unaffected by another task's
+`setenv`/`unsetenv` during cooperative interleaving, and reflects the vector
+installed by a successful `exec`. A single process-global pointer would leak
+one task's environment into another and is deliberately not used.
 
 ## Hybrid implementation and provenance policy
 

@@ -40,6 +40,7 @@ NETBSD_MEMCMP_OBJECT := $(BUILD)/netbsd_memcmp.o
 NETBSD_STRCHR_OBJECT := $(BUILD)/netbsd_strchr.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
+LIBC_ENVIRON_TEST_OBJECT := $(BUILD)/libc_environ_source.o
 LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) \
 	$(NETBSD_STRCMP_OBJECT) $(NETBSD_MEMCPY_OBJECT) $(NETBSD_MEMMOVE_OBJECT) \
 	$(NETBSD_MEMCMP_OBJECT)
@@ -122,6 +123,10 @@ $(LIBC_MEMORY_TEST_OBJECT): tests/libc_memory_source.c \
 		include/cannedbsd/libc.h libc/include/string.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
 
+$(LIBC_ENVIRON_TEST_OBJECT): tests/libc_environ_source.c \
+		include/cannedbsd/libc.h libc/include/unistd.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
+
 $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
 		$(YES_COMMAND_OBJECT) \
@@ -146,7 +151,7 @@ check-publication:
 	tests/test_publication.sh
 
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
-		$(LIBC_MEMORY_TEST_OBJECT) check-architecture
+		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) check-architecture
 	$(TEST_PROGRAM)
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
@@ -194,6 +199,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_memory_source.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_environ_source.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
