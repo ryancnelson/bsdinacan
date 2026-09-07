@@ -217,26 +217,6 @@ ordinary `wc` command uses them to report the exact cannedBSD error from a
 failed open. The canonical gate passes locally and in the exact Alpine
 Woodpecker agent image.
 
-Iteration 23 imported NetBSD `memcpy.c` and the `bcopy.c` implementation it
-includes. The source test first failed because both pinned inputs were absent.
-The first link then showed that host `_FORTIFY_SOURCE` makes upstream undefine
-the macro-renamed `memcpy`; the definition-side GCC/Clang assembler-name adapter
-now handles it without changing either source file. `-Os` deliberately selects
-NetBSD's own compact byte-copy branch. Hash, object, archive, ordinary-source,
-and direct semantic tests exclude host libc and cover returned pointers,
-zero-length and offset copies, sentinel boundaries, NUL, and high-bit bytes.
-The provenance ledger explicitly leaves ARM EABI alias support for that port.
-The complete gate passes locally and in the exact Alpine Woodpecker agent image.
-
-Iteration 24 added the matching NetBSD `memmove.c` wrapper over the already
-pinned `bcopy.c` engine. The source boundary was first red because the wrapper
-was absent. It now follows the same compact implementation, private GCC/Clang
-definition name, archive, hash, and provenance rules as `memcpy`. Direct tests
-prove its returned pointer, zero-length behavior, and overlapping movement in
-both directions; the ordinary-source probe must resolve only to
-`cb_libc_memmove`. The complete gate passes locally and in the exact Alpine
-Woodpecker agent image.
-
 Iteration 19 crossed the first actual NetBSD-source boundary. Its red command
 test returned status 127 because `yes` was absent. NetBSD
 `usr.bin/yes/yes.c` is pinned to commit `b890038f7ae5` and its exact SHA-256 is
@@ -281,6 +261,26 @@ old allocation and bytes survive, while direct cases cover zero-size behavior,
 growth, shrinkage, foreign pointers, and `realloc(NULL, size)`. A separately
 compiled ordinary-source probe must import the prefixed functions rather than
 host allocation. The complete gate passes locally and in the exact Alpine
+Woodpecker agent image.
+
+Iteration 23 imported NetBSD `memcpy.c` and the `bcopy.c` implementation it
+includes. The source test first failed because both pinned inputs were absent.
+The first link then showed that host `_FORTIFY_SOURCE` makes upstream undefine
+the macro-renamed `memcpy`; the definition-side GCC/Clang assembler-name adapter
+now handles it without changing either source file. `-Os` deliberately selects
+NetBSD's own compact byte-copy branch. Hash, object, archive, ordinary-source,
+and direct semantic tests exclude host libc and cover returned pointers,
+zero-length and offset copies, sentinel boundaries, NUL, and high-bit bytes.
+The provenance ledger explicitly leaves ARM EABI alias support for that port.
+The complete gate passes locally and in the exact Alpine Woodpecker agent image.
+
+Iteration 24 added the matching NetBSD `memmove.c` wrapper over the already
+pinned `bcopy.c` engine. The source boundary was first red because the wrapper
+was absent. It now follows the same compact implementation, private GCC/Clang
+definition name, archive, hash, and provenance rules as `memcpy`. Direct tests
+prove its returned pointer, zero-length behavior, and overlapping movement in
+both directions; the ordinary-source probe must resolve only to
+`cb_libc_memmove`. The complete gate passes locally and in the exact Alpine
 Woodpecker agent image.
 
 ## What's next
