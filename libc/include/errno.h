@@ -1,0 +1,29 @@
+#ifndef CANNEDBSD_ERRNO_H
+#define CANNEDBSD_ERRNO_H
+
+#include "cannedbsd/libc.h"
+
+#define EPERM CB_EPERM
+#define ENOENT CB_ENOENT
+#define EINTR CB_EINTR
+#define EIO CB_EIO
+#define EBADF CB_EBADF
+#define ECHILD CB_ECHILD
+#define ENOMEM CB_ENOMEM
+#define EACCES CB_EACCES
+#define EEXIST CB_EEXIST
+#define ENOTDIR CB_ENOTDIR
+#define EISDIR CB_EISDIR
+#define EINVAL CB_EINVAL
+#define ENFILE CB_ENFILE
+#define EMFILE CB_EMFILE
+#define ENOSPC CB_ENOSPC
+#define ESPIPE CB_ESPIPE
+#define EPIPE CB_EPIPE
+#define ENAMETOOLONG CB_ENAMETOOLONG
+#define ENOTEMPTY CB_ENOTEMPTY
+#define ENOSYS CB_ENOSYS
+
+#define errno (*cb_libc_errno_location())
+
+#endif

@@ -26,6 +26,8 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 void *cb_libc_malloc(size_t size);
 void cb_libc_free(void *pointer);
+int *cb_libc_errno_location(void);
+char *cb_libc_strerror(int error);
 
 #define CB_LIBC_PROGRAM(symbol, command_name, main_function) \
     static int symbol##_start(const struct cb_api_v1 *api, int argc, \

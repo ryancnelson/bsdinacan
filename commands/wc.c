@@ -1,6 +1,8 @@
+#include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 static int strings_equal(const char *left, const char *right)
@@ -38,6 +40,26 @@ static int write_count(uint64_t count)
                      sizeof(buffer) - position);
 }
 
+static void report_error(const char *subject)
+{
+    static const char prefix[] = "wc: ";
+    static const char separator[] = ": ";
+    static const char newline[] = "\n";
+    int saved_error = errno;
+    const char *message = strerror(saved_error);
+    size_t subject_length = 0;
+    size_t message_length = 0;
+    while (subject[subject_length] != '\0')
+        ++subject_length;
+    while (message[message_length] != '\0')
+        ++message_length;
+    write_all(STDERR_FILENO, prefix, sizeof(prefix) - 1);
+    write_all(STDERR_FILENO, subject, subject_length);
+    write_all(STDERR_FILENO, separator, sizeof(separator) - 1);
+    write_all(STDERR_FILENO, message, message_length);
+    write_all(STDERR_FILENO, newline, sizeof(newline) - 1);
+}
+
 static int count_bytes(int descriptor, uint64_t *count_out)
 {
     unsigned char *buffer = malloc(1024);
@@ -66,9 +88,9 @@ static int count_bytes(int descriptor, uint64_t *count_out)
 int main(int argc, char *argv[])
 {
     static const char usage[] = "usage: wc -c [file]\n";
-    static const char read_error[] = "wc: input error\n";
     int descriptor = STDIN_FILENO;
     int file_argument = 0;
+    const char *subject = "standard input";
     uint64_t count;
     if (argc < 2 || !strings_equal(argv[1], "-c") || argc > 3) {
         write_all(STDERR_FILENO, usage, sizeof(usage) - 1);
@@ -77,15 +99,16 @@ int main(int argc, char *argv[])
     if (argc == 3) {
         descriptor = open(argv[2], O_RDONLY);
         if (descriptor < 0) {
-            write_all(STDERR_FILENO, read_error, sizeof(read_error) - 1);
+            report_error(argv[2]);
             return 1;
         }
         file_argument = 1;
+        subject = argv[2];
     }
     if (count_bytes(descriptor, &count) < 0) {
         if (file_argument)
             close(descriptor);
-        write_all(STDERR_FILENO, read_error, sizeof(read_error) - 1);
+        report_error(subject);
         return 1;
     }
     if (file_argument && close(descriptor) < 0)

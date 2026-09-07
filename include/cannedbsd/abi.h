@@ -143,6 +143,7 @@ struct cb_api_v1 {
     void *(*allocate)(size_t size);
     void *(*resize)(void *pointer, size_t size);
     void (*release)(void *pointer);
+    int *(*errno_location)(void);
 };
 
 struct cb_program_v1 {

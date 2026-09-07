@@ -52,8 +52,8 @@ char *cb_string_duplicate(struct cb_kernel *kernel, const char *text)
 
 void cb_task_set_error(struct cb_task *task, int error)
 {
-    if (task != NULL)
-        task->error = error;
+    if (task != NULL && task->error_cell != NULL)
+        *task->error_cell = error;
 }
 
 enum cb_wake_reason cb_test_current_wake_reason(void)
@@ -496,6 +496,7 @@ static void task_destroy(struct cb_task *task)
     string_vector_destroy(kernel, task->pending_environment);
     cb_vfs_node_release(task->cwd);
     cb_vfs_node_release(task->root);
+    cb_release(kernel, task->error_cell);
     cb_release(kernel, task);
 }
 
@@ -552,6 +553,9 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
     if (task == NULL)
         return NULL;
     task->kernel = kernel;
+    task->error_cell = cb_allocate(kernel, sizeof(*task->error_cell));
+    if (task->error_cell == NULL)
+        goto fail;
     task->pid = ++kernel->next_pid;
     task->ppid = parent == NULL ? 0 : parent->pid;
     task->program = program;
@@ -588,6 +592,7 @@ fail:
     string_vector_destroy(kernel, task->environment);
     cb_vfs_node_release(task->cwd);
     cb_vfs_node_release(task->root);
+    cb_release(kernel, task->error_cell);
     cb_release(kernel, task);
     return NULL;
 }
@@ -627,6 +632,7 @@ static void task_finish_exec(struct cb_task *task)
     task->pending_argv = NULL;
     task->pending_environment = NULL;
     task->pending_argc = 0;
+    *task->error_cell = 0;
     task->execution = cb_executor_instance_create(task, task->program);
     if (task->execution == NULL)
         kernel->host->fatal("unable to create execution after exec");
@@ -1194,12 +1200,17 @@ static const char *api_strerror(int error)
 
 static int api_get_errno(void)
 {
-    return active_kernel->current->error;
+    return *active_kernel->current->error_cell;
 }
 
 static void api_set_errno(int error)
 {
-    active_kernel->current->error = error;
+    *active_kernel->current->error_cell = error;
+}
+
+static int *api_errno_location(void)
+{
+    return active_kernel->current->error_cell;
 }
 
 static const struct cb_capabilities_v1 *api_capabilities(void)
@@ -1329,6 +1340,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->allocate = api_allocate;
     api->resize = api_resize;
     api->release = api_release;
+    api->errno_location = api_errno_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

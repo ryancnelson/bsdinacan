@@ -44,7 +44,7 @@ $(BUILD):
 
 $(WC_COMMAND_OBJECT): commands/wc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/fcntl.h libc/include/stdlib.h \
-		libc/include/unistd.h | $(BUILD)
+		libc/include/errno.h libc/include/string.h libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_wc_main \
 		-c commands/wc.c -o $@
 

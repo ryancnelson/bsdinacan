@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 17 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 18 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -204,11 +204,22 @@ uses standard source spellings while its object imports only prefixed
 cannedBSD functions. The canonical gate passes locally and in the exact Alpine
 Woodpecker agent image, including Clang ASan/UBSan.
 
+Iteration 18 made errno part of the program rather than the host thread. The
+first red `abiprobe` returned 181 for the missing API operation. Tasks now own
+separate program-visible errno cells, with get/set and libc referring to the
+same scalar. Interleaved tasks retain distinct values, and successful exec
+resets the cell. The second red source-boundary run reported the missing
+`errno.h`; the libc now provides a modifiable `errno` and `strerror()`. The
+ordinary `wc` command uses them to report the exact cannedBSD error from a
+failed open. The canonical gate passes locally and in the exact Alpine
+Woodpecker agent image.
+
 ## What's next
 
-Expand libc only far enough to compile one unmodified, carefully selected
-NetBSD utility, then record its exact upstream provenance. Do not mistake the
-original bounded bootstrap `wc` for that compatibility proof.
+Add the smallest string and unbuffered formatting slice needed by one carefully
+selected unmodified NetBSD utility, then record its exact upstream provenance.
+Do not mistake the original bounded bootstrap `wc` for that compatibility
+proof.
 
 ## Key files and commands
 
@@ -235,8 +246,8 @@ original bounded bootstrap `wc` for that compatibility proof.
 
 - `/bin/sh` and other command paths are resolved through a native program
   registry rather than genuine executable filesystem objects.
-- The libc surface is intentionally tiny and has no conforming `errno`, stdio,
-  directory, time, signal, locale, or terminal APIs yet.
+- The libc surface is intentionally tiny and has no stdio, directory, time,
+  signal, locale, or terminal APIs yet.
 - `sed`, `awk`, a curses demo, and a tiny vi are the second-stage usability
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,

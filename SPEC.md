@@ -520,6 +520,13 @@ Invalid ownership sets `EINVAL`; allocation failure sets `ENOMEM` while leaving
 an existing allocation unchanged. Successful resize preserves the shorter of
 the old and new extents.
 
+The native program API may also expose a pointer to a dedicated writable errno
+cell. That cell is program-visible scalar storage, not an address within a task
+or other opaque runtime object. Its address is stable for the task lifetime,
+distinct between tasks, initialized to zero, and reset to zero after successful
+`exec`. libc's `errno` lvalue and the API's get/set operations refer to the same
+cell.
+
 Networking has two permitted future implementations behind the same
 cannedBSD socket API:
 

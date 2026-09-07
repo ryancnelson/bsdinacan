@@ -83,7 +83,8 @@ translation unit containing an ordinary `main(int, char **)`. Its familiar
 `read`, `write`, `open`, `close`, `malloc`, and `free` names are supplied by
 small cannedBSD headers and the prefixed `libcannedbsd.a` veneer over
 `cb_api_v1`; the command does not include the runtime's private header or call
-host I/O.
+host I/O. The same slice now supplies a task-local `errno` lvalue and
+`strerror()`.
 
 ```sh
 build/bsdinacan -c 'echo -n hello | wc -c'

@@ -64,6 +64,10 @@ runtime model before the human-facing demo grows.
   veneer and startup adapter, then compile an external ordinary `main()` in a
   separate translation unit that includes no runtime-private header. Prove it
   with `echo -n hello | wc -c` producing exactly `5`.
+- [x] **Iteration 18: task-local libc errno.** Append a writable errno-cell
+  operation without exposing a task object. Prove distinct cells and retained
+  values across cooperative interleaving, zero state after successful `exec`,
+  and ordinary-source `errno` plus `strerror()` after a failed `open()`.
 
 ## Priority 2 — usable-system demo
 
@@ -114,6 +118,17 @@ runtime model before the human-facing demo grows.
 
 ## Completed
 
+- [x] **Iteration 18 (2026-09-06): task-local libc errno.** The first red run
+  made `abiprobe` return 181 because the new errno-location operation was
+  absent. Each task now owns a separately allocated scalar errno cell shared by
+  get/set operations and the libc lvalue; direct tests prove distinct addresses
+  and retained values across cooperative yields plus zero after successful
+  exec. The second red run failed because `libc/include/errno.h` did not exist.
+  The libc now supplies its declared errors, a modifiable `errno`, and
+  `strerror()`. The ordinary `wc` source reports a failed open through that
+  path while preserving errno across diagnostic writes. Normal, ASan/UBSan,
+  architecture, and analyzer checks pass locally and in the exact Alpine
+  Woodpecker agent image.
 - [x] **Iteration 17 (2026-09-06): first libc/source-compatibility slice.** The
   allocation contract's red build failed on the absent task-allocation
   observer. The program API now appends task-owned allocate, resize, and

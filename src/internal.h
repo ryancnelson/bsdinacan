@@ -175,7 +175,7 @@ struct cb_task {
     struct cb_fd_entry descriptors[CB_MAX_FDS];
     struct cb_vfs_node *root;
     struct cb_vfs_node *cwd;
-    int error;
+    int *error_cell;
     int exit_status;
     cb_pid_t waiting_for;
     enum cb_wake_reason wake_reason;

@@ -30,6 +30,7 @@ static int pipe_capacity_read_fd;
 static int pipe_capacity_peer_started;
 static size_t pipe_capacity_bytes_read;
 static int errno_child_phase;
+static int *errno_child_address;
 static int allocation_child_phase;
 static void *allocation_foreign_pointer;
 static const struct cb_executor_ops *executor_delegate;
@@ -1231,9 +1232,11 @@ static int errnochild_main(const struct cb_api_v1 *api, int argc,
     (void)argc;
     (void)argv;
     (void)envp;
-    if (api->get_errno() != 0)
+    errno_child_address = api->errno_location();
+    if (errno_child_address == NULL || api->get_errno() != 0 ||
+        *errno_child_address != 0)
         return 179;
-    api->set_errno(CB_EACCES);
+    *errno_child_address = CB_EACCES;
     errno_child_phase = 1;
     api->yield();
     if (api->get_errno() != CB_EACCES)
@@ -1253,6 +1256,7 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
     };
     const struct cb_capabilities_v1 *capabilities;
     char *child_argv[] = {(char *)"errnochild", NULL};
+    int *parent_errno;
     cb_pid_t child;
     int status;
     size_t index;
@@ -1271,7 +1275,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->getenv == NULL || api->setenv == NULL || api->unsetenv == NULL ||
         api->strerror == NULL || api->get_errno == NULL ||
         api->set_errno == NULL || api->capabilities == NULL ||
-        api->allocate == NULL || api->resize == NULL || api->release == NULL)
+        api->allocate == NULL || api->resize == NULL ||
+        api->release == NULL || api->errno_location == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -1293,12 +1298,18 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
     if (strcmp(api->strerror(123456), "unknown error") != 0)
         return 184;
 
+    parent_errno = api->errno_location();
+    if (parent_errno == NULL || *parent_errno != 0)
+        return 226;
     errno_child_phase = 0;
+    errno_child_address = NULL;
     if (api->spawn("errnochild", child_argv, envp, NULL, 0, &child) < 0)
         return 185;
-    api->set_errno(CB_EPERM);
+    *parent_errno = CB_EPERM;
     api->yield();
-    if (errno_child_phase != 1 || api->get_errno() != CB_EPERM)
+    if (errno_child_phase != 1 || errno_child_address == NULL ||
+        errno_child_address == parent_errno || *parent_errno != CB_EPERM ||
+        api->get_errno() != CB_EPERM)
         return 186;
     api->yield();
     if (errno_child_phase != 2 || api->get_errno() != CB_EPERM)
@@ -1361,11 +1372,12 @@ static int allocationchild_main(const struct cb_api_v1 *api, int argc,
 static int allocationafterexec_main(const struct cb_api_v1 *api, int argc,
                                     char *const argv[], char *const envp[])
 {
-    (void)api;
     (void)argc;
     (void)argv;
     (void)envp;
-    return cb_test_task_allocation_count(api->getpid()) == 0 ? 0 : 204;
+    return cb_test_task_allocation_count(api->getpid()) == 0 &&
+           api->errno_location() != NULL && *api->errno_location() == 0 ?
+           0 : 204;
 }
 
 static int allocationexec_main(const struct cb_api_v1 *api, int argc,
@@ -1377,6 +1389,7 @@ static int allocationexec_main(const struct cb_api_v1 *api, int argc,
     if (api->allocate(23) == NULL ||
         cb_test_task_allocation_count(api->getpid()) != 1)
         return 205;
+    api->set_errno(CB_EACCES);
     if (api->exec("allocationafterexec", replacement_argv, envp) < 0)
         return 206;
     return 207;
@@ -1853,8 +1866,9 @@ int main(void)
     run_case("echo -n hello | wc -c", "5\n", 0, 0);
     run_case("echo -n | wc -c", "0\n", 0, 0);
     run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "6\n", 0, 0);
-    run_case("wc -c /missing", "wc: input error\n", 1, 0);
-    expect_streams("", "wc: input error\n");
+    run_case("wc -c /missing",
+             "wc: /missing: no such file or directory\n", 1, 0);
+    expect_streams("", "wc: /missing: no such file or directory\n");
     run_case("wc", "usage: wc -c [file]\n", 2, 0);
     expect_streams("", "usage: wc -c [file]\n");
     run_case("export WORD=works; echo $WORD", "works\n", 0, 0);

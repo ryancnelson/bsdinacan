@@ -10,7 +10,8 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->struct_size >= sizeof(*api) && api->read != NULL &&
            api->write != NULL && api->open != NULL && api->close != NULL &&
            api->get_errno != NULL && api->set_errno != NULL &&
-           api->allocate != NULL && api->release != NULL;
+           api->strerror != NULL && api->allocate != NULL &&
+           api->release != NULL && api->errno_location != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -87,4 +88,14 @@ void cb_libc_free(void *pointer)
     int saved_error = bound_api->get_errno();
     bound_api->release(pointer);
     bound_api->set_errno(saved_error);
+}
+
+int *cb_libc_errno_location(void)
+{
+    return bound_api->errno_location();
+}
+
+char *cb_libc_strerror(int error)
+{
+    return (char *)bound_api->strerror(error);
 }

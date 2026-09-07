@@ -42,6 +42,9 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `unistd.h`: `read`, `write`, `close`, and standard descriptor numbers.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc` and `free`.
+- `errno.h`: a task-local modifiable `errno` and all currently declared runtime
+  error constants.
+- `string.h`: `strerror` only.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
 
@@ -51,8 +54,8 @@ adapter. `tests/test_libc_source.sh` checks that boundary and rejects imports of
 unprefixed host-facing I/O or allocation symbols.
 
 This is not a complete libc and the bootstrap command is not NetBSD `wc`.
-Notably absent are a conforming `errno` lvalue, stdio, directory traversal,
-time, signals, terminal control, locale, and the rest of ISO C/POSIX libc.
+Notably absent are stdio, general string functions, directory traversal, time,
+signals, terminal control, locale, and the rest of ISO C/POSIX libc.
 
 ## Program heap ownership
 
@@ -66,6 +69,11 @@ retaining a dead program's heap.
 `malloc` and `free` dispatch through those operations. The resize operation is
 available for a later tested `realloc`, but the libc does not expose untested
 surface merely because the underlying primitive exists.
+
+Each task also owns a separately allocated integer errno cell. It is not an
+address inside the runtime task object. The cell supplies the libc `errno`
+lvalue, is shared with the low-level get/set operations, remains distinct
+during cooperative interleaving, and is reset on successful exec.
 
 ## Hybrid implementation and provenance policy
 
