@@ -1,7 +1,7 @@
 # VFS-01: two-mount routing boundary
 
 - Status: Done
-- Base SHA: $(git rev-parse HEAD)
+- Base SHA: 873807d
 - Branch: `work/VFS-01`
 - Hypothesis: path traversal can cross a mount boundary without exposing a filesystem-specific node to tasks or descriptors.
 
@@ -15,8 +15,8 @@
 
 - Focused command: `make test`
 - Full command: `make ci`
-- Linux Woodpecker: simulated in local container
-- mac68k Woodpecker: N/A
+- Linux Woodpecker: pending
+- mac68k Woodpecker: pending
 - Guest acceptance, when required: N/A
 
 ## Change and review

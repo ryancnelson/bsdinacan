@@ -43,7 +43,7 @@ static int cwd_string(struct cb_task *task, char *buffer, size_t size)
         if (node == NULL || !node_ops_valid(node->ops) ||
             count == sizeof(parts) / sizeof(parts[0]))
             return -CB_EIO;
-            
+
         /* CROSS MOUNT BOUNDARY UPWARDS */
         if (task->kernel != NULL) {
             for (size_t i = 0; i < task->kernel->mount_count; ++i) {
@@ -54,10 +54,10 @@ static int cwd_string(struct cb_task *task, char *buffer, size_t size)
                 }
             }
         }
-        
+
         if (node == task->root)
             break;
-            
+
         parts[count++] = node;
         node = node->ops->parent(node);
     }
@@ -176,7 +176,7 @@ static int resolve_normalized(struct cb_task *task, const char *normalized,
             return result;
         if (next == NULL || !node_ops_valid(next->ops))
             return -CB_EIO;
-            
+
         /* CROSS MOUNT BOUNDARY DOWNWARDS */
         if (task->kernel != NULL) {
             for (size_t i = 0; i < task->kernel->mount_count; ++i) {
@@ -187,7 +187,7 @@ static int resolve_normalized(struct cb_task *task, const char *normalized,
                 }
             }
         }
-        
+
         node = next;
         while (*cursor == '/')
             ++cursor;
@@ -251,7 +251,7 @@ void cb_vfs_destroy(struct cb_kernel *kernel)
             cb_vfs_node_release(kernel->mounts[i].mount_point);
         kernel->mounts[i].mount_point = NULL;
     }
-    
+
     /* Then destroy mounts in reverse order so nested mounts are destroyed before their parent mounts */
     while (kernel->mount_count > 0) {
         size_t i = --kernel->mount_count;
@@ -259,7 +259,7 @@ void cb_vfs_destroy(struct cb_kernel *kernel)
             kernel->mounts[i].mount->ops->destroy(kernel->mounts[i].mount);
     }
     kernel->mount_count = 0;
-    
+
     if (kernel->root_mount != NULL)
         kernel->root_mount->ops->destroy(kernel->root_mount);
     kernel->root_mount = NULL;
@@ -427,11 +427,11 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     if (task == NULL || task->kernel == NULL || mount == NULL ||
         task->kernel->mount_count >= 4)
         return -1;
-        
+
     result = normalize_for_task(task, path, normalized);
     if (result < 0)
         return result;
-        
+
     result = resolve_normalized(task, normalized, &node);
     if (result < 0)
         return result;
@@ -441,6 +441,6 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     task->kernel->mounts[task->kernel->mount_count].mount_point = node;
     task->kernel->mounts[task->kernel->mount_count].mount = mount;
     task->kernel->mount_count++;
-    
+
     return 0;
 }
