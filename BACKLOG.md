@@ -131,6 +131,11 @@ runtime model before the human-facing demo grows.
 
 ## Friction log
 
+- 2026-09-07 (resolved): merge pipelines #19/#20 exposed an intermittent libc
+  symbol-check failure. Early-exit `rg -q` consumers could SIGPIPE `nm`/`ar`
+  under `pipefail`; a controlled producer reproduced status 141. The checks
+  now consume all producer output while retaining matching and error checks.
+
 - 2026-09-06 (resolved): Woodpecker pipeline #3 caught a Clang-only
   maybe-uninitialized warning in `test_vfs_contract`; initializing the test
   pointer made GCC and Clang agree. A pre-push run in the exact agent image then
