@@ -200,7 +200,6 @@ analyze:
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strcmp.c
 	$(CC) $(CPPFLAGS) -Ilibc/include \
-		-Dmain=cb_stdio_test_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_allocation_source.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
