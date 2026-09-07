@@ -1,7 +1,7 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-06
-**Iteration count:** 19 completed Iterate Bot loops; the prototype predates the loop log
+**Iteration count:** 20 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
 
@@ -46,6 +46,7 @@ On 2026-09-06, the existing suite completed successfully and demonstrated:
 - shell variables, `$?`, `cd`, `pwd`, `export`, and `unset`;
 - task-owned program allocations and a separately compiled libc-backed `wc`;
 - a pinned, byte-for-byte unmodified NetBSD `yes` using the libc veneer;
+- a separately archived, unmodified NetBSD generic `strlen` used by `puts`;
 - the v0.1 acceptance command producing `HELLO`.
 
 That statement is bounded by the current tests. It is not evidence of complete
@@ -226,13 +227,25 @@ writer, proving final-reader close reaches `EPIPE` and makes the original loop
 return `EXIT_FAILURE` rather than relying on the shell's last-pipeline status.
 The complete gate passes locally and in the exact Alpine Woodpecker agent image.
 
+Iteration 20 imported the first NetBSD libc implementation. The boundary test
+first failed because `common/lib/libc/string/strlen.c` was absent. It is now
+pinned at the same NetBSD revision and exact hash, compiled byte-for-byte
+unchanged as `cb_libc_strlen`, and archived as a distinct object. The first
+compile also proved that allowing the host `assert.h` through would entangle
+the source with glibc's `sys/cdefs.h` contract. A build-only empty assert shim
+is narrowly safe because the pinned file contains no assertion, and a test
+will reject it if that changes. `puts` uses the imported routine; boundary and
+direct semantic tests exclude the host symbol and cover empty and embedded-NUL
+inputs. The complete gate passes locally and in the exact Alpine Woodpecker
+agent image.
+
 ## What's next
 
-Import a very small, high-leverage set of NetBSD libc string routines unchanged,
-with the same provenance discipline, before selecting the next utility. Do not
-grow printf or getopt speculatively.
-Do not mistake the original bounded bootstrap `wc` for that compatibility
-proof.
+Import NetBSD's generic `strcmp` as the next isolated libc primitive, with the
+same source, symbol, and semantic tests. Do not grow printf or getopt
+speculatively.
+The original bounded bootstrap `wc` remains scaffolding, not imported-source
+provenance evidence.
 
 ## Key files and commands
 
@@ -259,8 +272,8 @@ proof.
 
 - `/bin/sh` and other command paths are resolved through a native program
   registry rather than genuine executable filesystem objects.
-- The libc surface is intentionally tiny and has no stdio, directory, time,
-  signal, locale, or terminal APIs yet.
+- The libc surface is intentionally tiny; general stdio, most string,
+  directory, time, signal, locale, and terminal APIs remain absent.
 - `sed`, `awk`, a curses demo, and a tiny vi are the second-stage usability
   demo, not the kernel proof gate.
 - There is no network API in v0.1. SOCKS is a proposed early transport option,

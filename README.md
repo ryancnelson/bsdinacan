@@ -98,8 +98,11 @@ Only its descriptor adapter and the minimal `puts`, exit-constant, and metadata
 headers are cannedBSD code. The tests consume one line and close the pipe, then
 wait for `yes` itself to prove it encounters `EPIPE` and returns failure instead
 of running forever. [UPSTREAM.md](UPSTREAM.md) records the exact revision,
-content hash, license, adaptations, and evidence. See [LIBC.md](LIBC.md) for the
-compatibility hierarchy, heap ownership contract, and route toward pkgsrc.
+content hash, license, adaptations, and evidence. `puts` now gets its length
+calculation from NetBSD's separately archived, also-unmodified generic
+`strlen.c`, proving the same import discipline at the libc layer. See
+[LIBC.md](LIBC.md) for the compatibility hierarchy, heap ownership contract,
+and route toward pkgsrc.
 
 ## Add a native command
 

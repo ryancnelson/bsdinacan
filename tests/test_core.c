@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "cannedbsd/libc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1924,8 +1925,18 @@ static void expect_streams(const char *expected_stdout,
     }
 }
 
+static void test_netbsd_strlen(void)
+{
+    static const char embedded[] = {'a', 'b', '\0', 'c', '\0'};
+
+    if (cb_libc_strlen("") != 0 || cb_libc_strlen("cannedBSD") != 9 ||
+        cb_libc_strlen(embedded) != 2 || cb_libc_strlen(embedded + 3) != 1)
+        fail("NetBSD strlen semantics");
+}
+
 int main(void)
 {
+    test_netbsd_strlen();
     test_host_contract();
     test_vfs_contract();
     test_registration_contract();

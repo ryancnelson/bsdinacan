@@ -114,9 +114,7 @@ static int write_all(int descriptor, const char *text, size_t length)
 
 int cb_libc_puts(const char *text)
 {
-    size_t length = 0;
-    while (text[length] != '\0')
-        ++length;
+    size_t length = cb_libc_strlen(text);
     if (write_all(1, text, length) < 0 || write_all(1, "\n", 1) < 0)
         return -1;
     return 0;

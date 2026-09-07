@@ -1,6 +1,7 @@
 # cannedBSD libc and source compatibility
 
-Status: first unmodified NetBSD utility running through the compatibility layer
+Status: first unmodified NetBSD utility and libc routine running through the
+compatibility layer
 
 ## Compatibility authority
 
@@ -46,7 +47,8 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts` with complete-write and error handling.
-- `string.h`: `strerror` only.
+- `string.h`: `strerror` and NetBSD's generic `strlen` under a private link
+  name.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
@@ -58,7 +60,7 @@ adapter. `tests/test_libc_source.sh` checks that boundary and rejects imports of
 unprefixed host-facing I/O or allocation symbols.
 
 This is not a complete libc and the bootstrap command is not NetBSD `wc`.
-`puts` is deliberately unbuffered; general stdio, string functions, directory
+`puts` is deliberately unbuffered; most string functions, directory
 traversal, time, signals, terminal control, locale, and the rest of ISO C/POSIX
 libc remain absent.
 
@@ -90,8 +92,10 @@ than kernel coupling.
 Every imported file must retain its file-specific copyright and license. The
 commit importing it must record the upstream NetBSD repository path, revision,
 local changes, and tests. `UPSTREAM.md` is the machine-checked provenance ledger.
-The first entry is NetBSD `yes.c`, which is stored byte-for-byte unchanged; its
-build and runtime adaptation live entirely in cannedBSD-owned files.
+The first entries are NetBSD `yes.c` and generic `strlen.c`, both stored
+byte-for-byte unchanged; their build and runtime adaptation live entirely in
+cannedBSD-owned files. The archive retains each imported libc routine as a
+separate object under a private `cb_libc_*` link name.
 
 ## Compatibility ladder
 

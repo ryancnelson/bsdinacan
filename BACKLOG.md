@@ -74,6 +74,11 @@ runtime model before the human-facing demo grows.
   and metadata-header compatibility it requires. A test reader consumes one
   line and closes the pipe, requiring exact `ok\n` output and clean `EPIPE`
   termination.
+- [x] **Iteration 20: first unmodified NetBSD libc routine.** Pin and import
+  `common/lib/libc/string/strlen.c` from the same NetBSD revision, retain its
+  file license, and compile it byte-for-byte unchanged under the private
+  `cb_libc_strlen` link name. Require `libcannedbsd.a` to contain the separate
+  object, prevent a host `strlen` import, and route `puts` through the routine.
 
 ## Priority 2 — usable-system demo
 
@@ -123,6 +128,18 @@ runtime model before the human-facing demo grows.
   diagnostics, or selective execution becomes painful.
 
 ## Completed
+
+- [x] **Iteration 20 (2026-09-06): first unmodified NetBSD libc routine.** The
+  red boundary test failed because the pinned `strlen.c` source was absent.
+  NetBSD's generic routine is now hash-pinned, compiled byte-for-byte unchanged
+  as `cb_libc_strlen`, and retained as its own `libcannedbsd.a` member. The first
+  build exposed the host's `assert.h` depending on the deliberately small
+  cannedBSD `sys/cdefs.h`; a private import-only shim now isolates that unused
+  include and a guard rejects the shim if upstream begins using `assert()`.
+  Symbol tests exclude host `strlen`, `puts` consumes the imported routine, and
+  direct tests cover empty, ordinary, embedded-NUL, and interior-pointer input.
+  The canonical gate passes locally and in the exact Alpine Woodpecker agent
+  image.
 
 - [x] **Iteration 19 (2026-09-06): first unmodified NetBSD utility.** The red
   command test returned status 127 because `yes` did not exist. NetBSD's
