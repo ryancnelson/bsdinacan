@@ -1,6 +1,6 @@
 # PENV-01: task-local libc process state and `environ`
 
-- Status: in progress
+- Status: done
 - Base SHA: 873807d
 - Branch: `work/PENV-01`
 - Hypothesis: a task-local libc location/accessor can expose the current
@@ -31,10 +31,11 @@
   (`bash build-base clang20 compiler-rt git libucontext-dev python3
   ripgrep`), run against this worktree with the main checkout's `.git`
   mounted at its real host path so the `git worktree` metadata resolves.
-- Linux Woodpecker: pending push (this session ran the equivalent gate
-  locally in the matching container; the real Woodpecker run still needs to
-  observe the pushed commit per AGENTS.md).
-- mac68k Woodpecker: not applicable (no `platform/mac68k` change).
+- Linux Woodpecker: **success** on commit `cea0361d61a616283a10668df5cbc999dc2765fe`
+  (`ci/woodpecker/push/ci`, pipeline #27/1).
+- mac68k Woodpecker: **success** on the same commit (`ci/woodpecker/push/mac68k`,
+  pipeline #27/2) — unaffected, since this change touches no
+  `platform/mac68k` file; the cross-build and Retro68 package still succeed.
 - Guest acceptance, when required: not applicable.
 
 Two bugs surfaced and were fixed while getting to green, both in the new test
