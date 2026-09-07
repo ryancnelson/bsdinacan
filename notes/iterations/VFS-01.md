@@ -15,8 +15,8 @@
 
 - Focused command: `make test`
 - Full command: `make ci`
-- Linux Woodpecker: pending
-- mac68k Woodpecker: pending
+- Linux Woodpecker: success
+- mac68k Woodpecker: success
 - Guest acceptance, when required: N/A
 
 ## Change and review
