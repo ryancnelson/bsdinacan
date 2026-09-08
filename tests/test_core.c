@@ -12,6 +12,7 @@ extern const struct cb_program_v1 cb_exitprobe_program;
 extern const struct cb_program_v1 cb_progname_probe_program;
 extern const struct cb_program_v1 cb_vfs_executable_probe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
+extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern int cb_err_probe_main(int argc, char **argv);
@@ -4153,7 +4154,8 @@ enum test_fixture {
  * Every new shared probe must be explicitly registered here and in Mac main. */
 static int register_mac_probes(struct cb_kernel *kernel)
 {
-    return cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&
+    return cb_kernel_register(kernel, &cb_getopt_arg_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdio_oldtable_program) == 0 &&
            cb_kernel_register(kernel, &cb_progname_probe_program) == 0 &&
@@ -4936,6 +4938,7 @@ static void test_poll_runnable_timeout(void)
 
 void cb_test_stdio_state(void);
 void cb_test_argv(void);
+void cb_test_getopt_arg(void);
 void cb_test_locale(void);
 void cb_test_terminal(void);
 
@@ -4982,6 +4985,10 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--getopt-arg") == 0) {
+        cb_test_getopt_arg();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--argv") == 0) {
         cb_test_argv();
         return 0;
@@ -5035,6 +5042,7 @@ int main(int argc, char **argv)
     }
     if (argc != 1)
         fail("unknown test selection");
+    cb_test_getopt_arg();
     cb_test_argv();
     cb_test_stdio_state();
     test_mac_acceptance();

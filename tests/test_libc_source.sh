@@ -409,4 +409,22 @@ for symbol in malloc memcpy; do
     fi
 done
 
+getopt_arg_source=tests/libc_getopt_arg_probe.c
+getopt_arg_object=$build_path/libc_getopt_arg_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$getopt_arg_source"; then
+    echo 'FAIL: required getopt source uses private names' >&2
+    exit 1
+fi
+for symbol in getopt getopt_state_location strcmp; do
+    if nm -u "$getopt_arg_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$getopt_arg_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: required getopt probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+if nm -u "$getopt_arg_object" | matches '[[:space:]]U[[:space:]]+(optind|optarg|optopt|opterr)$'; then
+    echo 'FAIL: required getopt probe imports host state' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'
