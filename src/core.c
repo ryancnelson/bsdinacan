@@ -583,6 +583,9 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         goto fail;
     task->pid = ++kernel->next_pid;
     task->ppid = parent == NULL ? 0 : parent->pid;
+    task->stdio_state.abi_version = CB_ABI_VERSION_V1;
+    task->stdio_state.struct_size = sizeof(struct cb_stdio_state_v1);
+
     task->program = program;
     task->argv = string_vector_copy(kernel, argv);
     task->argc = (int)argument_count;
@@ -667,6 +670,8 @@ static void task_finish_exec(struct cb_task *task)
         cb_vfs_node_release(task->executable_node);
     task->executable_node = task->pending_executable_node;
     task->pending_executable_node = NULL;
+    task->stdio_state.stdout_error = 0;
+    task->stdio_state.stderr_error = 0;
     task->pending_program = NULL;
     task->pending_argv = NULL;
     task->pending_environment = NULL;
@@ -1495,6 +1500,13 @@ static char ***api_environ_location(void)
     return &active_kernel->current->environment;
 }
 
+static struct cb_stdio_state_v1 *api_stdio_state_location(void)
+{
+    if (active_kernel == NULL || active_kernel->current == NULL)
+        return NULL;
+    return &active_kernel->current->stdio_state;
+}
+
 static struct cb_getopt_state_v1 *api_getopt_state_location(void)
 {
     return &active_kernel->current->getopt_state;
@@ -1752,6 +1764,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->readdir = api_readdir;
     api->closedir = api_closedir;
     api->basename_buffer_location = api_basename_buffer_location;
+    api->stdio_state_location = api_stdio_state_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

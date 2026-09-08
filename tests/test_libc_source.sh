@@ -381,4 +381,18 @@ if ! nm -u "$basename_object" | matches "[[:space:]]U[[:space:]]+cb_libc_basenam
     exit 1
 fi
 
+stdio_state_source=tests/libc_stdio_state_probe.c
+stdio_state_object=$build_path/libc_stdio_state_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$stdio_state_source"; then
+    echo 'FAIL: stdio state source uses private names' >&2
+    exit 1
+fi
+for symbol in putchar fflush ferror; do
+    if nm -u "$stdio_state_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$stdio_state_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: stdio state probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'

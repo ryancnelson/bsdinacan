@@ -1,5 +1,9 @@
 #include "cannedbsd/libc.h"
 
+#ifndef EOF
+#define EOF (-1)
+#endif
+
 #include <limits.h>
 #include <stdarg.h>
 
@@ -267,15 +271,53 @@ char *cb_libc_strerror(int error)
     return (char *)bound_api->strerror(error);
 }
 
+static struct cb_stdio_state_v1 *stdio_state(void)
+{
+    struct cb_stdio_state_v1 *state = NULL;
+    int saved_errno = bound_api->get_errno();
+    if (bound_api->abi_version == CB_ABI_VERSION_V1 &&
+        bound_api->struct_size >= offsetof(struct cb_api_v1, stdio_state_location) +
+                                  sizeof(bound_api->stdio_state_location) &&
+        bound_api->stdio_state_location != NULL)
+        state = bound_api->stdio_state_location();
+    bound_api->set_errno(saved_errno);
+    if (state == NULL || state->abi_version != CB_ABI_VERSION_V1 ||
+        state->struct_size < sizeof(*state))
+        return NULL;
+    return state;
+}
+
+static void mark_stdio_error(int descriptor)
+{
+    struct cb_stdio_state_v1 *state = stdio_state();
+    if (state != NULL) {
+        if (descriptor == 1)
+            state->stdout_error = 1;
+        else if (descriptor == 2)
+            state->stderr_error = 1;
+    }
+}
+
 static int write_all(int descriptor, const char *text, size_t length)
 {
+    int saved_incoming_errno = bound_api->get_errno();
     while (length != 0) {
         cb_ssize_t written = bound_api->write(descriptor, text, length);
-        if (written <= 0)
+        if (written < 0) {
+            int actual_error = bound_api->get_errno();
+            mark_stdio_error(descriptor);
+            bound_api->set_errno(actual_error);
             return -1;
+        }
+        if (written == 0) {
+            mark_stdio_error(descriptor);
+            bound_api->set_errno(CB_EIO);
+            return -1;
+        }
         text += (size_t)written;
         length -= (size_t)written;
     }
+    bound_api->set_errno(saved_incoming_errno);
     return 0;
 }
 
@@ -618,4 +660,45 @@ int cb_libc_closedir(struct cb_libc_dir *dirp)
     result = bound_api->closedir(dirp->descriptor);
     bound_api->release(dirp);
     return result;
+}
+
+int cb_libc_putchar(int character)
+{
+    unsigned char byte = (unsigned char)character;
+    if (stdio_state() == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return EOF;
+    }
+    if (write_all(1, (const char *)&byte, 1) < 0)
+        return EOF;
+    return byte;
+}
+
+int cb_libc_fflush(struct cb_libc_file *stream)
+{
+    if (stream != NULL && stream != cb_libc_stdout_stream &&
+        stream != cb_libc_stderr_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return EOF;
+    }
+    if (stdio_state() == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return EOF;
+    }
+    return 0;
+}
+
+int cb_libc_ferror(struct cb_libc_file *stream)
+{
+    struct cb_stdio_state_v1 *state;
+    if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return 1;
+    }
+    state = stdio_state();
+    if (state == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return 1;
+    }
+    return stream == cb_libc_stdout_stream ? state->stdout_error : state->stderr_error;
 }

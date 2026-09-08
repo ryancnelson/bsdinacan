@@ -9,6 +9,8 @@ local cfg=readJSON(assert(macTestConfigPath or os.getenv('CANNEDBSD_MAC_TEST_CON
 for _,name in ipairs({'app','python','state'}) do
  assert(type(cfg[name])=='string' and cfg[name]:sub(1,1)=='/','Config needs absolute '..name)
 end
+local calibration=dofile(root..'calibration.lua')
+assert(calibration.validate(cfg.calibration))
 cfg.state=cfg.state:gsub('/+$','')
 local slot=readJSON(cfg.state..'/slot/active.json')
 local staged=slot.run_directory
@@ -230,6 +232,19 @@ local function booted()
   if not R.active then return end
   if code~=0 or not out:find(cfg.prefs,1,true) then finish(false,'Guest process is not using staged preferences'); return end
   a:activate(); after(.15,function()
+  if cfg.calibration then
+   if not desktopReady() then return end
+   local w=a:mainWindow()
+   if not w or not a:isFrontmost() then finish(false,'Focus lost before calibration'); return end
+   local screen=w:screen()
+   if not screen then finish(false,'Window has no current screen'); return end
+   local plan,why=calibration.plan(cfg.calibration,w:frame(),screen:frame())
+   if not plan then finish(false,why); return end
+   w:setTopLeft(plan.origin)
+   if not focused(plan.frame) then finish(false,'Window calibration was not applied exactly'); return end
+   hs.eventtap.event.newMouseEvent(types.mouseMoved,plan.cursor):post()
+   log('Applied verified window origin and cursor parking')
+  end
   find('trash',function(m) click(m,false,function()
    find('zzz',function(z) click(z,true,function()
     log('Launched zzz-run-tests')
