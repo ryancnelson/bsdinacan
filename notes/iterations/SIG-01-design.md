@@ -79,7 +79,10 @@ limitation. Support must be an explicit executor opt-in, not inferred from struc
 or delegation. Proposed: append a capabilities word to the versioned internal
 cb_executor_ops table, with one cooperative-interrupt-delivery bit. Guard its
 actual struct_size before reading the word; a short table or unset bit is
-unsupported. Native opts in only when both delivery boundaries are implemented;
+unsupported for interrupts. Retain the old executor table prefix as the minimum
+for ordinary executor registration: executor_valid currently uses sizeof on the
+whole table and must switch to that explicit original-prefix boundary when the
+optional word is appended. Old executors still run ordinary tasks. Native opts in only when both delivery boundaries are implemented;
 a native wrapper must explicitly opt in after tests prove it retains them.
 Unknown bits do not establish this particular capability.
 
