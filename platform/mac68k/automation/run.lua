@@ -236,9 +236,11 @@ local function booted()
    if not desktopReady() then return end
    local w=a:mainWindow()
    if not w or not a:isFrontmost() then finish(false,'Focus lost before calibration'); return end
-   local plan,why=calibration.plan(cfg.calibration,w:frame(),w:screen():frame())
+   local screen=w:screen()
+   if not screen then finish(false,'Window has no current screen'); return end
+   local plan,why=calibration.plan(cfg.calibration,w:frame(),screen:frame())
    if not plan then finish(false,why); return end
-   w:setTopLeft(plan.origin,0)
+   w:setTopLeft(plan.origin)
    if not focused(plan.frame) then finish(false,'Window calibration was not applied exactly'); return end
    hs.eventtap.event.newMouseEvent(types.mouseMoved,plan.cursor):post()
    log('Applied verified window origin and cursor parking')
