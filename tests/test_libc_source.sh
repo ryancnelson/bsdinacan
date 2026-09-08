@@ -409,4 +409,19 @@ for symbol in malloc memcpy; do
     fi
 done
 
+
+warn_source=tests/libc_warn_probe.c
+warn_object=$build_path/warnprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$warn_source" | grep -v CANNEDBSD_SOURCE_FENCE; then
+    echo 'FAIL: warn source uses private names' >&2
+    exit 1
+fi
+for symbol in warn; do
+    if nm -u "$warn_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$warn_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: warn probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'

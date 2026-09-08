@@ -420,6 +420,28 @@ void cb_libc_errx(int eval, const char *fmt, ...)
     cb_libc_exit(eval);
 }
 
+
+void cb_libc_warn(const char *fmt, ...)
+{
+    int saved_error = bound_api->get_errno();
+    const char *name = bound_api->getprogname();
+    const char *error_text = bound_api->strerror(saved_error);
+    va_list arguments;
+    if (name == NULL)
+        name = "";
+    write_all(2, name, cb_libc_strlen(name));
+    write_all(2, ": ", 2);
+    if (fmt != NULL) {
+        va_start(arguments, fmt);
+        format_output(2, fmt, arguments);
+        va_end(arguments);
+        write_all(2, ": ", 2);
+    }
+    write_all(2, error_text, cb_libc_strlen(error_text));
+    write_all(2, "\n", 1);
+    bound_api->set_errno(saved_error);
+}
+
 void cb_libc_err(int eval, const char *fmt, ...)
 {
     int saved_error = bound_api->get_errno();
