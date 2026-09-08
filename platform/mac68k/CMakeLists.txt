@@ -11,6 +11,15 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
+add_library(cb_printenv OBJECT
+    ${ROOT}/upstream/netbsd/usr.bin/printenv/printenv.c)
+target_include_directories(cb_printenv PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_printenv PRIVATE main=cb_printenv_main)
+# See UPSTREAM.md's printenv entry: the pinned source's local
+# `extern char **environ;` expands, once environ is cannedBSD's task-local
+# accessor macro, into a declarator this toolchain's GCC also parses as an
+# unprototyped redeclaration of cb_libc_environ_location.
+target_compile_options(cb_printenv PRIVATE -Wno-strict-prototypes)
 foreach(routine strlen strcmp memcpy memmove memcmp strchr)
     add_library(cb_${routine} OBJECT
         ${ROOT}/upstream/netbsd/common/lib/libc/string/${routine}.c)
@@ -28,9 +37,10 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/src/core.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
+    ${ROOT}/commands/printenv_module.c
     ${ROOT}/libc/cb_libc.c)
 target_sources(CannedBSD PRIVATE
-    $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes>
+    $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)

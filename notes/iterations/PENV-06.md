@@ -89,6 +89,22 @@
 - Documentation: `UPSTREAM.md` gains the full provenance entry (repository,
   revision, path, hash, RCS identifier, license, and the toolchain
   concession above).
+- **Caught by verification, fixed before push**: `platform/mac68k` has its
+  own independent `CMakeLists.txt` that lists source files explicitly
+  rather than sharing the Linux `Makefile`'s `CORE_SOURCES` variable.
+  Registering `cb_printenv_program` in the shared `src/programs.c` without
+  also teaching that CMake file about `commands/printenv_module.c` and the
+  pinned source would have left the mac68k link missing a symbol — this is
+  a real cross-build hazard any change to `src/programs.c` needs to check
+  for, not something the Linux gate alone can catch. Added a matching
+  `cb_printenv` object library (with the same `-Wno-strict-prototypes`
+  concession, since this toolchain's GCC hit the identical
+  `-Wstrict-prototypes` construct) and wired it into the `CannedBSD`
+  application target, mirroring `cb_wc`/`cb_yes` exactly. Verified locally
+  by running the exact pinned Retro68 cross-compiler image
+  (`ghcr.io/autc04/retro68@sha256:459dd3ea...`) and reproducing
+  `platform/mac68k/ci-build.sh`'s full build and artifact-shape checks
+  before pushing — did not wait to discover this from Woodpecker alone.
 - Remaining risk or follow-up: no speculative libc surface was added — the
   dependency ladder in `CAPABILITY-MAP.md` already anticipated exactly this
   set of interfaces. Guest acceptance under AGENTS.md step 7 is outstanding,
