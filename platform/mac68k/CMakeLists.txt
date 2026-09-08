@@ -99,6 +99,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
+    ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
     ${ROOT}/libc/cb_libc.c
     ${ROOT}/tests/libc_locale_probe_module.c

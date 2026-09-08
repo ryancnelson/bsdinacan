@@ -4,6 +4,15 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Active work after head acceptance
+
+Claude implements HEAD-02 failure characterization. Antigravity corrects the
+tee executor-state design; the reviewed next-utility audit identifies tee as a
+candidate, blocked on real signal disposition, per-execution list state and
+finite raw-write progress. Resetting a global or adding a signal stub is not
+acceptance. Codex owns WRITE-02-linux and coordinates the portable console-count
+validation worker, independent reviews and serialized Mac acceptance.
+
 ## What this is
 
 cannedBSD is a small user-space operating system hosted inside one native process.
@@ -62,9 +71,10 @@ its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude is running HEAD-02, tests-only characterization
 of unchanged head input/output failures and repeated recovery, extending the
-existing helper while preserving 65 top-level records. Antigravity is correcting
-the NEXT-UTIL-02 dependency audit for uniq/cut/tee. Codex owns review, integration,
-backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
+existing helper while preserving all current records. Antigravity is correcting
+the TEE-STATE-01-design proposal after the reviewed uniq/cut/tee audit. Codex
+owns WRITE-02-linux and coordinates the portable write worker, reviews,
+integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
 implementation assignments. New signals, upstream head patches and general
 stdio expansion are outside these tasks. The existing zero-exit behavior after

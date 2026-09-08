@@ -422,6 +422,13 @@ The small initial `tr` is not claimed to be a complete NetBSD `tr` port.
   cannot fit in `cb_ssize_t` fails with `EINVAL` before reaching a backend.
 - Errors use stable cannedBSD/POSIX-style symbolic values such as `ENOENT`,
   `EBADF`, `EPIPE`, `ECHILD`, and `ENOMEM`.
+- Blocking console writes return a positive prefix no larger than the requested
+  count, or an error. The portable console boundary maps a nonempty zero return,
+  positive over-return, or a negative host result whose errno cannot fit in int
+  to EIO. Valid zero-count console writes preserve errno and do not call the host;
+  invalid descriptors still fail first. The Linux adapter stops on zero/hard
+  failure and retains a previously emitted prefix. This is a console contract,
+  not a new nonblocking or signal interface.
 - Errno is per internal process, never a naked host-global value.
 - User strings and vectors are copied or given explicit ownership rules.
 - No pointer to a task, VFS node, descriptor object, or host object crosses the
