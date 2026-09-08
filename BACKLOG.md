@@ -14,9 +14,9 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude prepares CONV-01-design. Antigravity implements
-ERR-02 in its isolated worktree. Codex owns review, integration and serialized
-guest acceptance. ECHO-01 and GETOPT-02 are accepted at `b2dc0ce` with 50 fresh
-Mac records. ARGV-01, STDOUT-01 and calibrated MAC-12 remain accepted in main.
+STRCPY-01; the coordinator worker implements STDIN-01. Codex owns review,
+integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
+with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
