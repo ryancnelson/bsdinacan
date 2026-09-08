@@ -95,3 +95,16 @@ fresh scoped kernels; the 64-program capacity and full fixture are unchanged.
 - Exact pushed-commit Woodpecker ci/mac68k/mac-automation: pending.
 - Exact guest artifact and fresh 43-record acceptance: pending coordinator's
   serialized guest slot. A compile or native test is not guest acceptance.
+
+## Coordinator acceptance
+
+Merged integration `4ee800e309a10e7495236a054dbbe0537334aaaf` after clean
+independent review and exact Woodpecker #242 ci/mac68k/mac-automation success.
+Archive SHA256 `c5506052e724c00594e44c6536e618606c080cdb0f9707789906e9302db30a34`.
+Fresh guest `run-e256a3_h` produced all 43 expected PASS records and ALL PASS,
+including argv replacement exit/wait, shortened vector, successful exec and
+failed exec. The decoded screenshot was visually inspected; the receipt verifies
+app closure and closed guest disks, and the slot was released after normal
+shutdown. The complete calibrated cold automated cycle took 15.33 seconds.
+The native allocator observer, rather than the guest screenshot, proves exact
+release counts and allocation-failure cleanup.

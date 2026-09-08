@@ -1005,7 +1005,7 @@ review or to satisfy this measured command's dependencies.
 
 ### ARGV-01 — own argument storage separately from mutable argv slots
 
-- **Status:** Claimed by the coordinator's implementation worker on `work/ARGV-01`
+- **Status:** Done at `4ee800e`; exact Woodpecker #242 and fresh 43-case Mac run accepted
 - **Base:** accepted main `894b753` or its documentation descendant
 - **Depends on:** PROGNAME-01 (Done); prerequisite for HEAD-01
 - **Evidence:** pinned head obsolete() allocates a replacement argument and writes
@@ -1021,3 +1021,38 @@ review or to satisfy this measured command's dependencies.
   and replacement allocations each released exactly once, including live-kernel
   destruction and allocation-failure unwind. Require exact CI and a fresh Mac
   artifact probe, preserving all existing tests and scoped fixture capacity.
+
+### GETOPT-02 — required option arguments for unchanged head
+
+- **Status:** Ready; unclaimed
+- **Base:** main
+- **Depends on:** reviewed HEAD-01 dependency plan
+- **Scope:** extend the existing task-owned parser for single-colon required
+  arguments, attached or separate. Preserve stopping at the first operand and
+  `--`, clustered flags and existing diagnostics. A leading colon selects silent
+  missing-argument `:`; otherwise return `?` with diagnostic when opterr permits.
+  No permutation, getopt_long, or double-colon optional-argument extension.
+- **Accept:** exact option/optarg/optind/optopt results for `-n10`, `-n 10`,
+  `-qn10`, dash-leading values, missing values, unknown flags and literal `--`.
+  Clear optarg where no argument is returned. Interleave two real tasks with
+  different arguments and verify existing exec reset. Assert exact stderr for
+  missing arguments and suppression. Existing printenv/dirname/basename behavior
+  remains tested. Require exact CI and fresh ordinary Mac probe acceptance.
+
+### ERR-02 — returning warn diagnostic for unchanged head
+
+- **Status:** Ready; unclaimed
+- **Base:** main
+- **Depends on:** ERR-01 (Done), reviewed HEAD-01 dependency plan
+- **Scope:** expose private `warn` using the existing bounded formatter and saved
+  startup identity. Snapshot errno for its message and return to the caller;
+  preserve incoming errno. No warnx or broader format language is required.
+- **Accept:** exact stderr for ordinary, empty and null format with representative
+  errors, no stdout, execution continues afterward, and failing stderr does not
+  terminate the task or overwrite the original errno. Source fence plus exact
+  CI and fresh ordinary Mac probe acceptance.
+
+HEAD-01's remaining numeric/character/string and general stream dependencies
+are planning items in `notes/iterations/HEAD-01-plan.md`, not Ready assignments.
+Split them into independently testable tasks before implementation. General
+stream ownership and cross-target integer contracts still require explicit design.

@@ -24,6 +24,23 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted runtime prerequisite, 2026-09-08
+
+Argument storage ownership is fixed at
+`4ee800e309a10e7495236a054dbbe0537334aaaf`, independently reviewed with
+all three Woodpecker #242 workflows green. A real ordinary argv-pointer rewrite
+previously produced an ASan double-free; the runtime now retains original string
+ownership separately from the mutable argv vector. Allocation-observing native
+tests cover exit/reap, exec success/failure, allocation failures and live teardown.
+Fresh Mac run `run-e256a3_h` passed all 43 records in 15.33 seconds from cold
+launch through screenshot and normal shutdown; screenshot, receipt, closed disks
+and released slot were verified. Archive SHA256:
+`c5506052e724c00594e44c6536e618606c080cdb0f9707789906e9302db30a34`.
+
+The reviewed head dependency plan identifies required option arguments and
+returning warn diagnostics as Ready next steps. General input streams and numeric
+conversion remain design work. Claude continues the nearer NetBSD echo milestone.
+
 ## Latest accepted utility milestone, 2026-09-08
 
 Unchanged NetBSD basename and its separate writable task-owned libc result are

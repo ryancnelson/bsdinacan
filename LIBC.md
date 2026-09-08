@@ -92,7 +92,7 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   on old runtimes without the optional state. No general input streams or
   `fopen`/`fclose` subsystem is implied by these standard-output interfaces.
 - `err.h`: a non-returning `errx`, declared `__dead`, reusing the bounded
-  formatter and `exit`. Writes the task's own program name (`argv[0]`), `": "`,
+  formatter and `exit`. Writes the task's saved full startup name, `": "`,
   the formatted message, and a newline to `stderr` only, then exits with the
   caller's status.
 - `err.h`: `err` snapshots task errno before diagnostic output and adds its
