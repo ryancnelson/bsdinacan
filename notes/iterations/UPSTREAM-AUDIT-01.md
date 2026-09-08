@@ -67,7 +67,7 @@ This local failure is due to the macOS `nm` utility prepending an underscore `_`
    - `memcmp.c` (`a926ba117d7a044631da27bc301769607072bdf42995e4d49dbc00139643d5ce`)
    - `strchr.c` (`ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9`)
    - **Verification:** All local SHAs EXACTLY match their declared pins. `bcopy.c` retains the required copyright block (covering `memcpy` and `memmove` which act purely as wrappers defining `MEMCOPY`/`MEMMOVE`). All other files explicitly include 3-clause Regents or 2-clause Foundation notices.
-   - **Renaming:** 
+   - **Renaming:**
      - `strchr.c` is correctly renamed via namespace compatibility: the standard `<string.h>` header simply `#define`s `strchr` to `cb_libc_strchr`, and `compat/netbsd/include/namespace.h` shields NetBSD's internal aliases from being exposed. This relies on clean header inclusion rather than a blanket `-D/CANNEDBSD` flag.
      - `strlen` uses direct `-Dstrlen=cb_libc_strlen`; strcmp, strcpy, memcpy, memmove and memcmp use their explicit `CANNEDBSD_BUILDING_LIBC_*` flags.
 
