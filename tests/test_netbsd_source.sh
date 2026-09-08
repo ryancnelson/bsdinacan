@@ -121,14 +121,15 @@ if nm "$dirname_object" | matches '[[:space:]]T[[:space:]]+main$'; then
     echo 'FAIL: NetBSD dirname exports the enclosing application main' >&2
     exit 1
 fi
-for host_symbol in dirname setlocale getopt exit puts errx err; do
+for host_symbol in dirname setlocale getopt exit printf fprintf puts errx err; do
     if nm -u "$dirname_object" |
             matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
         printf 'FAIL: NetBSD dirname imports host-facing %s\n'             "$host_symbol" >&2
         exit 1
     fi
 done
-for private_symbol in cb_libc_dirname cb_libc_setlocale cb_libc_getopt cb_libc_exit cb_libc_puts; do
+for private_symbol in cb_libc_dirname cb_libc_setlocale cb_libc_getopt \
+        cb_libc_exit cb_libc_printf cb_libc_fprintf cb_libc_err; do
     if ! nm -u "$dirname_object" |
             matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
         printf 'FAIL: NetBSD dirname does not import %s\n'             "$private_symbol" >&2

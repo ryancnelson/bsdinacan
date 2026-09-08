@@ -21,8 +21,9 @@ check_case() {
     local exp_stderr="$4"
     local name="$5"
 
-    printf "%s" "$exp_stdout" > "$case_dir/exp_stdout"
-    printf "%s" "$exp_stderr" > "$case_dir/exp_stderr"
+    # Expectations below are fixed fixtures with explicit newline escapes.
+    printf "%b" "$exp_stdout" > "$case_dir/exp_stdout"
+    printf "%b" "$exp_stderr" > "$case_dir/exp_stderr"
 
     set +e
     "$program" -c "$cmd" > "$case_dir/out" 2> "$case_dir/err"
@@ -61,5 +62,7 @@ check_case 'dirname -x' 1 "" "dirname: illegal option -- x\nusage: dirname path\
 check_case 'dirname -- -leading/dash' 0 "-leading\n" "" "dash-leading path"
 
 check_case 'dirname /foo/bar; dirname /baz/qux' 0 "/foo\n/baz\n" "" "repeated invocations"
+
+check_case 'dirname /a/b/c | cat' 0 "/a/b\n" "" "pipeline"
 
 echo 'dirname behavioral matrix passed'
