@@ -192,6 +192,7 @@ struct cb_api_v1 {
     int (*isatty)(int fd);
     int (*tcgetattr)(int fd, struct cb_termios_v1 *attributes);
     int (*tcsetattr)(int fd, int action, const struct cb_termios_v1 *attributes);
+    char *(*dirname_buffer_location)(void);
 };
 
 struct cb_program_v1 {

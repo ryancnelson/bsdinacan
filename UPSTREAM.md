@@ -156,6 +156,44 @@ into cannedBSD; the upstream `index` alias is not part of the advertised libc
 surface. Direct and ordinary-source tests cover first match, later match,
 terminal NUL, absence, and conversion of the search `int` to `char`.
 
+## NetBSD `dirname`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `lib/libc/gen/dirname.c` /
+  `upstream/netbsd/lib/libc/gen/dirname.c`
+- SHA-256: `05ad1f66a7a5a4ceee33fe767a3410c60aa76e4ed670b5d57ab9198a0a2a892b`
+- Embedded RCS identifier: `$NetBSD: dirname.c,v 1.14 2018/09/27 00:45:34 kre Exp $`
+- License: file-specific two-clause NetBSD Foundation license, retained
+  verbatim -- distinct from the three-clause Regents license on every
+  other pinned import in this file.
+
+The imported file is byte-for-byte unchanged and builds as
+`cb_libc_dirname_upstream` (a plain `-D` link-name rename, like `strlen`;
+confirmed by reading the file that no `#undef`/macro games would defeat
+it -- the only other occurrence of the literal text `dirname` is inside
+an `__weak_alias(dirname,_dirname)` line gated on a macro this project's
+minimal `namespace.h` shim never defines). Three new minimal import-only
+shims were added for its includes: `compat/netbsd/include/sys/param.h`
+(only the `MIN` macro), `compat/netbsd/include/limits.h` (`PATH_MAX`,
+defined from the pre-existing `CB_PATH_MAX` rather than a second pinned
+constant), and `compat/netbsd/include/libgen.h` (empty -- the file
+includes `<libgen.h>` only for its own prototype's self-consistency).
+
+The imported `dirname()` itself returns a pointer into a function-local
+static buffer shared process-wide across every cooperatively scheduled
+task -- safe only by single-task convention on a traditional Unix
+process. The `cb_libc_dirname` veneer (`libc/cb_libc.c`) copies that
+result into a new, genuinely task-owned buffer (`struct cb_task
+.dirname_buffer`, reached via a new append-only `cb_api_v1` accessor,
+`dirname_buffer_location`) before ever returning to the caller, so one
+task's call can never be silently overwritten by another's. The boundary
+test pins the source and provenance hashes; direct tests cover the
+NetBSD-documented pathname edge cases (`NULL`, empty, no slash, all
+slashes, trailing slashes, an exact-fit boundary length), same-task
+repeated calls, cross-task isolation under forced interleaving, and
+`ENOSYS` on an old or field-absent runtime table.
+
 ## NetBSD `printenv`
 
 - Repository: `https://github.com/NetBSD/src`

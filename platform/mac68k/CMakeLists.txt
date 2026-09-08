@@ -42,6 +42,10 @@ target_compile_definitions(cb_strcmp PRIVATE CANNEDBSD_BUILDING_LIBC_STRCMP)
 target_compile_definitions(cb_memcpy PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCPY)
 target_compile_definitions(cb_memmove PRIVATE CANNEDBSD_BUILDING_LIBC_MEMMOVE)
 target_compile_definitions(cb_memcmp PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCMP)
+add_library(cb_dirname OBJECT ${ROOT}/upstream/netbsd/lib/libc/gen/dirname.c)
+target_include_directories(cb_dirname PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_dirname PRIVATE dirname=cb_libc_dirname_upstream)
 
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
@@ -64,6 +68,7 @@ target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_dirname>)
 # Lazy LoadSeg performs Toolbox work and must never run on a task stack.
 # A single resident CODE segment keeps all runtime calls free of that trap.
 target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug
