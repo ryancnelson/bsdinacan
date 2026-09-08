@@ -4,17 +4,42 @@
 static int check(const char *input, const char *expected)
 {
 	char buffer[64];
+	char original[64];
 	char *result;
+	char sentinel;
+	char replacement;
 	if (input == NULL) {
 		result = basename(NULL);
 	} else {
 		size_t length = strlen(input);
 		size_t index;
-		for (index = 0; index <= length; ++index)
+		for (index = 0; index <= length; ++index) {
 			buffer[index] = input[index];
+			original[index] = input[index];
+		}
 		result = basename(buffer);
+		/* basename() only ever reads its argument; confirm the input
+		   buffer is still byte-for-byte what it was before the call --
+		   including the trailing-slash cases, where a naive
+		   strip-in-place implementation could have mutated it even
+		   though the correct result never touches the input at all. */
+		if (memcmp(buffer, original, length + 1) != 0)
+			return 0;
 	}
-	return result != NULL && strcmp(result, expected) == 0;
+	if (result == NULL || strcmp(result, expected) != 0)
+		return 0;
+	/* The returned buffer must be genuinely writable, not a read-only
+	   string: the basename(1) command itself writes a NUL into it at
+	   the suffix-truncation point, so an immutable result would be a
+	   real bug, not just a style concern. Mutate then restore so this
+	   does not interfere with anything already checked above. */
+	sentinel = result[0];
+	replacement = (char)(sentinel == 'Z' ? 'Y' : 'Z');
+	result[0] = replacement;
+	if (result[0] != replacement)
+		return 0;
+	result[0] = sentinel;
+	return 1;
 }
 
 static int check_boundary(void)

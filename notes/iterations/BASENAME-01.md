@@ -219,6 +219,28 @@ versa -- no remaining asymmetry between the two commands' wiring.
   `mac-automation`, and `mac68k` all `success`. This is the reported
   final commit for this iteration.
 
+## Third review pass: assertions that were claimed but not actually checked
+
+An independent review of `8120847` found the runtime, hashes, ABI, and
+Mac registration all clean, but one real gap: `tests/libc_basename_probe.c`'s
+`check()` claimed (in this iteration's own notes and commit messages)
+that it verifies `basename()` leaves its input unmodified, but the
+function never actually compared the input buffer to anything after
+the call -- it only checked the returned string. Fixed by saving an
+unmodified copy of the input before the call and `memcmp`-ing the
+(still in-scope) input buffer against it afterward, which now also
+covers the trailing-slash cases (`"/foo/bar///"`) already in `check()`'s
+existing call list, since it is the same function. Also added the
+missing explicit writable-result assertion the review asked for:
+`check()` now mutates `result[0]` to a different byte, confirms the
+mutation actually took, and restores it -- proving the returned buffer
+is genuinely writable memory, not an immutable string, which matters
+because `basename(1)` itself writes a `NUL` into the returned buffer at
+its suffix-truncation point. Both additions live in the one shared
+`check()` function, so they apply to every existing call site
+(`NULL`/empty/plain/root/repeated-slash/trailing-slash) without needing
+separate cases.
+
 ## Remaining risk or follow-up
 
 - Full `make ci` was never run locally (host Docker outage throughout
