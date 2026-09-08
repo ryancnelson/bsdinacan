@@ -13,8 +13,8 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements CONV-01. Antigravity implements
-STRCPY-01; the coordinator worker implements STDIN-02. Codex owns review,
+**Current assignments:** Claude implements CONV-01. Antigravity prepares
+HEAD-01-testplan; the coordinator worker implements STDIN-02. Codex owns review,
 integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
 with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
 
@@ -1102,7 +1102,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STRCPY-01 — private strcpy required by head obsolete arguments
 
-- **Status:** Claimed by Antigravity on `work/STRCPY-01`
+- **Status:** Done at `bb1190c`; exact #280 CI and 57-record Mac acceptance
 - **Base:** main
 - **Depends on:** reviewed HEAD-01 plan; ARGV-01 (Done)
 - **Scope:** pinned unchanged NetBSD strcpy with private declaration/renaming,
@@ -1177,3 +1177,19 @@ stream ownership and cross-target integer contracts still require explicit desig
   nonzero errno preservation, NULL endptr, exhaustive unsigned-byte/EOF ctype
   tests, no host symbols, both build systems and unchanged source hashes.
   Full exact CI and fresh coordinator-owned 32-bit Mac acceptance required.
+
+### HEAD-01-testplan — exact command fixtures for the next utility
+
+- **Status:** Claimed by Antigravity on `work/HEAD-01-testplan`; design only
+- **Base:** main after accepted strcpy `bb1190c`
+- **Depends on:** reviewed HEAD-01 plan and CONV-01-design
+- **Scope:** derive concrete input bytes, argv, stdout/stderr and status fixtures
+  from pinned unchanged head.c for its eventual import. Cover default lines,
+  -n/-c, obsolete numeric argv, q/v header precedence, multiple files including
+  missing-file continuation, stdin/pipes, empty/binary input, and 65536-byte
+  boundaries. Record source locations and distinguish inferred expected results
+  from actually executed reference results. Own note only; no implementation.
+- **Accept:** compact deterministic fixture table, explicit upstream limitations
+  and stack-budget acceptance to carry into HEAD-01; identify required runtime
+  setup and scoped program registration. Do not claim a host GNU head run proves
+  NetBSD behavior, or bypass missing prerequisites. Exact docs CI required.

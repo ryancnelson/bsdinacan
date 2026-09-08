@@ -29,3 +29,19 @@
     -   We defer full UI checking / system guest runs to the root review process.
 
 -   **Status**: Ready for root review/integration.
+
+## Coordinator acceptance
+
+Worker correction `62802d0b16422a7396697a062a98cf3a8f6ae193` was independently
+reviewed with corrected Mac build linkage. Its unchanged probe was independently
+run against the retained disposable `return(save+1)` mutation and failed with
+status 1; this is after-implementation regression-control evidence.
+
+Integration `bb1190ce0d911bb333d788df58ed7df6538b5e46` passed all three exact
+Woodpecker #280 checks. Fresh guest `run-8td2212t` passed 57 records, retaining
+all prior 56. Archive SHA256:
+`c94e86780a4a056f1db8521fb8de5ebdbb34d3ec127687d134b4a95abf03930b`.
+Screenshot and bound receipt were inspected; normal shutdown, closed disks and
+slot release completed in a 21.02-second cold automated cycle. Merged to main.
+The native full fixture is exactly 64 programs; later probes must use scoped
+fixtures rather than increase production capacity or remove existing tests.

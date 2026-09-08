@@ -24,6 +24,24 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted string prerequisite, 2026-09-08
+
+Pinned unchanged NetBSD strcpy is accepted at
+`bb1190ce0d911bb333d788df58ed7df6538b5e46`. Independent source/runtime and
+integration reviews passed; all three exact Woodpecker #280 checks succeeded.
+Fresh guest `run-8td2212t` passed all 57 records in a 21.02-second cold automated
+cycle. Screenshot, exact receipt, normal shutdown, closed disks and released
+slot were verified. Archive SHA256:
+`c94e86780a4a056f1db8521fb8de5ebdbb34d3ec127687d134b4a95abf03930b`.
+The ordinary probe covers destination identity, NUL, byte values, input
+preservation and canaries; an unchanged probe rejected a deliberately wrong
+return pointer in a disposable implementation regression control.
+
+Claude implements numeric conversion, the coordinator worker implements
+read-only file streams, and Antigravity prepares concrete head command fixtures.
+Head itself remains pending those prerequisites plus fread/fwrite and its
+explicit stack-budget acceptance.
+
 ## Latest accepted input prerequisite, 2026-09-08
 
 Stdin byte reads and independent EOF/error queries are accepted at
