@@ -15,6 +15,17 @@ class Rejection(Exception):
     """The available evidence cannot support guest acceptance."""
 
 
+def expected_result():
+    """Use the same command list compiled into the guest and Linux tests."""
+    lines = ['cannedBSD System 7 / Retro68', 'PASS contexts']
+    for case in Path(__file__).with_name('acceptance_cases.def').read_text().splitlines():
+        match = re.fullmatch(r'CB_MAC_CASE\(("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), [0-9]+\)', case)
+        if match is None:
+            raise Rejection('invalid checked-in Mac acceptance case')
+        lines.append('PASS ' + json.loads(match[1]))
+    return '\n'.join(lines + ['ALL PASS', ''])
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open('rb') as source:
@@ -67,6 +78,7 @@ def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom
             # Native extfs can open an existing result more reliably than HCreate.
             # This empty placeholder predates staging and can never pass check.
             (run / 'shared/cannedbsd-result.txt').write_bytes(b'')
+            (run / 'expected-result.txt').write_text(expected_result())
             shutil.copyfile(archive_path, run / 'CannedBSD.tar.gz')
             if digest(run / 'CannedBSD.tar.gz') != archive_sha:
                 raise Rejection('artifact changed during staging (checksum mismatch)')
@@ -116,9 +128,7 @@ def check(state):
         raise Rejection('guest result exceeds 64 KiB')
     evidence = result.read_bytes()
     lines = evidence.decode('ascii').splitlines()
-    if (not lines or lines[-1] != 'ALL PASS' or 'PASS contexts' not in lines
-            or sum(line.startswith('PASS ') for line in lines) < 8
-            or any(line.startswith('FAIL') for line in lines)):
+    if lines != expected_result().splitlines():
         raise Rejection('guest result does not contain complete ALL PASS evidence')
     if digest(run / 'CannedBSD.tar.gz') != manifest['artifact_sha256']:
         raise Rejection('staged artifact checksum changed')

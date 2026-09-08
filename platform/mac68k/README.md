@@ -22,9 +22,12 @@ Docker toolchain. The authoritative build remains the Woodpecker artifact.
 ## Acceptance check
 
 At startup the application exercises two independent stacks with 512 total
-child yields, then checks seven shell cases with exact output and exit
+child yields, then checks ten command cases with exact output and exit
 status assertions: pipelines and redirection, `wc`, a three-stage pipeline,
-append, shell status, working directory, and a nonzero exit.
+append, shell status, working directory, a nonzero exit, ordinary-source
+memory/string boundaries, a quiet unknown getopt option, and truncate/ftruncate
+shrink, zero-filled growth, and errors. The command table in
+`acceptance_cases.def` also runs unchanged in the Linux test executable.
 It writes results to `Unix:cannedbsd-result.txt`. A successful run then opens an
 interactive shell in the same window. Type `echo ci | tr a-z A-Z` and observe
 `CI`; type `exit` to return to Finder. The runner checks startup results; record
@@ -79,8 +82,10 @@ after each action, including any System 7 warning or confirmation dialog.
 python3 platform/mac68k/guest.py check --state /path/to/shared-guest-state
 ```
 
-Acceptance requires a newly written regular result file, eight `PASS` lines
-including `PASS contexts`, no failure line, and a final `ALL PASS`. Missing,
+Acceptance requires a newly written regular result file with the exact ordered
+transcript from `acceptance_cases.def`: eleven named `PASS` lines including
+`PASS contexts`, followed by `ALL PASS`. Missing or duplicated probe lines are
+rejected. Staging also saves `expected-result.txt` for the Hammerspoon driver. Missing,
 stale, or incomplete results fail with a nonzero exit. A passing check writes
 `acceptance.json` binding the commit, archive SHA-256, result SHA-256, and times.
 A visible `ALL PASS` with a failed file write is useful diagnostic evidence but

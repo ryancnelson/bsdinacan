@@ -34,9 +34,32 @@ class GuestTests(unittest.TestCase):
         return guest.stage(self.artifact, self.state, 'a' * 40, None)
 
     def result(self, run, conclusion='ALL PASS'):
-        text = 'cannedBSD System 7 / Retro68\nPASS contexts\n'
-        text += 'PASS shell\n' * 7 + conclusion + '\n'
+        text = guest.expected_result().replace('ALL PASS', conclusion)
         (run / 'shared/cannedbsd-result.txt').write_text(text)
+
+    def test_old_eight_pass_transcript_cannot_satisfy_expanded_suite(self):
+        run = self.stage()
+        old = 'cannedBSD System 7 / Retro68\nPASS contexts\n' + 'PASS shell\n' * 7 + 'ALL PASS\n'
+        (run / 'shared/cannedbsd-result.txt').write_text(old)
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
+
+    def test_duplicate_pass_does_not_replace_missing_probe(self):
+        run = self.stage()
+        text = guest.expected_result().replace('PASS libctruncateprobe', 'PASS libcmemoryprobe')
+        (run / 'shared/cannedbsd-result.txt').write_text(text)
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
+
+    def test_stage_records_complete_driver_transcript(self):
+        run = self.stage()
+        expected = (run / 'expected-result.txt').read_text()
+        self.assertEqual(expected, guest.expected_result())
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 11)
+        for probe in ['libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe']:
+            self.assertIn('PASS ' + probe + '\n', expected)
 
     def test_bad_checksum_rejected_without_claiming_slot(self):
         (self.artifact / 'CannedBSD.tar.gz').write_bytes(b'corrupt')

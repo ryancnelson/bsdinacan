@@ -17,6 +17,9 @@ assert(not staged:sub(#cfg.state+2):find('/'),'Run must be a direct state child'
 local manifest=readJSON(staged..'/manifest.json')
 assert(manifest.run_directory==staged and manifest.boot_copy,'Stage with a clean --boot-seed first')
 assert(not hs.fs.attributes(staged..'/acceptance.json'),'Stage a fresh run; this run was already checked')
+local expectedFile=assert(io.open(staged..'/expected-result.txt','rb'),'Missing staged expected transcript')
+local expectedResult=expectedFile:read('*a'); expectedFile:close()
+assert(expectedResult:match('ALL PASS\n$'),'Invalid expected transcript')
 cfg.prefs=staged..'/basilisk_prefs'; cfg.result=staged..'/shared/cannedbsd-result.txt'
 local pf=assert(io.open(cfg.prefs,'rb'),'Stage with --native-template and --rom first')
 local prefs=pf:read('*a'); pf:close()
@@ -147,9 +150,8 @@ local function shutdown()
 end
 local function evidence()
  local f=io.open(cfg.result,'rb'); local text=f and f:read('*a') or ''; if f then f:close() end
- local passes=0; for line in text:gmatch('[^\r\n]+') do if line:match('^PASS ') then passes=passes+1 end end
  if text:find('FAIL',1,true) then finish(false,'Guest test failure'); return end
- if passes~=8 or not text:match('ALL PASS\n?$') then after(.15,evidence); return end
+ if text:gsub('\r\n','\n'):gsub('\r','\n')~=expectedResult then after(.15,evidence); return end
  guestCommand('check',function()
   save(R.dir..'/cannedbsd-result.txt',text); snap(R.dir..'/test.png'); log('Fresh ALL PASS and screenshot saved')
   -- shell image was just matched; click its center before typing.
