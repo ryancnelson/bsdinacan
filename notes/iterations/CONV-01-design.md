@@ -210,28 +210,79 @@ then declares `intmax_t`/`INTMAX_MAX`/`INTMAX_MIN` and maps
 ## `_DIAGASSERT`: an explicit, empty, import-only policy -- no host `assert`
 
 `_strtol.h` (in the branch this design selects) calls `_DIAGASSERT(nptr !=
-NULL);` once; `strcpy.c` and `strtoimax.c` both `#include <assert.h>` in
-their own non-kernel/non-standalone branch even where they never call any
-assert-style macro themselves. Fetching NetBSD's real
-`include/assert.h` at the pinned revision shows exactly what `_DIAGASSERT`
-is: `#undef _DIAGASSERT` then, unless the internal `_DIAGNOSTIC` build flag
-is defined (a NetBSD libc-build-time-only flag this project never sets),
-`#define _DIAGASSERT(e) ((void)0)` -- a pure no-op. Only the `_DIAGNOSTIC`
-branch (not proposed here) calls a real `__diagassert13` diagnostic
-function. So the correct, minimal, no-host-dependency policy is a private,
-import-only `<assert.h>` (on the same footing as this project's existing
-empty `libgen.h`) that defines `_DIAGASSERT(e)` as `((void)0)`
-unconditionally and does **not** implement `_DIAGNOSTIC` mode or route to
-any host `assert()`. This must be stated as an explicit, deliberate policy
-in the implementing task -- not left for whoever writes the header to
-improvise -- because the alternative (a private `assert.h` that actually
-maps to the host's own `<assert.h>`) would be exactly the kind of host
-leak `check-architecture`'s existing header-leak check is designed to
-catch, and because a *silently* empty shim invites a future edit to
-"complete" it by wiring in a real assert without re-deriving why it was
-deliberately a no-op.
+NULL);` once; `strtoimax.c` also `#include`s `<assert.h>` in its own
+non-kernel/non-standalone branch even though it never calls any
+assert-style macro directly itself (only `_strtol.h`, which it includes,
+does). Fetching NetBSD's real `include/assert.h` at the pinned revision
+shows exactly what `_DIAGASSERT` is: `#undef _DIAGASSERT` then, unless the
+internal `_DIAGNOSTIC` build flag is defined (a NetBSD libc-build-time-only
+flag this project never sets), `#define _DIAGASSERT(e) ((void)0)` -- a
+pure no-op. Only the `_DIAGNOSTIC` branch (not proposed here) calls a real
+`__diagassert13` diagnostic function. So the correct, minimal,
+no-host-dependency policy is for `_DIAGASSERT(e)` to expand to `((void)0)`
+unconditionally, never implementing `_DIAGNOSTIC` mode or routing to any
+host `assert()`.
 
-## Proposed contract: import `strcpy` unchanged -- corrected to the `strcmp`/`memcpy` link-name pattern, not `strlen`'s
+**This design's second draft placed that policy in a new
+`libc/include/assert.h`; independent review caught a real include-order
+bug before implementation.** This project already has an `<assert.h>` at
+`compat/netbsd/include/assert.h` -- an existing, empty, import-only shim
+added for `strlen.c`'s own (unused) `#include <assert.h>`, with its own
+comment explicitly warning "do not expose this directory as cannedBSD's
+public libc include path until assert semantics exist and are tested."
+Every existing NetBSD-source import that needs a compat header (`strlen`,
+`strcmp`, `memcpy`, `memmove`, `dirname`, `basename`) is already compiled
+with `-Icompat/netbsd/include -Ilibc/include`, in that exact order,
+per the Makefile rules read directly for this correction -- `compat/
+netbsd/include` comes *first*. A new, different `assert.h` placed under
+`libc/include` would never actually be selected for these same-ordered
+compiles; the existing empty `compat/netbsd/include/assert.h` -- which
+defines nothing for `_DIAGASSERT` -- would win every time, and
+`_strtol.h`'s call to it would fail to compile.
+
+Two ways to fix this were considered:
+
+1. **Add `_DIAGASSERT(e) ((void)0)` directly to the existing
+   `compat/netbsd/include/assert.h`.** This is purely additive: none of
+   `strlen`/`strcmp`/`memcpy`/`memmove`/`dirname`/`basename` reference
+   `_DIAGASSERT` at all today, so adding a macro none of them use changes
+   nothing about their existing compiles. It also does not "expose" this
+   directory any more than it already is -- `_DIAGASSERT` is an internal
+   NetBSD-source-only token, not something ordinary-facing code would ever
+   call, so it does not conflict with that header's own warning about a
+   real, general-purpose `assert()`. This keeps exactly one canonical
+   "import-only NetBSD compat shim" location instead of two, which is
+   itself the more consistent choice, not merely the smaller diff.
+2. Alternative: a narrowly-scoped include directory specific to this
+   task's three files, placed *before* `compat/netbsd/include` for only
+   those compiles. Rejected in favor of (1) here as unnecessary
+   complexity for a purely-additive, harmless change to an already-shared
+   shim -- but recorded as the fallback if the implementing task finds a
+   reason (1) is not actually safe that this design did not find.
+
+**Consistent placement, addressing the same review comment**: the
+proposed empty `nbtool_config.h` (below) belongs in this same
+`compat/netbsd/include` directory, not `libc/include` -- for the identical
+reason, and so both of `strtoimax.c`'s own transitive-include needs
+resolve from one place, compiled with the same established
+`-Icompat/netbsd/include -Ilibc/include` order every other NetBSD-source
+import already uses, rather than inventing a different order or split
+for just this one file.
+
+## `strcpy` is out of `CONV-01`'s own scope -- tracked separately as `STRCPY-01`
+
+**Removed from this design's implementation scope by the coordinator**:
+`strcpy` is already being implemented as its own separate backlog item,
+`STRCPY-01`, by another worker. `CONV-01` itself should propose and
+implement only `strtoimax`/`isdigit`/`isspace`/`ERANGE` -- not `strcpy`,
+even though `HEAD-01-plan.md`'s own item 3 originally bundled all of them
+together and `obsolete()`'s `strcpy` call is a real, traced dependency of
+head.c (see "Exact call sites" above). The analysis below is kept, not
+deleted, because it is still accurate and may be useful to `STRCPY-01`'s
+own implementer, but it is explicitly **not** part of what `CONV-01`
+proposes to build; `CONV-01`'s own acceptance must not depend on it, and
+the "Proposed additions" and "Independent worker steps" sections below no
+longer list it as this task's own work.
 
 The pinned revision's `common/lib/libc/string/strcpy.c`
 (`sha256:36754cc692e0df72390e24cfd585a1fb9343257ae6edc4052771b1e5a47c9fad`,
@@ -415,23 +466,21 @@ it normally today too. No new "private compiler helper" is proposed.
   which already has one `case` per existing `enum cb_error` value) needs
   its own `case CB_ERANGE: return "...";` entry and a probe asserting it --
   this was missing from the first draft entirely, not merely under-scoped.
-- `libc/include/string.h`: add the `CANNEDBSD_BUILDING_LIBC_STRCPY`-guarded
-  `__asm__`-link-name declaration plus the ordinary `#define strcpy
-  cb_libc_strcpy` mapping, per the corrected import section above -- not
-  a bare `-D` rename.
-- A private, import-only `<assert.h>` (`libc/include/assert.h`, new)
-  defining `_DIAGASSERT(e)` as `((void)0)` unconditionally, per the
-  dedicated section above. Not a general-purpose `assert()` -- head.c
-  itself never calls `assert`, and nothing here proposes one.
-- `upstream/netbsd/common/lib/libc/stdlib/strtoimax.c`,
-  `upstream/netbsd/common/lib/libc/stdlib/_strtol.h`,
-  `upstream/netbsd/common/lib/libc/string/strcpy.c`: vendored unchanged,
-  each with its own `UPSTREAM.md` entry recording its own license (two of
-  these three files carry different licenses from each other, and both
-  differ from `strcpy.c`'s -- each needs its own accurate entry, not a
-  merged one).
-- A private, empty `nbtool_config.h` on the same import-only include path
-  as the existing empty `libgen.h`, solely to satisfy `strtoimax.c`'s own
+- `_DIAGASSERT(e)` added to the existing, already-shared
+  `compat/netbsd/include/assert.h` as `((void)0)` unconditionally, per the
+  dedicated section above -- not a new `libc/include/assert.h` (an earlier
+  draft's mistake, corrected: that header is never reached by the
+  established `-Icompat/netbsd/include -Ilibc/include` compile order every
+  NetBSD-source import already uses). Not a general-purpose `assert()` --
+  nothing in this task's own scope calls `assert`, and nothing here
+  proposes one.
+- `upstream/netbsd/common/lib/libc/stdlib/strtoimax.c` and
+  `upstream/netbsd/common/lib/libc/stdlib/_strtol.h`: vendored unchanged,
+  each with its own `UPSTREAM.md` entry recording its own license (the two
+  files carry different licenses from each other).
+- A private, empty `nbtool_config.h` in `compat/netbsd/include` (the same
+  directory as the corrected `assert.h` above, for the same
+  include-order-consistency reason), solely to satisfy `strtoimax.c`'s own
   `#include` line.
 - Two small cannedBSD-owned functions, `cb_libc_isdigit`/`cb_libc_isspace`,
   in `libc/cb_libc.c` (or a new small file, implementer's choice) --
@@ -487,15 +536,9 @@ actually distinguish "never touched" from "touched and reset to zero."
 | `"5"` | 10 | `5`, called with `endptr = NULL` | (no crash; nothing to inspect) | sentinel |
 | overflowing digit string with more valid digits *after* the overflow point, e.g. `"99999999999999999999999999"` followed immediately by more digits then a non-digit, all base 10 | 10 | `INTMAX_MAX` | scans past **every** digit character, not just up to the point overflow was first detected (`_strtol.h`'s `if (any < 0) continue;` keeps consuming recognized digits without accumulating once overflow is latched) | `ERANGE` |
 
-String (`strcpy`, bounds probes with canaries, matching this project's
-existing exact-byte-boundary probe style):
-
-| Case | Assertion |
-| --- | --- |
-| Ordinary copy into an exactly-sized destination | destination equals source through its NUL; return value equals destination pointer |
-| Empty source (`""`) | destination's first byte becomes NUL; no bytes beyond it are touched |
-| Destination has a trailing canary byte one past where the NUL lands | canary byte is provably unmodified |
-| Destination has a leading canary byte one before the copy starts | canary byte is provably unmodified (this function never writes before `dst`) |
+`strcpy`'s own bounds-probe matrix is not proposed here -- it is
+`STRCPY-01`'s own acceptance criteria, tracked separately per the scope
+correction above, not `CONV-01`'s.
 
 `ERANGE` `strerror` mapping (added by review, missing from the first
 draft):
@@ -503,16 +546,6 @@ draft):
 | Case | Assertion |
 | --- | --- |
 | `cb_libc_strerror(CB_ERANGE)` | returns a non-`NULL`, non-empty string distinct from every other existing `cb_error` message |
-
-String (`strcpy`, bounds probes with canaries, matching this project's
-existing exact-byte-boundary probe style):
-
-| Case | Assertion |
-| --- | --- |
-| Ordinary copy into an exactly-sized destination | destination equals source through its NUL; return value equals destination pointer |
-| Empty source (`""`) | destination's first byte becomes NUL; no bytes beyond it are touched |
-| Destination has a trailing canary byte one past where the NUL lands | canary byte is provably unmodified |
-| Destination has a leading canary byte one before the copy starts | canary byte is provably unmodified (this function never writes before `dst`) |
 
 `isdigit`/`isspace` (exhaustive over all 257 relevant inputs, not a sample):
 
@@ -523,10 +556,12 @@ existing exact-byte-boundary probe style):
 
 ## Independent worker steps and acceptance
 
-1. `CONV-01`: implement exactly the surface proposed above (three unchanged
-   upstream imports, one import-only `assert.h` and one empty
-   `nbtool_config.h`, two small new functions, one new error code plus its
-   `strerror` mapping). Temporarily removing a symbol (e.g.
+1. `CONV-01`: implement exactly the surface proposed above -- **not
+   including `strcpy`**, which is `STRCPY-01`'s own separate scope (two
+   unchanged upstream imports, `_DIAGASSERT` added to the existing shared
+   `assert.h` plus one new empty `nbtool_config.h`, both in
+   `compat/netbsd/include`, two small new functions, one new error code
+   plus its `strerror` mapping). Temporarily removing a symbol (e.g.
    `cb_libc_isdigit`/`cb_libc_isspace` or the `strtoimax` link-name
    declaration) and confirming a link/compile failure is a **source-boundary
    negative control** -- it proves the build genuinely depends on that
