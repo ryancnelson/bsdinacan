@@ -13,7 +13,7 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude prepares CONV-01-design. Antigravity implements
+**Current assignments:** Claude implements CONV-01. Antigravity implements
 STRCPY-01; the coordinator worker implements STDIN-01. Codex owns review,
 integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
 with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
@@ -1058,7 +1058,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### CONV-01-design — measured numeric and small string prerequisites for head
 
-- **Status:** Claimed by Claude on `work/CONV-01-design`; design only
+- **Status:** Reviewed clean at `fe51f3d`; actual Retro68 compile measurements recorded
 - **Base:** main
 - **Depends on:** reviewed HEAD-01 dependency plan
 - **Scope:** measure pinned head's strtoimax/ERANGE/intmax limits against the
@@ -1140,7 +1140,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### FWRITE-01-design — bounded output elements for head
 
-- **Status:** Coordinator design recorded in `notes/iterations/FWRITE-01-design.md`; review pending
+- **Status:** Reviewed clean and merged at `32da718`; documentation only
 - **Base:** accepted runtime `6f860c4`
 - **Depends on:** reviewed HEAD-01 plan and STDOUT-01 (Done)
 - **Scope:** define stdout/stderr-only fwrite, completed-element/error semantics,
@@ -1159,3 +1159,21 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** exact bytes/element counts and sticky flags with partial/zero/error
   injection, binary ordinary probe, old-table rejection before I/O, full exact
   CI and fresh coordinator-owned Mac artifact acceptance.
+
+### CONV-01 — pinned strtoimax and its bounded C-locale prerequisites
+
+- **Status:** Claimed by Claude on `work/CONV-01`
+- **Base:** coordinator `work/warn-stdin-integration` after reviewed design integration
+- **Depends on:** reviewed CONV-01-design `fe51f3d`
+- **Scope:** unchanged pinned strtoimax.c and _strtol.h, private inttypes/ctype
+  surface, C-locale isdigit/isspace, ERANGE and its error string. Follow the
+  measured Retro68/LP64 contracts and import-only assert/nbtool shims exactly.
+  STRCPY-01 is excluded; no runtime ABI, locale tables or new compiler helpers.
+- **Red:** real behavior tests or honestly labelled implementation regression
+  controls for endptr, saturation, base handling and errno. Missing symbols
+  are separate source-boundary evidence, not behavior red.
+- **Accept:** complete reviewed base0/2..36 and invalid-base matrix, signs,
+  whitespace, no conversion, full overflow digit consumption, INTMAX_MIN/MAX,
+  nonzero errno preservation, NULL endptr, exhaustive unsigned-byte/EOF ctype
+  tests, no host symbols, both build systems and unchanged source hashes.
+  Full exact CI and fresh coordinator-owned 32-bit Mac acceptance required.
