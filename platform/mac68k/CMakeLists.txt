@@ -18,6 +18,15 @@ endforeach()
 target_compile_definitions(cb_memory_probe PRIVATE main=cb_memory_probe_main)
 target_compile_definitions(cb_getopt_probe PRIVATE main=cb_getoptprobe_main)
 target_compile_definitions(cb_truncate_probe PRIVATE main=cb_truncate_probe_main)
+add_library(cb_printenv OBJECT
+    ${ROOT}/upstream/netbsd/usr.bin/printenv/printenv.c)
+target_include_directories(cb_printenv PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_printenv PRIVATE main=cb_printenv_main)
+# See UPSTREAM.md's printenv entry: the pinned source's local
+# `extern char **environ;` expands, once environ is cannedBSD's task-local
+# accessor macro, into a declarator this toolchain's GCC also parses as an
+# unprototyped redeclaration of cb_libc_environ_location.
+target_compile_options(cb_printenv PRIVATE -Wno-strict-prototypes)
 foreach(routine strlen strcmp memcpy memmove memcmp strchr)
     add_library(cb_${routine} OBJECT
         ${ROOT}/upstream/netbsd/common/lib/libc/string/${routine}.c)
@@ -35,6 +44,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/src/core.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
+    ${ROOT}/commands/printenv_module.c
     ${ROOT}/libc/cb_libc.c
     ${ROOT}/tests/libc_memory_probe_module.c
     ${ROOT}/tests/libc_getopt_probe_module.c
@@ -42,7 +52,7 @@ add_application(CannedBSD CREATOR "CnBD"
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe>)
 target_sources(CannedBSD PRIVATE
-    $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes>
+    $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)

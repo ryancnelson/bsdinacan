@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Consume the complete producer output: early exit with rg -q can give nm/ar
+# SIGPIPE, which pipefail would misreport as a missing symbol.
+matches() { rg "$@" > /dev/null; }
+
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 build_path=${BUILD_PATH:-build}
@@ -21,24 +25,71 @@ if [[ $actual_hash != "$expected_hash" ]]; then
     exit 1
 fi
 if [[ ! -f $provenance_file ]] ||
-        ! rg -q "$expected_revision" "$provenance_file" ||
-        ! rg -q "$expected_hash" "$provenance_file"; then
+        ! matches "$expected_revision" "$provenance_file" ||
+        ! matches "$expected_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD yes provenance is absent or does not match the pin' >&2
     exit 1
 fi
 if [[ ! -f $object_file ]] ||
-        ! nm "$object_file" | rg -q '[[:space:]]T[[:space:]]+cb_yes_main$'; then
+        ! nm "$object_file" | matches '[[:space:]]T[[:space:]]+cb_yes_main$'; then
     echo "FAIL: pinned NetBSD yes was not compiled as a command object" >&2
     exit 1
 fi
-if nm -u "$object_file" | rg -q '[[:space:]]U[[:space:]]+puts$'; then
+if nm -u "$object_file" | matches '[[:space:]]U[[:space:]]+puts$'; then
     echo 'FAIL: NetBSD yes imports host puts instead of cannedBSD libc' >&2
     exit 1
 fi
 if ! nm -u "$object_file" |
-        rg -q '[[:space:]]U[[:space:]]+cb_libc_puts$'; then
+        matches '[[:space:]]U[[:space:]]+cb_libc_puts$'; then
     echo 'FAIL: NetBSD yes does not import cannedBSD libc puts' >&2
     exit 1
 fi
+
+printenv_source=upstream/netbsd/usr.bin/printenv/printenv.c
+printenv_object=$build_path/netbsd_printenv.o
+printenv_hash=d355c07fc5a351d38e2f8552899b456f1300a61408ebf2e2af47c5f52de974db
+
+if [[ ! -f $printenv_source ]]; then
+    echo "FAIL: pinned NetBSD printenv source is missing: $printenv_source" >&2
+    exit 1
+fi
+actual_printenv_hash=$(sha256sum "$printenv_source" | awk '{print $1}')
+if [[ $actual_printenv_hash != "$printenv_hash" ]]; then
+    printf 'FAIL: NetBSD printenv source changed: expected %s, found %s\n' \
+        "$printenv_hash" "$actual_printenv_hash" >&2
+    exit 1
+fi
+if [[ ! -f $provenance_file ]] ||
+        ! matches "$printenv_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD printenv provenance is absent or does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $printenv_object ]] ||
+        ! nm "$printenv_object" |
+            matches '[[:space:]]T[[:space:]]+cb_printenv_main$'; then
+    echo "FAIL: pinned NetBSD printenv was not compiled as a command object" >&2
+    exit 1
+fi
+if nm "$printenv_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: NetBSD printenv exports the enclosing application main' >&2
+    exit 1
+fi
+for host_symbol in environ getopt errx exit memcmp; do
+    if nm -u "$printenv_object" |
+            matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
+        printf 'FAIL: NetBSD printenv imports host-facing %s\n' \
+            "$host_symbol" >&2
+        exit 1
+    fi
+done
+for private_symbol in cb_libc_environ_location cb_libc_getopt cb_libc_errx \
+        cb_libc_exit cb_libc_memcmp; do
+    if ! nm -u "$printenv_object" |
+            matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
+        printf 'FAIL: NetBSD printenv does not import %s\n' \
+            "$private_symbol" >&2
+        exit 1
+    fi
+done
 
 echo 'pinned unmodified NetBSD source boundary passed'

@@ -19,6 +19,7 @@ TEST_PROGRAM := $(BUILD)/test_core
 CORE_SOURCES := \
 	commands/wc_module.c \
 	commands/yes_module.c \
+	commands/printenv_module.c \
 	src/core.c \
 	src/executor.c \
 	src/host_linux.c \
@@ -31,6 +32,7 @@ PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
 TEST_SOURCES := tests/test_core.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
+PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
 EXITPROBE_COMMAND_OBJECT := $(BUILD)/exitprobe_command.o
 GETOPTPROBE_COMMAND_OBJECT := $(BUILD)/getoptprobe_command.o
 ERRXPROBE_COMMAND_OBJECT := $(BUILD)/errxprobe_command.o
@@ -75,6 +77,20 @@ $(YES_COMMAND_OBJECT): upstream/netbsd/usr.bin/yes/yes.c \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_yes_main \
 		-c upstream/netbsd/usr.bin/yes/yes.c -o $@
+
+# -Wno-strict-prototypes: the pinned source's local `extern char **environ;`
+# expands, once environ is cannedBSD's task-local accessor macro, into a
+# declarator both GCC and Clang parse as an unprototyped redeclaration of
+# cb_libc_environ_location. See UPSTREAM.md's printenv entry. No other file
+# loses -Wstrict-prototypes coverage.
+$(PRINTENV_COMMAND_OBJECT): upstream/netbsd/usr.bin/printenv/printenv.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
+		libc/include/unistd.h libc/include/err.h libc/include/sys/cdefs.h \
+		libc/include/sys/types.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Wno-strict-prototypes \
+		-Dmain=cb_printenv_main \
+		-c upstream/netbsd/usr.bin/printenv/printenv.c -o $@
 
 $(EXITPROBE_COMMAND_OBJECT): tests/libc_exit_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/stdlib.h libc/include/unistd.h \
@@ -167,16 +183,16 @@ $(LIBC_TRUNCATE_TEST_OBJECT): tests/libc_truncate_probe.c \
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_truncate_probe_main \
 		-c $< -o $@
 
-$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
+$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) \
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) \
 		$(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 check-architecture:
@@ -203,6 +219,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh
 	BUILD_PATH='$(BUILD)' tests/test_netbsd_source.sh
 	BUILD_PATH='$(BUILD)' tests/test_netbsd_libc_source.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_printenv_behavior.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
@@ -226,6 +243,10 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_yes_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/yes/yes.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_printenv_main \
+		-Wno-strict-prototypes \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/printenv/printenv.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
 		-Dstrlen=cb_libc_strlen \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
