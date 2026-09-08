@@ -2843,6 +2843,26 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+
+static int execearlyretain_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    char *replacement_argv[] = {(char *)"true", NULL};
+    (void)argc;
+    (void)argv;
+    allocation_failure_countdown = 0;
+    if (api->exec("true", replacement_argv, envp) >= 0)
+        return 222;
+    if (api->get_errno() != CB_ENOMEM)
+        return 223;
+    return 0;
+}
+
+static const struct cb_program_v1 execearlyretain_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "execearlyretain", 0,
+    64 * 1024, execearlyretain_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -2903,6 +2923,7 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &errnochild_program) < 0 ||
             cb_kernel_register(kernel, &abiprobe_program) < 0 ||
             cb_kernel_register(kernel, &overflowprobe_program) < 0 ||
+            cb_kernel_register(kernel, &execearlyretain_program) < 0 ||
             cb_kernel_register(kernel, &allocationchild_program) < 0 ||
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
@@ -3058,11 +3079,27 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
 
     if (api->stat("/bin/sh", &statbuf) != 0)
         return 1;
+    if (statbuf.type != CB_NODE_EXECUTABLE || statbuf.size != 0)
+        return 2;
+
+    if (api->open("/bin/sh", CB_O_WRONLY | CB_O_TRUNC, 0) >= 0)
+        return 3;
+    if (api->get_errno() != CB_EINVAL)
+        return 4;
+
+
+    int fd = api->open("/bin/sh", CB_O_WRONLY, 0);
+    if (fd < 0)
+        return 5;
+    if (api->write(fd, "test", 4) >= 0)
+        return 6;
+    if (api->get_errno() != CB_EPERM)
+        return 61;
 
     if (api->spawn("/missing/sh", (char *[]){"sh", NULL}, NULL, NULL, 0, &child) == 0)
-        return 3;
+        return 7;
     if (api->get_errno() != CB_ENOENT)
-        return 4;
+        return 8;
 
     char long_name[4096];
     for (int i = 0; i < 4095; i++) long_name[i] = 'a';
@@ -3070,9 +3107,9 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
     memcpy(long_name, "sh", 2); // Starts with "sh"
 
     if (api->spawn(long_name, (char *[]){"sh", NULL}, NULL, NULL, 0, &child) == 0)
-        return 5;
+        return 9;
     if (api->get_errno() != CB_ENAMETOOLONG)
-        return 6;
+        return 10;
 
     return 0;
 }
@@ -3080,6 +3117,27 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
 static const struct cb_program_v1 test_vfs_executable_prog = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "test_vfs_exec", 0, 64 * 1024, test_vfs_executable_main
 };
+
+
+static void test_nullboot(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console("exit\n");
+    
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL) fail("kernel creation");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_boot(kernel, NULL) < 0)
+        fail("null boot rejected");
+    if (cb_kernel_run(kernel) != 0)
+        fail("null boot run");
+    cb_kernel_destroy(kernel);
+}
 
 static void test_vfs_executable_nodes(void)
 {
@@ -3107,8 +3165,11 @@ static void test_vfs_executable_nodes(void)
         
     if (cb_kernel_boot(kernel, "test_vfs_exec") != 0)
         fail("boot failed");
-    if (cb_kernel_run(kernel) != 0)
+    int status = cb_kernel_run(kernel);
+    if (status != 0) {
+        fprintf(stderr, "run failed with %d\n", status);
         fail("run failed");
+    }
 
     if (cb_vfs_stat_path(&task, "/missing/sh", &st) == 0)
         fail("stat missing succeeded");
@@ -3352,6 +3413,7 @@ int main(int argc, char **argv)
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
+    test_nullboot();
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
     expect_path("/", "/", "/");
@@ -3462,6 +3524,7 @@ int main(int argc, char **argv)
     run_case("truncateinterleave", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
+    run_case("execearlyretain", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
     capture_write_limit = 2;
