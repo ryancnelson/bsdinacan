@@ -14,84 +14,52 @@ fail() {
     exit 1
 }
 
-# 1. Ordinary parent paths
-output=$("$program" -c 'dirname /tmp/example')
-[ "$output" = "/tmp" ] || fail "ordinary path produced <$output>"
+check_case() {
+    local cmd="$1"
+    local exp_status="$2"
+    local exp_stdout="$3"
+    local exp_stderr="$4"
+    local name="$5"
 
-output=$("$program" -c 'dirname usr/bin/')
-[ "$output" = "usr" ] || fail "trailing slash path produced <$output>"
+    printf "%s" "$exp_stdout" > "$case_dir/exp_stdout"
+    printf "%s" "$exp_stderr" > "$case_dir/exp_stderr"
 
-# 2. Plain names
-output=$("$program" -c 'dirname plain')
-[ "$output" = "." ] || fail "plain name produced <$output>"
+    set +e
+    "$program" -c "$cmd" > "$case_dir/out" 2> "$case_dir/err"
+    local status=$?
+    set -e
 
-# 3. Root/repeated slashes
-output=$("$program" -c 'dirname /')
-[ "$output" = "/" ] || fail "root produced <$output>"
+    if [ "$status" -ne "$exp_status" ]; then
+        fail "$name: expected status $exp_status, got $status"
+    fi
 
-output=$("$program" -c 'dirname ////')
-[ "$output" = "/" ] || fail "repeated root slashes produced <$output>"
+    if ! cmp -s "$case_dir/exp_stdout" "$case_dir/out"; then
+        echo "$name stdout mismatch:" >&2
+        diff -u "$case_dir/exp_stdout" "$case_dir/out" >&2 || true
+        fail "$name: stdout mismatch"
+    fi
 
-output=$("$program" -c 'dirname /foo////bar')
-[ "$output" = "/foo" ] || fail "repeated middle slashes produced <$output>"
+    if ! cmp -s "$case_dir/exp_stderr" "$case_dir/err"; then
+        echo "$name stderr mismatch:" >&2
+        diff -u "$case_dir/exp_stderr" "$case_dir/err" >&2 || true
+        fail "$name: stderr mismatch"
+    fi
+}
 
-# 4. Empty argument
-output=$("$program" -c 'dirname ""')
-[ "$output" = "." ] || fail "empty argument produced <$output>"
+check_case 'dirname /tmp/example' 0 "/tmp\n" "" "ordinary path"
+check_case 'dirname usr/bin/' 0 "usr\n" "" "trailing slash path"
+check_case 'dirname plain' 0 ".\n" "" "plain name"
+check_case 'dirname /' 0 "/\n" "" "root"
+check_case 'dirname ////' 0 "/\n" "" "repeated root slashes"
+check_case 'dirname /foo////bar' 0 "/foo\n" "" "repeated middle slashes"
+check_case 'dirname ""' 0 ".\n" "" "empty argument"
 
-# 5. Zero arguments
-set +e
-stdout_output=$("$program" -c 'dirname' 2>"$case_dir/stderr-zero")
-status=$?
-set -e
-stderr_output=$(cat "$case_dir/stderr-zero")
-rm -f "$case_dir/stderr-zero"
-[ -z "$stdout_output" ] || fail "zero arguments produced stdout <$stdout_output>"
-case "$stderr_output" in
-*"usage: dirname path"*) ;;
-*) fail "zero arguments diagnostic was <$stderr_output>" ;;
-esac
-[ "$status" -eq 1 ] || fail "zero arguments exit status was $status"
+check_case 'dirname' 1 "" "usage: dirname path\n" "zero arguments"
+check_case 'dirname a b' 1 "" "usage: dirname path\n" "too many arguments"
+check_case 'dirname -x' 1 "" "dirname: illegal option -- x\nusage: dirname path\n" "invalid option"
 
-# 6. Too many arguments
-set +e
-stdout_output=$("$program" -c 'dirname a b' 2>"$case_dir/stderr-many")
-status=$?
-set -e
-stderr_output=$(cat "$case_dir/stderr-many")
-rm -f "$case_dir/stderr-many"
-[ -z "$stdout_output" ] || fail "too many arguments produced stdout <$stdout_output>"
-case "$stderr_output" in
-*"usage: dirname path"*) ;;
-*) fail "too many arguments diagnostic was <$stderr_output>" ;;
-esac
-[ "$status" -eq 1 ] || fail "too many arguments exit status was $status"
+check_case 'dirname -- -leading/dash' 0 "-leading\n" "" "dash-leading path"
 
-# 7. Invalid options
-set +e
-stdout_output=$("$program" -c 'dirname -x' 2>"$case_dir/stderr-inv")
-status=$?
-set -e
-stderr_output=$(cat "$case_dir/stderr-inv")
-rm -f "$case_dir/stderr-inv"
-[ -z "$stdout_output" ] || fail "invalid option produced stdout <$stdout_output>"
-case "$stderr_output" in
-*"dirname: unknown option -- x"*) ;;
-*) fail "invalid option diagnostic was <$stderr_output>" ;;
-esac
-[ "$status" -eq 1 ] || fail "invalid option exit status was $status"
-
-# 8. -- before a dash-leading path
-output=$("$program" -c 'dirname -- -leading/dash')
-[ "$output" = "." ] || fail "-- dash-leading path produced <$output>"
-
-# 9. Repeated invocations
-output=$("$program" -c 'dirname /foo/bar; dirname /baz/qux')
-[ "$output" = "/foo
-/baz" ] || fail "repeated invocations produced <$output>"
-
-# 10. Pipeline
-output=$("$program" -c 'dirname /a/b/c | cat')
-[ "$output" = "/a/b" ] || fail "pipeline produced <$output>"
+check_case 'dirname /foo/bar; dirname /baz/qux' 0 "/foo\n/baz\n" "" "repeated invocations"
 
 echo 'dirname behavioral matrix passed'

@@ -262,7 +262,7 @@ protected HFS fixture; this code is not linked into the Mac probe or runtime.
 - Upstream path: `usr.bin/dirname/dirname.c`
 - Local path: `upstream/netbsd/usr.bin/dirname/dirname.c`
 - SHA-256: `839bee201d87fd1024fac687ce8b26963b33919b6c1086373d7ddfdaf6882cd9`
-- Embedded RCS identifier: `$NetBSD: dirname.c,v 1.13 2011/09/06 18:24:57 joerg Exp $`
+- Embedded RCS identifier: `$NetBSD: dirname.c,v 1.12 2011/09/16 15:39:25 joerg Exp $`
 - License: file-specific three-clause Regents of the University of California license, retained verbatim.
 
 The imported file is byte-for-byte unchanged. The build renames `main` to `cb_dirname_main`. It depends on a C-only locale boundary (`setlocale`) and a libc `dirname` implementation.

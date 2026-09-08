@@ -92,4 +92,48 @@ for private_symbol in cb_libc_environ_location cb_libc_getopt cb_libc_errx \
     fi
 done
 
+
+dirname_source=upstream/netbsd/usr.bin/dirname/dirname.c
+dirname_object=$build_path/netbsd_dirname.o
+dirname_hash=839bee201d87fd1024fac687ce8b26963b33919b6c1086373d7ddfdaf6882cd9
+
+if [[ ! -f $dirname_source ]]; then
+    echo "FAIL: pinned NetBSD dirname source is missing: $dirname_source" >&2
+    exit 1
+fi
+actual_dirname_hash=$(sha256sum "$dirname_source" | awk '{print $1}')
+if [[ $actual_dirname_hash != "$dirname_hash" ]]; then
+    printf 'FAIL: NetBSD dirname source changed: expected %s, found %s\n'         "$dirname_hash" "$actual_dirname_hash" >&2
+    exit 1
+fi
+if [[ ! -f $provenance_file ]] ||
+        ! matches "$dirname_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD dirname provenance is absent or does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $dirname_object ]] ||
+        ! nm "$dirname_object" |
+            matches '[[:space:]]T[[:space:]]+cb_dirname_main$'; then
+    echo "FAIL: pinned NetBSD dirname was not compiled as a command object" >&2
+    exit 1
+fi
+if nm "$dirname_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: NetBSD dirname exports the enclosing application main' >&2
+    exit 1
+fi
+for host_symbol in dirname setlocale getopt exit puts errx err; do
+    if nm -u "$dirname_object" |
+            matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
+        printf 'FAIL: NetBSD dirname imports host-facing %s\n'             "$host_symbol" >&2
+        exit 1
+    fi
+done
+for private_symbol in cb_libc_dirname cb_libc_setlocale cb_libc_getopt cb_libc_exit cb_libc_puts; do
+    if ! nm -u "$dirname_object" |
+            matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
+        printf 'FAIL: NetBSD dirname does not import %s\n'             "$private_symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'
