@@ -45,9 +45,10 @@ The `timeout` parameter specifies the maximum time to wait in milliseconds.
 - `timeout == 0`: Return immediately without blocking (non-blocking).
 - `timeout > 0`: Block for up to the specified milliseconds.
 
-**Open Design Decision:** What happens if `timeout > 0`, but the host environment cannot provide a monotonic clock (`monotonic_millis` returns `0`)?
-- **Proposed Choice:** Degrade a positive timeout to an infinite timeout (`timeout = -1`).
-- **Justification:** If we cannot measure elapsed time, yielding iteratively risks becoming a busy-wait loop that hogs the CPU, while returning immediately breaks the blocking intent of the caller. A missing host clock in an emulator is an edge case, and safely waiting for actual I/O readiness correctly fulfills the primary goal of `poll`.
+**Open Design Decision:** What happens if `timeout > 0`, but the host environment cannot provide a usable monotonic clock (`monotonic_millis` returns `0`), or if the clock becomes unavailable mid-wait?
+- **Proposed Choice:** Explicitly return `-CB_ENOSYS` if `timeout > 0` and the monotonic clock is unavailable at the start of the call. If the clock returns a valid value at the start but becomes `0` (unavailable) mid-wait, also abort and return `-CB_ENOSYS`. 
+- **Justification:** Callers specifying a finite positive deadline must not hang forever if the host cannot support it, nor should the kernel silently alter the semantic request. Returning `ENOSYS` safely preserves the failure state.
+- Note that immediate readiness polling (`timeout == 0`) and infinite blocking (`timeout < 0`) do not rely on the clock and remain fully usable even without clock support.
 
 ## Wakeup registration/cancellation
 
@@ -60,6 +61,13 @@ CannedBSD utilizes a centralized, sweep-based scheduling model rather than per-o
 
 This design completely avoids maintaining host descriptor registrations (like epoll/kqueue) and keeps the internal state strictly deterministic.
 
+
+## Overflow-safe elapsed calculation and idle wake timing
+
+**Deadline Calculation:** To safely track the timeout without `uint64_t` overflow vulnerabilities, the kernel will record the `start_time = monotonic_millis()`. On subsequent checks, it computes `elapsed = current_time - start_time`. If `elapsed >= timeout`, the deadline is met. 
+
+**Idle Scheduler Wake Timing:** If all tasks are blocked and the kernel must wait, the scheduler computes the minimum remaining time across all `CB_TASK_BLOCKED_POLL` deadlines. It passes this bounded duration to `host->console_poll(remaining_ms)` instead of sleeping indefinitely, preventing CPU hogs while preserving accurate wakeups. If no deadlines exist, it sleeps indefinitely (`-1`).
+
 ## Errors and readiness mapping
 
 - `poll` returns the number of ready descriptors (with non-zero `revents`), `0` on timeout, or negative `CB_E*` codes on structural errors (e.g., `-CB_EINVAL` for bad `nfds`).
@@ -70,6 +78,8 @@ This design completely avoids maintaining host descriptor registrations (like ep
   - Readers return `CB_POLLIN` if data is available or writers are closed (`CB_POLLHUP`).
   - Writers return `CB_POLLOUT` if space is available. They return `CB_POLLERR` if readers are closed.
 - **Console:** Maps to `CB_POLLIN` / `CB_POLLOUT` according to the host polling callbacks.
+
+*Note: This maps the explicit requirements for regular files, pipes, and console. We do not claim or implement full POSIX descriptor mask semantics beyond this explicitly tested scope.*
 
 ## Minimal deterministic red/green implementation sequence
 
