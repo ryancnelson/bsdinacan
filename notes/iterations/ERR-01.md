@@ -56,3 +56,18 @@ bytes; it does not promise atomic stderr messages across tasks.
 
 Changed documentation: this note and the `LIBC.md` interface inventory.
 `dirname` import still needs its separate libgen and C-locale contracts.
+
+## Coordinator acceptance
+
+Feature `72a9b01f87a69072282e78d964dd569966ac58b8` passed all three
+Woodpecker #100 workflows and independent review. Exact archive SHA256
+`e629198ed882b6bfb0ae3849a8936e55e7e5e4101885903f304b13955737b915`
+passed System 7 run `run-h50qlocd`: sixteen checks, decoded screenshot visually
+verified, normal shutdown and slot release in 14.71 seconds.
+
+Integration `02ee32b88859a020343c89923f8972685fcbee8e`, archive SHA256
+`e896a0e6743bd743f4b60238813508fbce5b141b6049cd425ec2093974361578`,
+passed fresh System 7 run `run-rdr8z1on` with sixteen checks and the expected
+err diagnostic, visually verified screenshot, normal shutdown, receipt and
+slot release in 13.46 seconds. All three Woodpecker #102 workflows passed;
+the reviewed integration was fast-forwarded to main.

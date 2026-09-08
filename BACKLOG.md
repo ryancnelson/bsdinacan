@@ -711,7 +711,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### ERR-01 — errno-bearing err(3) for pinned dirname
 
-- **Status:** Claimed by Codex on `work/ERR-01`
+- **Status:** Done; merged at `02ee32b` after review, all three #102 checks and exact guest acceptance
 - **Base:** main
 - **Depends on:** PENV-05 (Done)
 - **Hypothesis:** existing task errno, strerror, formatter and exit can supply
@@ -727,7 +727,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### REUSE-02 — MoreFiles read-only catalog feasibility probe
 
-- **Status:** Ready; scope reviewed in `notes/iterations/REUSE-02-plan.md`
+- **Status:** Claimed by Codex on `work/REUSE-02`; missing SDK dependencies under feasibility review
 - **Base:** main
 - **Depends on:** REUSE-01 (Done)
 - **Hypothesis:** a small pinned MoreFiles catalog subset compiles under our

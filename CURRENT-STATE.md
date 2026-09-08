@@ -411,3 +411,9 @@ Main `ca0cd19` additionally includes MAC-09 supported autorun and the reviewed
 MacPerl/GUSI/MoreFiles source audit. All three #87 workflows passed; its exact
 Mac artifact completed fifteen guest checks in 13.76 seconds with decoded
 screenshot, normal shutdown, acceptance receipt, and slot release.
+
+Main `02ee32b` adds errno-bearing err(3), including real task-interleaving
+and partial-write tests. All three #102 workflows passed; the exact artifact
+passed sixteen System 7 checks in 13.46 seconds with fresh screenshot and
+normal shutdown. MoreFiles feasibility work has found missing SDK types and
+headers; a diagnostic result is under review, not a working host adapter.
