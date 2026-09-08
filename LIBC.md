@@ -43,13 +43,15 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `unistd.h`: `read`, `write`, `close`, standard descriptor numbers, and a
   task-local `environ` lvalue; `off_t`, `truncate`, and `ftruncate` for regular
   file resizing. `off_t` uses the signed 64-bit runtime offset type.
-- `unistd.h`: a task-local `getopt` for flag-only optstrings — including the
-  empty optstring pinned `printenv` needs — with isolated
-  `optind`/`optarg`/`opterr`/`optopt`, reset on exec, and a real diagnostic
-  on `stderr` for an unrecognized option when `opterr` is nonzero. No
-  `getopt_long`, no GNU `::`-optional-argument extension, and no `:`
-  required-argument convention: that is untested surface this iteration
-  does not claim.
+- `unistd.h`: task-local `getopt` supports flags and single-colon required
+  arguments, attached or separate, including the empty optstring used by
+  printenv. optind/optarg/opterr/optopt and the scan cursor remain task-owned
+  and reset on successful exec. Parsing stops at the first operand or `--`;
+  there is no permutation or optional-argument extension. Missing values return
+  `?`, or `:` with a leading-colon optstring. Leading colon or opterr zero
+  suppresses diagnostics; unknown options still return `?`. Results without
+  an argument clear optarg. Native and Mac probes verify peer-task isolation
+  and exec reset with both a live argument and a partially consumed cluster.
 - `unistd.h`: `isatty` classifies the emulated console, including inherited and
   duplicated descriptors. Valid files/pipes report `ENOTTY`, invalid descriptors
   `EBADF`. This does not assert that Linux inherited stdin is a physical tty.

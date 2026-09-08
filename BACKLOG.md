@@ -13,11 +13,10 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements ECHO-01. Antigravity implements
-ERR-02 in its isolated worktree. The coordinator's worker implements GETOPT-02
-in a separate worktree; Codex owns review, integration and serialized guest
-acceptance. ARGV-01 is accepted at `4ee800e` with 43 fresh Mac records and a
-15.33-second cold automated cycle. STDOUT-01 and MAC-12 remain accepted in main.
+**Current assignments:** Claude prepares CONV-01-design. Antigravity implements
+ERR-02 in its isolated worktree. Codex owns review, integration and serialized
+guest acceptance. ECHO-01 and GETOPT-02 are accepted at `b2dc0ce` with 50 fresh
+Mac records. ARGV-01, STDOUT-01 and calibrated MAC-12 remain accepted in main.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -943,7 +942,7 @@ review or to satisfy this measured command's dependencies.
 
 ### ECHO-01 — unchanged NetBSD echo after measured prerequisites
 
-- **Status:** Implementation by Claude; PROGNAME-01 and STDOUT-01 are accepted
+- **Status:** Done at `b2dc0ce`; exact Woodpecker #254 and fresh 50-case Mac run accepted
 - **Base:** integrated dependencies
 - **Depends on:** PROGNAME-01, STDOUT-01
 - **Hypothesis:** unchanged pinned bin/echo/echo.c will correctly report output
@@ -1024,7 +1023,7 @@ review or to satisfy this measured command's dependencies.
 
 ### GETOPT-02 — required option arguments for unchanged head
 
-- **Status:** Claimed by coordinator worker on `work/GETOPT-02`
+- **Status:** Done at `b2dc0ce`; exact Woodpecker #254 and fresh Mac argument/lifecycle probes accepted
 - **Base:** main
 - **Depends on:** reviewed HEAD-01 dependency plan
 - **Scope:** extend the existing task-owned parser for single-colon required
@@ -1056,3 +1055,18 @@ HEAD-01's remaining numeric/character/string and general stream dependencies
 are planning items in `notes/iterations/HEAD-01-plan.md`, not Ready assignments.
 Split them into independently testable tasks before implementation. General
 stream ownership and cross-target integer contracts still require explicit design.
+
+### CONV-01-design — measured numeric and small string prerequisites for head
+
+- **Status:** Claimed by Claude on `work/CONV-01-design`; design only
+- **Base:** main
+- **Depends on:** reviewed HEAD-01 dependency plan
+- **Scope:** measure pinned head's strtoimax/ERANGE/intmax limits against the
+  actual Retro68 and Linux types. Evaluate unchanged pinned libc import and
+  its private symbol/compiler-helper requirements. Specify conversion bases,
+  whitespace/sign/endptr/no-digits, boundary saturation and errno contracts,
+  separating strcpy and isdigit into bounded subsequent tasks.
+- **Accept:** source hashes, concrete diagnostics or compiler type checks,
+  exact boundary test matrix, no host-header leaks or speculative APIs. No
+  runtime implementation or guest claim in this design task. Keep 32-bit
+  classic Mac compatibility; no 16-bit port work is assigned.

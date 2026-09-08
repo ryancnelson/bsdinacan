@@ -24,6 +24,25 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted utility and parser milestone, 2026-09-08
+
+Unchanged NetBSD echo, registered as `netbsdecho`, and required-argument getopt
+are accepted at `b2dc0ce9fef946d2ae6a7c6e800888c785253101`. Independent
+review and all three exact Woodpecker #254 workflows passed. Fresh Mac run
+`run-j5c9_75j` passed all 50 records, including the prior 43, in a complete
+24.58-second cold automated cycle. Screenshot inspection, bound receipt,
+normal app/guest shutdown, closed disks and slot release were verified.
+Archive SHA256:
+`64e508437e92fc23e55389aa94a3b130eec5cd7032b03433f6b7d87c0bf08862`.
+Native exact-output and fault tests exercise the actual imported echo; a
+post-implementation false-ferror control confirms the error-status regression
+is caught. Native and Mac getopt probes exercise required arguments and actual
+peer-task/exec isolation. The existing builtin echo and YES tests remain intact.
+
+Claude is preparing the numeric conversion design for head. Antigravity is
+repairing ERR-02 review findings; warn is not accepted yet. General input streams
+and numeric conversion remain prerequisites for an unchanged head import.
+
 ## Latest accepted runtime prerequisite, 2026-09-08
 
 Argument storage ownership is fixed at

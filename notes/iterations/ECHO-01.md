@@ -361,3 +361,23 @@ ECHO-01 preparation is therefore green as of `efcaaa4`, with the
 scope explicitly limited to what this note already describes:
 vendoring plus documentation only, no compile rule, no registration,
 pending `PROGNAME-01`/`STDOUT-01`.
+
+## Coordinator acceptance, 2026-09-08
+
+Integration `b2dc0ce9fef946d2ae6a7c6e800888c785253101` is merged to main
+after independent review and exact Woodpecker #254 ci/mac68k/mac-automation
+success. Archive SHA256:
+`64e508437e92fc23e55389aa94a3b130eec5cd7032b03433f6b7d87c0bf08862`.
+Fresh guest `run-j5c9_75j` produced all 50 expected PASS records and ALL PASS.
+The coordinator inspected the decoded screenshot and receipt, confirming app
+closure, closed guest disks and slot release after normal shutdown. The cold
+automated cycle took 24.58 seconds; no manual correction or resume was needed.
+All 43 prior records remain, with four real netbsdecho cases and three required
+getopt argument/diagnostic/task-lifecycle cases appended.
+
+A separate post-implementation regression control used exact export
+`1d27c1e063d1c7c119c71265eb88649133a7ca35`. Focused `--echo-state` passed;
+changing only ferror's supported-state return to zero in a disposable export
+made the same test fail with `echoparent returned 92` (wrong upstream child
+status) and exit 1. Both builds succeeded. The upstream source hash was unchanged.
+This validates the error-path test; it is not claimed as test-first red evidence.

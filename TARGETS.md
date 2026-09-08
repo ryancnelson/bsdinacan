@@ -15,6 +15,15 @@ Old operating systems are often technically awkward but permissive. Modern
 appliances often have ample CPU and memory but intentionally restrict code
 loading, filesystems, processes, and networking.
 
+## Active compatibility direction, 2026-09-08
+
+Preserve build and actual runtime support for 32-bit operating systems,
+including the current Retro68/classic Mac OS port. Exact Woodpecker Mac artifacts
+must pass the Basilisk II guest gate for runtime changes. A 16-bit CPU or compiler
+port is not currently assigned; this does not assert that every 16-bit machine
+is limited to 64 KiB total memory. Existing size arithmetic, stack defaults and
+allocation/pointer models would require a separate target-specific audit.
+
 ## Resistance scale
 
 - **1 — Docile:** essentially a source/toolchain port
