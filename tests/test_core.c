@@ -4899,9 +4899,12 @@ static void test_err(void)
     capture_write_limit = (size_t)-1;
 }
 
+int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 static void test_console_write(void)
 {
+    int result_tee = cb_tee_state_probe(cb_linux_host_ops());
+    if (result_tee != 0) { fprintf(stderr, "FAIL: tee state probe failed: %d\n", result_tee); exit(1); }
     int result = cb_console_write_probe(cb_linux_host_ops());
     if (result != 0) {
         fprintf(stderr, "FAIL: portable console write probe status %d\n", result);
