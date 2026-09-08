@@ -102,3 +102,23 @@ Correction checks before push: `tests/test_mac_autorun.sh` passed; pinned
 Retro68 build and single-CODE resource check passed; complete Linux
 `make LDLIBS=-lucontext SANITIZE_CC=clang ci` passed on biggie. Exact correction
 Woodpecker checks and guest screenshot inspection remain pending.
+
+## Coordinator guest verification
+
+Exact `62bbc1fb42362b6dcd9bfd9dd626dfdd885a128d`, Woodpecker #60 all green,
+archive SHA256 `a7faa48a1e50f914f62e3b39779edf02581a6518b0fe7d277f9c86b0c9362a18`:
+
+- `run-25j70ghw`: fresh ALL PASS, PASS completion, and 37374-byte PICT that
+  sips decoded with visible test text; application exited automatically.
+  Normal Finder shutdown was verified. The first automation attempt stalled
+  on iCloud hydration; it is not a speed measurement or uninterrupted run.
+- `run-wi9z5qw7`: screenshot path was a directory before boot. Tests wrote a
+  fresh result, completion stayed empty, and the application displayed
+  "Autorun evidence failed; completion withheld." and remained open.
+- `run-eueh8lpk`: completion path was a directory before boot. The application
+  displayed setup failure; result and screenshot stayed empty. It remained
+  open until the image-matched go-away action was explicitly invoked.
+- Both injected failures were closed normally, then Finder Shut Down was
+  selected; slot release verified the emulator and mounted files were gone.
+
+These are observed guest failure cases, separate from mock callback tests.

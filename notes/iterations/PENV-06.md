@@ -24,9 +24,9 @@
 
 - Focused command: `make LDLIBS=-lucontext test`
 - Full command: `make LDLIBS=-lucontext SANITIZE_CC=clang ci`
-- Linux Woodpecker: pending push
-- mac68k Woodpecker: not applicable (no `platform/mac68k` change)
-- mac-automation Woodpecker: not applicable (no Mac Toolbox/Hammerspoon change)
+- Linux Woodpecker: #73 success on `55fa557`.
+- mac68k Woodpecker: #73 success on `55fa557`, after fixing the first pushed Mac link.
+- mac-automation Woodpecker: #73 success on `55fa557`.
 - Guest acceptance: coordinator-owned; not performed in this session.
 
 ## Change and review
@@ -89,22 +89,13 @@
 - Documentation: `UPSTREAM.md` gains the full provenance entry (repository,
   revision, path, hash, RCS identifier, license, and the toolchain
   concession above).
-- **Caught by verification, fixed before push**: `platform/mac68k` has its
-  own independent `CMakeLists.txt` that lists source files explicitly
-  rather than sharing the Linux `Makefile`'s `CORE_SOURCES` variable.
-  Registering `cb_printenv_program` in the shared `src/programs.c` without
-  also teaching that CMake file about `commands/printenv_module.c` and the
-  pinned source would have left the mac68k link missing a symbol — this is
-  a real cross-build hazard any change to `src/programs.c` needs to check
-  for, not something the Linux gate alone can catch. Added a matching
-  `cb_printenv` object library (with the same `-Wno-strict-prototypes`
-  concession, since this toolchain's GCC hit the identical
-  `-Wstrict-prototypes` construct) and wired it into the `CannedBSD`
-  application target, mirroring `cb_wc`/`cb_yes` exactly. Verified locally
-  by running the exact pinned Retro68 cross-compiler image
-  (`ghcr.io/autc04/retro68@sha256:459dd3ea...`) and reproducing
-  `platform/mac68k/ci-build.sh`'s full build and artifact-shape checks
-  before pushing — did not wait to discover this from Woodpecker alone.
+- The first pushed change omitted Mac build registration. Woodpecker exposed
+  the missing symbol; `55fa557` added the printenv source/module to the Mac
+  CMake target and all three #73 workflows passed. Linux-only validation
+  could not establish that separate build target was complete.
+- Integration adds named, missing, empty-valued and invalid-name printenv
+  commands to the shared Linux/Mac acceptance definitions. Exact combined
+  guest execution remains pending until recorded by the coordinator.
 - Remaining risk or follow-up: no speculative libc surface was added — the
   dependency ladder in `CAPABILITY-MAP.md` already anticipated exactly this
   set of interfaces. Guest acceptance under AGENTS.md step 7 is outstanding,
