@@ -5,6 +5,7 @@
 
 #define EPERM CB_EPERM
 #define ENOENT CB_ENOENT
+#define ENOEXEC CB_ENOEXEC
 #define EINTR CB_EINTR
 #define EIO CB_EIO
 #define EBADF CB_EBADF

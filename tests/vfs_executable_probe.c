@@ -1,6 +1,8 @@
-#include "cannedbsd/abi.h"
+#include "cannedbsd/libc.h"
 
 #include <string.h>
+
+extern int cb_exec_errno_probe_main(int argc, char *argv[]);
 
 static int vfs_executable_probe_main(const struct cb_api_v1 *api, int argc,
                                     char *const argv[], char *const envp[])
@@ -48,6 +50,32 @@ static int vfs_executable_probe_main(const struct cb_api_v1 *api, int argc,
     if (api->get_errno() != CB_ENAMETOOLONG)
         return 10;
 
+    if (api->close(fd) != 0)
+        return 11;
+    fd = api->open("/tmp/plain-exec", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (fd < 0 || api->write(fd, "plain", 5) != 5 || api->close(fd) != 0)
+        return 12;
+    {
+        char *plain_argv[] = {(char *)"/tmp/plain-exec", NULL};
+        char *directory_argv[] = {(char *)"/tmp", NULL};
+        child = (cb_pid_t)-1;
+        if (api->spawn(plain_argv[0], plain_argv, NULL, NULL, 0, &child) != -1 ||
+            api->get_errno() != CB_ENOEXEC || child != (cb_pid_t)-1)
+            return 13;
+        if (api->exec(plain_argv[0], plain_argv, NULL) != -1 ||
+            api->get_errno() != CB_ENOEXEC)
+            return 14;
+        child = (cb_pid_t)-1;
+        if (api->spawn(directory_argv[0], directory_argv, NULL, NULL, 0,
+                       &child) != -1 || api->get_errno() != CB_EACCES ||
+            child != (cb_pid_t)-1)
+            return 15;
+        if (api->exec(directory_argv[0], directory_argv, NULL) != -1 ||
+            api->get_errno() != CB_EACCES)
+            return 16;
+    }
+    if (cb_libc_start(api, 0, NULL, cb_exec_errno_probe_main) != 0)
+        return 17;
     return 0;
 }
 

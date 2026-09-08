@@ -334,4 +334,18 @@ if ! nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_dirname$
     exit 1
 fi
 
+exec_errno_source=tests/libc_exec_errno_probe.c
+exec_errno_object=$build_path/libc_exec_errno_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$exec_errno_source" ||
+        nm -u "$exec_errno_object" | matches '[[:space:]]U[[:space:]]+(strerror|strcmp|__errno_location|__error)$'; then
+    echo 'FAIL: ordinary executable errno probe crosses the private veneer' >&2
+    exit 1
+fi
+for symbol in strerror strcmp errno_location; do
+    if ! nm -u "$exec_errno_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: ordinary executable errno probe lacks private $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'

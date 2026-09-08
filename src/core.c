@@ -1449,6 +1449,7 @@ static const char *api_strerror(int error)
     case 0: return "no error";
     case CB_EPERM: return "operation not permitted";
     case CB_ENOENT: return "no such file or directory";
+    case CB_ENOEXEC: return "exec format error";
     case CB_EINTR: return "interrupted system call";
     case CB_EIO: return "input/output error";
     case CB_EBADF: return "bad file descriptor";

@@ -2706,7 +2706,7 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
                          char *const argv[], char *const envp[])
 {
     static const int errors[] = {
-        0, CB_EPERM, CB_ENOENT, CB_EINTR, CB_EIO, CB_EBADF, CB_ECHILD,
+        0, CB_EPERM, CB_ENOENT, CB_ENOEXEC, CB_EINTR, CB_EIO, CB_EBADF, CB_ECHILD,
         CB_ENOMEM, CB_EACCES, CB_EEXIST, CB_ENOTDIR, CB_EISDIR, CB_EINVAL,
         CB_ENFILE, CB_EMFILE, CB_ENOSPC, CB_ESPIPE, CB_EPIPE,
         CB_ENAMETOOLONG, CB_ENOSYS, CB_ENOTEMPTY
