@@ -110,31 +110,29 @@ static int entry_mock(const struct cb_api_v1 *api, int argc, char *const argv[],
     struct _list *node;
     int is_child = (argc > 1 && argv[1][0] == 'c');
     
-    if (cb_tee_head != NULL) return 1; /* Isolation failed */
+    if (cb_tee_head != NULL) { cb_tee_main = 1; return 1; }
     
     node = api->allocate(sizeof(*node));
-    if (node == NULL) return 2;
+    if (node == NULL) { cb_tee_main = 2; return 2; }
     node->payload = is_child ? 99 : 42;
     node->next = cb_tee_head;
     cb_tee_head = node;
     
     if (!is_child) {
-        /* Parent: spawn child to interleave */
         char *spawn_args[] = {"mock_tee", "child", NULL};
         cb_pid_t pid;
         int status = 0;
         
-        if (api->spawn("mock_tee", spawn_args, envp, NULL, 0, &pid) != 0) return 3;
-        api->yield(); /* Yield to let child run */
+        if (api->spawn("mock_tee", spawn_args, envp, NULL, 0, &pid) != 0) { cb_tee_main = 3; return 3; }
+        api->yield();
         
         api->waitpid(pid, &status);
-        if (status != 0) return 4; /* Child failed (likely isolation failure) */
+        if (status != 0) { cb_tee_main = 4; return 4; }
     }
     
-    /* Yield again to ensure multiple suspensions work */
     api->yield();
     
-    if (cb_tee_head != node || cb_tee_head->payload != (is_child ? 99 : 42)) return 5;
+    if (cb_tee_head != node || cb_tee_head->payload != (is_child ? 99 : 42)) { cb_tee_main = 5; return 5; }
     
     return 0;
 }
@@ -146,28 +144,26 @@ static int entry_mock_exec(const struct cb_api_v1 *api, int argc, char *const ar
     char *good_args[] = {"mock_peer", NULL};
     (void)argc; (void)argv;
     
-    if (cb_tee_head != NULL) return 1;
+    if (cb_tee_head != NULL) { cb_tee_main = 1; return 1; }
     node = api->allocate(sizeof(*node));
-    if (node == NULL) return 2;
+    if (node == NULL) { cb_tee_main = 2; return 2; }
     node->payload = 42;
     node->next = cb_tee_head;
     cb_tee_head = node;
     
-    /* failed exec */
     api->exec(bad_args[0], bad_args, envp);
     
-    /* Execution continues if exec fails */
-    if (cb_tee_head != node || cb_tee_head->payload != 42) return 4;
+    if (cb_tee_head != node || cb_tee_head->payload != 42) { cb_tee_main = 4; return 4; }
     
-    /* successful exec (replaces process, should not return) */
     api->exec(good_args[0], good_args, envp);
+    cb_tee_main = 5;
     return 5;
 }
 
 static int entry_peer(const struct cb_api_v1 *api, int argc, char *const argv[], char *const envp[])
 {
     (void)api; (void)argc; (void)argv; (void)envp;
-    if (cb_tee_head != NULL) return 11;
+    if (cb_tee_head != NULL) { cb_tee_main = 11; return 11; }
     return 0;
 }
 
@@ -218,7 +214,6 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 {
     struct cb_kernel *kernel;
     struct cb_host_ops_v1 copy = *host;
-    int r1, r2;
     
     base_host = host;
     copy.allocate = test_allocate;
@@ -237,27 +232,31 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 
     /* Phase 1: Prove behavioral red with native executor sharing state sequentially */
     cb_tee_head = NULL;
+    cb_tee_main = 0;
     if (cb_kernel_register_executor(kernel, cb_native_executor(), &mock_tee) != 0) return -10;
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -11;
-    r1 = cb_kernel_run(kernel); 
+    if (cb_kernel_run(kernel) != 0) return -12;
+    if (cb_tee_main != 0) return 99;
     
     cb_kernel_destroy(kernel);
     if (live_allocs != 0) return 101; 
 
     /* Second run using same host global but new kernel */
+    cb_tee_main = 0;
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
     if (cb_kernel_register_executor(kernel, cb_native_executor(), &mock_tee) != 0) return -12;
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -13;
-    r2 = cb_kernel_run(kernel); 
+    if (cb_kernel_run(kernel) != 0) return -14;
     cb_kernel_destroy(kernel);
     
-    if (r1 != 0 || r2 != 1) return 100;
+    if (cb_tee_main != 1) return 100; /* Expected to fail with 1 */
     
     /* Clean up dangling pointer for next tests */
     cb_tee_head = NULL; 
 
     /* Phase 2: Isolated Wrapper Tests (Interleaved) */
+    cb_tee_main = 0;
     alloc_count = target_alloc_fail = context_count = target_context_fail = live_allocs = max_live_allocs = 0;
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
@@ -268,10 +267,10 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 
     /* Booting parent will spawn child and interleave them automatically via entry_mock logic */
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -23;
-    if (cb_kernel_run(kernel) != 0) return 200; /* Should return 0 if both succeeded and exited */
+    if (cb_kernel_run(kernel) != 0) return 200; 
 
-    /* cb_tee_head must be NULL on the host. */
-    if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 201; }
+    if (cb_tee_main != 0) return 201; /* Should not fail */
+    if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 202; }
 
     /* Phase 3: Creation failures */
     /* Create a dummy task that yields, keeping its state saved */
