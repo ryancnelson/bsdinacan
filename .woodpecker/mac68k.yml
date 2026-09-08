@@ -15,3 +15,7 @@ steps:
     image: ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019
     commands:
       - bash platform/mac68k/probes/morefiles/ci-diagnose.sh
+  - name: build-morefiles-catalog-probe
+    image: ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019
+    commands:
+      - bash platform/mac68k/probes/catalog/ci-build.sh

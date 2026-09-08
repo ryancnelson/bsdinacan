@@ -2,3 +2,4 @@
 /build-mac68k/
 /core
 /core.*
+/build-catalog-*/
