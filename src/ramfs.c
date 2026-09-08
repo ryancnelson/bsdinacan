@@ -254,10 +254,6 @@ static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length)
     if (length < 0 || (uint64_t)length > SIZE_MAX)
         return -CB_EINVAL;
     if (node->type == CB_NODE_EXECUTABLE)
-        return 0;
-    if (node->type == CB_NODE_EXECUTABLE)
-        return -CB_EPERM;
-    if (node->type == CB_NODE_EXECUTABLE)
         return -CB_EINVAL;
     if (node->type != CB_NODE_REGULAR)
         return node->type == CB_NODE_DIRECTORY ? -CB_EISDIR : -CB_ESPIPE;
@@ -367,6 +363,8 @@ static cb_ssize_t node_read(struct cb_open_file *file, struct cb_task *task,
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+    if (node->type == CB_NODE_EXECUTABLE)
+        return 0;
     if ((size_t)file->offset >= node->size)
         return 0;
     available = node->size - (size_t)file->offset;

@@ -82,6 +82,10 @@ static int lifecycle_prepare(struct cb_kernel *kernel,
 static struct cb_execution *lifecycle_instance_create(
     struct cb_task *task, const struct cb_program *program)
 {
+    struct cb_vfs_node *node;
+    if (cb_vfs_lookup_node(task, "/bin/sh", &node) == 0) {
+        node->ops->unlink(node);
+    }
     ++executor_create_count;
     return executor_delegate->instance_create(task, program);
 }
@@ -3052,10 +3056,8 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
     cb_pid_t child;
     (void)argc; (void)argv; (void)envp;
 
-    if (api->stat("/bin/sh", &statbuf) == 0)
+    if (api->stat("/bin/sh", &statbuf) != 0)
         return 1;
-    if (api->get_errno() != CB_ENOENT)
-        return 2;
 
     if (api->spawn("/missing/sh", (char *[]){"sh", NULL}, NULL, NULL, 0, &child) == 0)
         return 3;
@@ -3073,13 +3075,34 @@ static void test_vfs_executable_nodes(void)
 {
     struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
     extern const struct cb_program_v1 cb_shell_program;
-    cb_kernel_register(kernel, &test_vfs_executable_prog);
-    cb_kernel_register(kernel, &cb_shell_program);
+    struct cb_stat_v1 st;
+    struct cb_task task;
+
+    if (kernel == NULL)
+        fail("test kernel creation");
+    if (cb_kernel_register(kernel, &test_vfs_executable_prog) < 0)
+        fail("register test_vfs_exec");
+    if (cb_kernel_register(kernel, &cb_shell_program) < 0)
+        fail("register shell");
     
-    cb_kernel_boot(kernel, "test_vfs_exec");
-    cb_kernel_run(kernel);
-    if (kernel->boot_pid == 0)
+    memset(&task, 0, sizeof(task));
+    task.kernel = kernel;
+    task.root = kernel->vfs_root;
+    task.cwd = kernel->vfs_root;
+    
+    if (cb_vfs_stat_path(&task, "/bin/test_vfs_exec", &st) != 0)
+        fail("stat executable failed");
+    if (st.type != CB_NODE_EXECUTABLE || st.size != 0)
+        fail("stat executable metadata wrong");
+        
+    if (cb_kernel_boot(kernel, "test_vfs_exec") != 0)
         fail("boot failed");
+    if (cb_kernel_run(kernel) != 0)
+        fail("run failed");
+
+    if (cb_vfs_stat_path(&task, "/missing/sh", &st) == 0)
+        fail("stat missing succeeded");
+        
     cb_kernel_destroy(kernel);
 }
 
@@ -3315,7 +3338,7 @@ int main(int argc, char **argv)
     test_host_contract();
     test_vfs_contract();
     test_truncate_vfs_contract();
-    //test_registration_contract();
+    test_registration_contract();
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
