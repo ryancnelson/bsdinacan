@@ -14,7 +14,8 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
-Antigravity implements the reviewed synthetic TEE-STATE-01 prerequisite.
+A Codex worker repairs the synthetic TEE-STATE-01 fixture in an isolated
+review worktree; Antigravity audits the actual lifecycle read-only.
 Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
@@ -1427,7 +1428,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-STATE-01 — synthetic proof of isolated module state
 
-- **Status:** Claimed by Antigravity on `work/TEE-STATE-01`
+- **Status:** Repair assigned to Codex on `work/TEE-STATE-01-review`; original
+  Antigravity branch frozen after repeated fixture setup failures. Antigravity
+  performs a read-only lifecycle audit. No tee-state acceptance is claimed.
 - **Base:** main
 - **Depends on:** TEE-STATE-01-design
 - **Scope:** implement only the reviewed executor wrapper with a synthetic

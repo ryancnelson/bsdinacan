@@ -47,8 +47,8 @@ terminal fault or complete nonblocking/signal support is claimed.
 ## Active work after head acceptance
 
 HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
-SOLARIS-01. Antigravity implements the
-reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
+SOLARIS-01. A Codex worker repairs the
+synthetic tee executor-state fixture while Antigravity audits lifecycle behavior; the reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
 acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
 The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
@@ -114,8 +114,8 @@ The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
-on Linux and Mac, with Solaris qualification pending. Antigravity implements
-TEE-STATE-01 from the reviewed design after the uniq/cut/tee audit. Codex
+on Linux and Mac, with Solaris qualification pending. A Codex worker repairs TEE-STATE-01 in a separate worktree; Antigravity
+audits the lifecycle against actual source. Codex
 coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
