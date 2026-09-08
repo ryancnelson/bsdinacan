@@ -17,6 +17,7 @@ enum cb_libc_open_flag {
 };
 
 typedef int (*cb_libc_main_fn)(int argc, char *argv[]);
+struct cb_libc_file;
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
                   cb_libc_main_fn main_function);
@@ -32,6 +33,10 @@ int *cb_libc_errno_location(void);
 char ***cb_libc_environ_location(void);
 char *cb_libc_strerror(int error);
 int cb_libc_puts(const char *text);
+int cb_libc_printf(const char *format, ...);
+int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);
+extern struct cb_libc_file *const cb_libc_stdout_stream;
+extern struct cb_libc_file *const cb_libc_stderr_stream;
 size_t cb_libc_strlen(const char *text);
 int cb_libc_strcmp(const char *left, const char *right);
 void *cb_libc_memcpy(void *destination, const void *source, size_t count);

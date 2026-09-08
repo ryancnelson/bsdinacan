@@ -51,7 +51,11 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   `main`.
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
-- `stdio.h`: unbuffered `puts` with complete-write and error handling.
+- `stdio.h`: unbuffered `puts`, `printf`, and `fprintf` plus `stdout` and
+  `stderr`. Formatted output deliberately supports only literals, `%%`, and
+  `%s`, writes through partial descriptor writes, returns the exact byte count,
+  and preserves descriptor errors such as `EBADF` and `EPIPE`. Unsupported
+  conversions fail with `EINVAL` after any preceding literal output.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.
@@ -66,7 +70,7 @@ adapter. `tests/test_libc_source.sh` checks that boundary and rejects imports of
 unprefixed host-facing I/O or allocation symbols.
 
 This is not a complete libc and the bootstrap command is not NetBSD `wc`.
-`puts` is deliberately unbuffered; most string functions, directory
+The stdio subset is deliberately unbuffered; most string functions, directory
 traversal, time, signals, terminal control, locale, and the rest of ISO C/POSIX
 libc remain absent.
 

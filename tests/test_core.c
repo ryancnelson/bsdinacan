@@ -11,6 +11,7 @@ static char captured[32768];
 static size_t captured_size;
 static char captured_streams[3][32768];
 static size_t captured_stream_sizes[3];
+static size_t capture_write_limit = (size_t)-1;
 static void *(*base_allocate)(size_t);
 static void *(*base_resize)(void *, size_t);
 static void (*base_release)(void *);
@@ -179,6 +180,8 @@ static void tracked_release(void *pointer)
 
 static cb_ssize_t capture_write(int stream, const void *buffer, size_t count)
 {
+    if (count > capture_write_limit)
+        count = capture_write_limit;
     if (count > sizeof(captured) - captured_size - 1)
         return -CB_ENOSPC;
     if (stream < 0 || stream >= 3 ||
@@ -1798,6 +1801,42 @@ static int yesprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int stdioepipeprobe_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    int descriptors[2];
+    char *child_argv[] = {(char *)"stdioprobe", (char *)"pipe", NULL};
+    struct cb_spawn_action_v1 actions[3] = {{0}};
+    cb_pid_t child;
+    int status;
+    size_t index;
+    (void)argc;
+    (void)argv;
+
+    if (api->pipe(descriptors) < 0)
+        return 234;
+    if (api->close(descriptors[0]) < 0)
+        return 235;
+    for (index = 0; index < 3; ++index) {
+        actions[index].abi_version = CB_ABI_VERSION_V1;
+        actions[index].struct_size = sizeof(actions[index]);
+    }
+    actions[0].type = CB_SPAWN_DUP2;
+    actions[0].from_fd = descriptors[1];
+    actions[0].to_fd = 1;
+    actions[1].type = CB_SPAWN_CLOSE;
+    actions[1].from_fd = descriptors[0];
+    actions[2].type = CB_SPAWN_CLOSE;
+    actions[2].from_fd = descriptors[1];
+    if (api->spawn("stdioprobe", child_argv, envp, actions, 3, &child) < 0)
+        return 236;
+    if (api->close(descriptors[1]) < 0)
+        return 237;
+    if (api->waitpid(child, &status) != child || status != 0)
+        return 238;
+    return 0;
+}
+
 static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
                            char *const argv[], char *const envp[])
 {
@@ -2079,6 +2118,14 @@ static const struct cb_program_v1 allocationprobe_program = {
     64 * 1024, allocationprobe_main
 };
 
+int cb_stdio_test_main(int argc, char *argv[]);
+CB_LIBC_PROGRAM(stdioprobe_program, "stdioprobe", cb_stdio_test_main);
+
+static const struct cb_program_v1 stdioepipeprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "stdioepipeprobe", 0,
+    64 * 1024, stdioepipeprobe_main
+};
+
 CB_LIBC_PROGRAM(libcallocprobe_program, "libcallocprobe",
                 libcallocation_main);
 
@@ -2141,6 +2188,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &stdioprobe_program) < 0 ||
+            cb_kernel_register(kernel, &stdioepipeprobe_program) < 0 ||
             cb_kernel_register(kernel, &libcallocprobe_program) < 0 ||
             cb_kernel_register(kernel, &yesreader_program) < 0 ||
             cb_kernel_register(kernel, &yesprobe_program) < 0)
@@ -2397,6 +2446,13 @@ int main(void)
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
+    capture_write_limit = 2;
+    run_case("stdioprobe", "out:value:%/(null)\nerr:bad\n", 0, 1);
+    expect_streams("out:value:%/(null)\n", "err:bad\n");
+    capture_write_limit = (size_t)-1;
+    run_case("stdioprobe error", "", 0, 1);
+    run_case("stdioepipeprobe", "", 0, 1);
+    run_case("stdioprobe unsupported", "prefix:", 0, 1);
     run_case("libcallocprobe", "", 0, 1);
     run_case("yes ok | yesreader", "ok\n", 0, 1);
     run_case("yesprobe", "ok\n", 0, 1);
