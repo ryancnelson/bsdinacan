@@ -738,3 +738,34 @@ with an ID, dependencies, red test, and acceptance boundary above.
   CI probe artifact, directory/type/fork-length/callback/error checks, unchanged
   fixture hash and normal guest shutdown. Keep this a separate host probe;
   no changes to core VFS, directory streams or polling.
+
+### CI-01 — concurrent printenv capture isolation
+
+- **Status:** Done; main `0ebfd2f`, all three CI checks and eight concurrent
+  real-binary behavioral matrices passed.
+- **Base:** main
+- **Accept:** independent temporary captures and cleanup across simultaneous
+  local Woodpecker workflows. No runtime changes.
+
+### MAC-10 — direct polling and pipe guest acceptance
+
+- **Status:** Reviewed; integration CI and guest pending
+- **Base:** reviewed IO-01 integration `6b71813`
+- **Accept:** compile and execute unchanged ordinary normalpollprobe in System 7,
+  covering pipe readiness, hangup, descriptor exhaustion and errno. Seventeen
+  fresh records; finite deadline injection remains a separate Linux test.
+
+### LIBGEN-01-design — dirname source and result lifetime
+
+- **Status:** Claimed by Claude; after VFS-03 acceptance fixes
+- **Base:** main
+- **Accept:** pinned source inventory, path edge cases, task-local result
+  lifetime, cleanup, C-locale dependency and a bounded deterministic test plan.
+
+### TERM-01-design — actual host terminal capability contract
+
+- **Status:** Antigravity design under review
+- **Base:** main
+- **Accept:** actual Mac canonical-buffer and Linux inherited-tty inventory;
+  shared core terminal owner, optional raw capability, readiness/EOF/overflow
+  semantics and deterministic tests before implementation.
