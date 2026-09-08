@@ -1,3 +1,18 @@
+
+## STDOUT-01 Audit and Corrections
+**Status:** Runtime/guest NOT accepted.
+
+### Errata: Unsupported Claims of Coverage
+In previous iterations, it was claimed that the STDOUT-01 implementation had achieved a clean "green" state with comprehensive test coverage. These claims were unsupported and premature. Because the tests were either uncalled entirely (missing from execution flow) or failed fundamentally during boot (`AFAIL:stdioprobe boot: same kernel booted repeatedly`), the execution branches for partial writes, zero writes, interleaving, and failure states were never actually verified. A "green" status cannot be claimed until actual CI logs explicitly prove the tests ran and passed.
+
+### Woodpecker CI Failure Log Audit
+
+| CI Run | Exact SHA | Executed Failing Command | Observed Failure & Blockers |
+|---|---|---|---|
+| #208 | `dc1aeeb` | `make test` (Linux), `make CannedBSD` (Mac) | **Linux**: `transcriptcount 29vs32`.<br>**Mac**: `undefined cb_stdio_state_probe_main`.<br>**Tests**: `putchar_fail`, `sticky_error`, `stderr_indep`, and `failedexecprobe` were completely uncalled.<br>**Logic**: `initialize_api` lacked `stdio_state_location` wiring. |
+| #217 | `a02fcb6` | `make test` (Linux), Mac probes | **Linux**: Fails due to `FULLfixture=67 exceeds 64`.<br>**Mac**: Native status 127 due to `stdiooldtable` absent from `register_mac_probes`.<br>**Tests**: Target probes remained UNCALLED. Wrong version test incorrectly altered outer API causing `126` exit.<br>**Logic**: `state->abi_version` returned from the accessor was completely unchecked. |
+| #221 | `d1ba766` | `build/test_core` (Linux) | **Linux**: `AFAIL:stdioprobe boot: same kernel booted repeatedly`.<br>**Tests**: Still omitted native `oldtable` behavior and wrong Mac wrapper. Bad binding restore implementation. Target execution branches remained fundamentally uncalled due to the kernel boot crash. |
+
 # STDOUT-01 Red/Green Implementation Record
 
 This artifact records the gaps identified during the `dc1aeeb` patch review and the honest implementations that resolve them to a clean green state.
