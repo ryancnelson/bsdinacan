@@ -63,8 +63,12 @@ class Matcher:
             found = score >= .97 and second < .95
             # Fixed offset calibrated from the supplied System 7 menu capture;
             # its template excludes the hover-dependent final Shut Down row.
+            center_x = width / 2
             center_y = 235 if name == 'menu' else height / 2
-            click_x = frame['x'] + (x + width / 2) / 2
+            # App-specific title crop includes the go-away box at this hotspot.
+            if name == 'cannedbsd-close':
+                center_x, center_y = 28, 18
+            click_x = frame['x'] + (x + center_x) / 2
             click_y = frame['y'] + (y + center_y) / 2
             if not (frame['x'] <= click_x < frame['x'] + frame['w']
                     and frame['y'] <= click_y < frame['y'] + frame['h']):
