@@ -716,9 +716,13 @@ static int resolve_executable_node(struct cb_task *task, const char *program_nam
     int result;
     
     if (strchr(program_name, '/') == NULL) {
-        snprintf(path, sizeof(path), "/bin/%s", program_name);
+        result = snprintf(path, sizeof(path), "/bin/%s", program_name);
     } else {
-        snprintf(path, sizeof(path), "%s", program_name);
+        result = snprintf(path, sizeof(path), "%s", program_name);
+    }
+    
+    if (result < 0 || (size_t)result >= sizeof(path)) {
+        return -CB_ENAMETOOLONG;
     }
     
     result = cb_vfs_lookup_node(task, path, &node);
@@ -803,17 +807,19 @@ static int api_exec(const char *program_name, char *const argv[],
         return -1;
     }
     
+    cb_vfs_node_retain(node);
+    
     new_argv = string_vector_copy(task->kernel, argv);
     new_environment = string_vector_copy(task->kernel,
         envp != NULL ? envp : task->environment);
     if (new_argv == NULL || new_environment == NULL) {
         string_vector_destroy(task->kernel, new_argv);
         string_vector_destroy(task->kernel, new_environment);
+        cb_vfs_node_release(node);
         cb_task_set_error(task, CB_ENOMEM);
         return -1;
     }
     
-    cb_vfs_node_retain(node);
     task->pending_executable_node = node;
     task->pending_program = node->executable;
     task->pending_argv = new_argv;
@@ -1566,6 +1572,9 @@ int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
     struct cb_task *task;
     int result;
     
+    if (kernel == NULL || kernel->boot_pid != 0)
+        return -1;
+    
     memset(&dummy_task, 0, sizeof(dummy_task));
     dummy_task.kernel = kernel;
     dummy_task.cwd = kernel->vfs_root;
@@ -1582,8 +1591,7 @@ int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
     struct cb_open_file *input;
     struct cb_open_file *output;
     struct cb_open_file *error;
-    if (kernel == NULL || kernel->boot_pid != 0)
-        return -1;
+    
     cb_vfs_node_retain(shell_node);
     task = task_create(kernel, NULL, shell_node->executable,
                        command == NULL ? interactive_argv : command_argv,

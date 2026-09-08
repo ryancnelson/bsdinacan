@@ -234,6 +234,8 @@ static int ramfs_open(struct cb_vfs_node *common, struct cb_task *task,
     struct cb_open_file *file;
     if (node->type == CB_NODE_DIRECTORY)
         return -CB_EISDIR;
+    if (node->type == CB_NODE_EXECUTABLE && (flags & CB_O_TRUNC))
+        return -CB_EINVAL;
     if ((flags & CB_O_TRUNC) && (flags & CB_O_ACCMODE) != CB_O_RDONLY)
         node->size = 0;
     file = cb_open_file_create(task->kernel, &node_file_ops, flags);
@@ -386,6 +388,10 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
     unsigned char *new_data;
     if ((file->flags & CB_O_ACCMODE) == CB_O_RDONLY) {
         cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (node->type == CB_NODE_EXECUTABLE) {
+        cb_task_set_error(task, CB_EPERM);
         return -1;
     }
     if (count == 0) {

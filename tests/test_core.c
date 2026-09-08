@@ -3064,6 +3064,16 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
     if (api->get_errno() != CB_ENOENT)
         return 4;
 
+    char long_name[4096];
+    for (int i = 0; i < 4095; i++) long_name[i] = 'a';
+    long_name[4095] = '\0';
+    memcpy(long_name, "sh", 2); // Starts with "sh"
+
+    if (api->spawn(long_name, (char *[]){"sh", NULL}, NULL, NULL, 0, &child) == 0)
+        return 5;
+    if (api->get_errno() != CB_ENAMETOOLONG)
+        return 6;
+
     return 0;
 }
 
