@@ -2,7 +2,7 @@
 
 - Status: implementation ready for exact CI and coordinator-owned guest acceptance.
 - Base: `d3884af7975e0e9e8d401ef94b75a1447a7c70d9`, freshly fetched main.
-- Branch: `work/TERM-02`; worktree: `/Users/ryan/devel/bsdinacan-TERM-02`.
+- Branch: `work/TERM-02`; worktree: `../bsdinacan-TERM-02`.
 - Hypothesis: ordinary source can identify inherited/duplicated cannedBSD console
   descriptors while unavailable terminal attributes fail honestly, without
   consuming, editing, echoing, or translating legacy input.
