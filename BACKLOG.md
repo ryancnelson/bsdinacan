@@ -1002,3 +1002,22 @@ review or to satisfy this measured command's dependencies.
 - **Accept:** deterministic mock failures and task interleaving, old-size/NULL/
   bad-state rejection before new output, successful/failed exec tests, ordinary
   Mac probe, exact CI and guest acceptance. Preserve capacity and existing tests.
+
+### ARGV-01 — own argument storage separately from mutable argv slots
+
+- **Status:** Claimed by the coordinator's implementation worker on `work/ARGV-01`
+- **Base:** accepted main `894b753` or its documentation descendant
+- **Depends on:** PROGNAME-01 (Done); prerequisite for HEAD-01
+- **Evidence:** pinned head obsolete() allocates a replacement argument and writes
+  its pointer into argv. Current exit frees that tracked replacement, then reap
+  frees it again through the mutated argv; the original string is lost. Successful
+  exec and live-kernel destruction have the same ownership conflict. This is a
+  static finding pending an executed regression, not a claimed observed crash.
+- **Scope:** own original argument allocations independently of the mutable vector
+  exposed to ordinary main. Preserve startup-name lifetime, argument content edits,
+  optional exec replacement and failure cleanup. No ABI expansion or global limits.
+- **Accept:** ordinary probe replaces argv[1] with malloc storage without restoring
+  it, then exits/reaps, successfully execs, or fails exec then exits. Verify original
+  and replacement allocations each released exactly once, including live-kernel
+  destruction and allocation-failure unwind. Require exact CI and a fresh Mac
+  artifact probe, preserving all existing tests and scoped fixture capacity.
