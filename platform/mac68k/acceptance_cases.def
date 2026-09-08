@@ -26,3 +26,7 @@ CB_MAC_CASE("dirname -x", "dirname: illegal option -- x\nusage: dirname path\n",
 CB_MAC_CASE("dirname /a/b/c | cat", "/a/b\n", 0)
 CB_MAC_CASE("dirname ''", ".\n", 0)
 CB_MAC_CASE("libcdirentprobe", "", 0)
+CB_MAC_CASE("libcstdiostateprobe putchar_ok", "A", 0)
+CB_MAC_CASE("libcstdiostateprobe fflush_invalid", "", 0)
+CB_MAC_CASE("libcstdiostateprobe write_retry", "hello\n", 0)
+CB_MAC_CASE("stdiooldtable", "", 0)

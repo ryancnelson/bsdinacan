@@ -139,6 +139,13 @@ struct cb_termios_v1 {
     unsigned char c_cc[4];
 };
 
+struct cb_stdio_state_v1 {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    int stdout_error;
+    int stderr_error;
+};
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -197,6 +204,7 @@ struct cb_api_v1 {
     int (*readdir)(int descriptor, char *name_out, size_t name_size,
                    uint64_t *inode_out, uint32_t *type_out);
     int (*closedir)(int descriptor);
+    struct cb_stdio_state_v1 *(*stdio_state_location)(void);
 };
 
 struct cb_program_v1 {

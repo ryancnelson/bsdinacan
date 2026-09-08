@@ -13,6 +13,7 @@ extern int cb_err_probe_main(int argc, char **argv);
 extern const struct cb_program_v1 cb_dirname_probe_program;
 extern int cb_dirname_probe_main(int argc, char *argv[]);
 extern int cb_dirname_oldtable_main(int argc, char *argv[]);
+extern int cb_stdio_oldtable_main(int argc, char *argv[]);
 
 extern const struct cb_program_v1 cb_direntprobe_program;
 extern int cb_direntoldtable_main(int argc, char *argv[]);
@@ -75,6 +76,8 @@ static unsigned executor_program_destroy_count;
 static void fail(const char *message);
 extern const struct cb_program_v1 cb_truncate_probe_program;
 extern const struct cb_program_v1 cb_memory_probe_program;
+extern const struct cb_program_v1 cb_stdio_state_probe_program;
+extern const struct cb_program_v1 cb_stdio_oldtable_program;
 
 static int registration_stub_main(const struct cb_api_v1 *api, int argc,
                                   char *const argv[], char *const envp[])
@@ -752,6 +755,8 @@ static int pidcheck_main(const struct cb_api_v1 *api, int argc,
         api->getopt_state_location()->optopt != 0 ||
         api->getopt_state_location()->optarg != NULL)
         return 27;
+    if (api->stdio_state_location == NULL || api->stdio_state_location()->stdout_error != 0 || api->stdio_state_location()->stderr_error != 0)
+        return 28;
     return 7;
 }
 
@@ -782,6 +787,9 @@ static int execprobe_main(const struct cb_api_v1 *api, int argc,
     api->getopt_state_location()->opterr = 0;
     api->getopt_state_location()->optopt = (int)'q';
     api->getopt_state_location()->optarg = pid;
+    if (api->stdio_state_location == NULL) return 199;
+    api->stdio_state_location()->stdout_error = 1;
+        api->stdio_state_location()->stderr_error = 1;
     snprintf(pid, sizeof(pid), "%d", (int)api->getpid());
     snprintf(closed_descriptor, sizeof(closed_descriptor), "%d", closed_fd);
     snprintf(retained_descriptor, sizeof(retained_descriptor), "%d",
@@ -3132,6 +3140,29 @@ static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int failedexecprobe_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    if (api->stdio_state_location == NULL) return 199;
+    api->stdio_state_location()->stdout_error = 1;
+        api->stdio_state_location()->stderr_error = 1;
+    char *next_argv[] = {(char *)"missing", NULL};
+    if (api->exec("missing", next_argv, envp) == 0)
+        return 10;
+    if (api->get_errno() != CB_ENOENT)
+        return 11;
+    if (api->stdio_state_location == NULL || api->stdio_state_location()->stdout_error != 1 || api->stdio_state_location()->stderr_error != 1)
+        return 12;
+    return 7;
+}
+
+static const struct cb_program_v1 failedexecprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "failedexecprobe", 0,
+    64 * 1024, failedexecprobe_main
+};
+
 static const struct cb_program_v1 pidcheck_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pidcheck", 0,
     64 * 1024, pidcheck_main
@@ -3140,6 +3171,47 @@ static const struct cb_program_v1 pidcheck_program = {
 static const struct cb_program_v1 execprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "execprobe", 0,
     64 * 1024, execprobe_main
+};
+
+
+static int stdio_interleave1_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->stdio_state_location == NULL) return 199;
+    api->stdio_state_location()->stdout_error = 1;
+    api->yield();
+    if (api->stdio_state_location == NULL || api->stdio_state_location()->stdout_error != 1)
+        return 201;
+    return 7;
+}
+
+static int stdio_interleave2_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->stdio_state_location == NULL) return 199;
+    api->stdio_state_location()->stderr_error = 1;
+    api->yield();
+    if (api->stdio_state_location == NULL || api->stdio_state_location()->stderr_error != 1)
+        return 202;
+    if (api->stdio_state_location()->stdout_error != 0)
+        return 203;
+    return 8;
+}
+
+static const struct cb_program_v1 stdio_interleave1_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "stdiointerleave1", 0,
+    64 * 1024, stdio_interleave1_main
+};
+
+static const struct cb_program_v1 stdio_interleave2_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "stdiointerleave2", 0,
+    64 * 1024, stdio_interleave2_main
 };
 
 static const struct cb_program_v1 unlinkprobe_program = {
@@ -3910,7 +3982,8 @@ enum test_fixture {
     FIXTURE_FULL = 1,
     FIXTURE_MAC = 2,
     FIXTURE_DIRNAME = 3,
-    FIXTURE_DIRENT = 4
+    FIXTURE_DIRENT = 4,
+    FIXTURE_STDIO = 5
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -3923,6 +3996,7 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
@@ -4084,6 +4158,12 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_DIRNAME) {
         if (register_dirname_probes(kernel) != 0)
             fail("dirname probe registration");
+        } else if (fixture == FIXTURE_STDIO) {
+        if (cb_kernel_register(kernel, &cb_stdio_state_probe_program) < 0 ||
+            cb_kernel_register(kernel, &execprobe_program) < 0 ||
+            cb_kernel_register(kernel, &pidcheck_program) < 0 ||
+            cb_kernel_register(kernel, &stdioepipeprobe_program) < 0)
+            fail("stdio fixture registration");
     } else if (fixture == FIXTURE_FULL) {
         if (cb_kernel_register(kernel, &cb_err_probe_program) < 0 ||
             cb_kernel_register(kernel, &err_short_program) < 0 ||
@@ -4131,8 +4211,6 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationprobe_program) < 0 ||
-            cb_kernel_register(kernel, &stdioprobe_program) < 0 ||
-            cb_kernel_register(kernel, &stdioepipeprobe_program) < 0 ||
             cb_kernel_register(kernel, &libcallocprobe_program) < 0 ||
             cb_kernel_register(kernel, &yesreader_program) < 0 ||
             cb_kernel_register(kernel, &yesprobe_program) < 0)
@@ -4597,6 +4675,132 @@ static void test_poll_runnable_timeout(void)
 void cb_test_locale(void);
 void cb_test_terminal(void);
 
+
+static int mock_write_fail_countdown = -1;
+static int mock_write_fail_count = 0;
+static int mock_write_partial_countdown = -1;
+static int mock_write_zero_countdown = -1;
+static char captured_output[1024];
+static size_t captured_output_len = 0;
+
+static cb_ssize_t mock_stdio_write(int descriptor, const void *text, size_t length)
+{
+    if (mock_write_fail_countdown == 0) {
+        mock_write_fail_countdown--;
+        mock_write_fail_count++;
+        return -1;
+    }
+    if (mock_write_fail_countdown > 0)
+        mock_write_fail_countdown--;
+
+    if (mock_write_zero_countdown == 0) {
+        mock_write_zero_countdown--;
+        return 0;
+    }
+    if (mock_write_zero_countdown > 0)
+        mock_write_zero_countdown--;
+
+    if (mock_write_partial_countdown == 0) {
+        mock_write_partial_countdown--;
+        if (length > 4) {
+            length = 4;
+        }
+    } else if (mock_write_partial_countdown > 0) {
+        mock_write_partial_countdown--;
+    }
+
+    if (descriptor == 1 || descriptor == 2) {
+        if (captured_output_len + length < sizeof(captured_output)) {
+            memcpy(captured_output + captured_output_len, text, length);
+            captured_output_len += length;
+        }
+    }
+    return cb_linux_host_ops()->console_write(descriptor, text, length);
+}
+
+
+static void test_stdio_state(void)
+{
+    struct cb_kernel *kernel;
+    int status;
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+
+    host.console_write = mock_stdio_write;
+    
+    kernel = cb_kernel_create(&host);
+    if (!kernel) fail("stdio kernel");
+    
+    cb_register_base_programs(kernel);
+    
+    extern const struct cb_program_v1 cb_stdio_state_probe_program;
+extern const struct cb_program_v1 cb_stdio_oldtable_program;
+    extern const struct cb_program_v1 cb_stdio_oldtable_program;
+    
+    cb_kernel_register(kernel, &cb_stdio_state_probe_program);
+    cb_kernel_register(kernel, &cb_stdio_oldtable_program);
+    cb_kernel_register(kernel, &stdio_interleave1_program);
+    cb_kernel_register(kernel, &stdio_interleave2_program);
+    cb_kernel_register(kernel, &failedexecprobe_program);
+    
+    captured_output_len = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe putchar_ok") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe putchar_ok failed");
+    if (captured_output_len != 1 || captured_output[0] != 'A') fail("putchar_ok output");
+    
+    captured_output_len = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe write_retry") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe write_retry failed");
+    if (captured_output_len != 6) fail("write_retry output length");
+    
+    mock_write_partial_countdown = 1;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe putchar_fail") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe putchar_fail failed");
+    
+    mock_write_fail_countdown = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe sticky_error") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe sticky_error failed");
+    
+    mock_write_fail_countdown = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe stderr_indep") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe stderr_indep failed");
+    
+    mock_write_zero_countdown = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe putchar_fail") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe zero write failed");
+    
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe fflush_invalid") < 0) fail("stdioprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdioprobe fflush_invalid failed");
+    mock_write_fail_countdown = 0;
+    
+    if (cb_kernel_boot(kernel, "stdiooldtable") < 0) fail("stdiooldtable boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("stdiooldtable failed");
+    
+    if (cb_kernel_boot(kernel, "stdiointerleave1") < 0) fail("interleave1 boot");
+    if (cb_kernel_boot(kernel, "stdiointerleave2") < 0) fail("interleave2 boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("interleave failed");
+    
+    if (cb_kernel_boot(kernel, "failedexecprobe") < 0) fail("failedexecprobe boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("failedexecprobe failed");
+
+    mock_write_fail_countdown = 0;
+    if (cb_kernel_boot(kernel, "libcstdiostateprobe rebind") < 0) fail("libcstdiostateprobe rebind boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("libcstdiostateprobe rebind failed");
+
+    
+    cb_kernel_destroy(kernel);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--err") == 0) {
@@ -4638,6 +4842,7 @@ int main(int argc, char **argv)
     }
     if (argc != 1)
         fail("unknown test selection");
+    test_stdio_state();
     test_mac_acceptance();
     test_err();
     test_netbsd_strlen();
@@ -4787,12 +4992,12 @@ int main(int argc, char **argv)
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
     capture_write_limit = 2;
-    run_case("stdioprobe", "out:value:%/(null)\nerr:bad\n", 0, 1);
+    run_case("stdioprobe", "out:value:%/(null)\nerr:bad\n", 0, 5);
     expect_streams("out:value:%/(null)\n", "err:bad\n");
     capture_write_limit = (size_t)-1;
-    run_case("stdioprobe error", "", 0, 1);
-    run_case("stdioepipeprobe", "", 0, 1);
-    run_case("stdioprobe unsupported", "prefix:", 0, 1);
+    run_case("stdioprobe error", "", 0, 5);
+    run_case("stdioepipeprobe", "", 0, 5);
+    run_case("stdioprobe unsupported", "prefix:", 0, 5);
     run_case("libcallocprobe", "", 0, 1);
     run_case("yes ok | yesreader", "ok\n", 0, 1);
     run_case("yesprobe", "ok\n", 0, 1);
@@ -4807,3 +5012,4 @@ int main(int argc, char **argv)
     puts("all core tests passed");
     return 0;
 }
+

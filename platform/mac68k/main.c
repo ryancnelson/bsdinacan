@@ -15,6 +15,8 @@ extern const struct cb_program_v1 cb_terminal_probe_program;
 extern const struct cb_program_v1 cb_poll_probe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_memory_probe_program;
+extern const struct cb_program_v1 cb_stdio_state_probe_program;
+extern const struct cb_program_v1 cb_stdio_oldtable_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_truncate_probe_program;
 static const struct acceptance_case cases[] = {
@@ -56,6 +58,8 @@ int main(void)
                 cb_kernel_register(kernel, &cb_poll_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_stdio_oldtable_program) == 0 &&
                 cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
                 cb_kernel_boot(kernel, cases[index].command) == 0)
