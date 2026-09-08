@@ -116,6 +116,21 @@ independent backlog items while the emulator is occupied.
   verified guest shutdown. Fail closed on ambiguous images or lost focus.
   The local prototype completed the whole cycle in 12.7 seconds.
 
+### MAC-05 — resume the actual Toolbox-service requester
+
+- **Status:** Assigned to Codex worker; independent review found the reproducer
+- **Base:** MAC-02 at `9a3e4db`
+- **Depends on:** MAC-02 integration
+- **Hypothesis:** a service requested after root → A → B must resume B,
+  not the root dispatcher's remembered destination A.
+- **Red:** use real alternate stacks with A directly switching to B, then
+  have B request a root service and verify its continuation before A resumes.
+- **Accept:** store the requester with the pending service; preserve root-only
+  nested services and current root/task behavior; verify correct continuation
+  and stack-local state with focused/full CI and exact guest regression smoke.
+  Current kernel execution uses root/task only; this closes the broader host
+  context-contract gap rather than an observed current guest failure.
+
 ### FS-01-design — review the regular-file resize contract
 
 - **Status:** Assigned to Claude on `work/FS-01-design`

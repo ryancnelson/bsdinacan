@@ -78,3 +78,22 @@ root dispatch alone is insufficient when code is loaded lazily.
 Remaining risk: native dispatcher tests cannot prove 68K interrupt behavior.
 Only repeated cold launches of the exact CI artifact, fresh guest evidence,
 all startup cases, and interactive shell smoke can close the guest gate.
+
+
+## Coordinator acceptance, 2026-09-07
+
+Final commit `9a3e4db6314e7115e7f1ac37ac68faa800a9c9da` passed both
+Woodpecker #43 workflows. The checksum-verified archive SHA-256 is
+`3f808aa9a09c5f3cf7cd6c18941a9608282edc919675c071ebc1e7f347dce164`.
+Three independent staged clean boot copies returned fresh eight-PASS/ALL PASS
+and exited through the interactive shell followed by normal guest shutdown.
+Retained MAC-01 receipt run IDs: `run-en5p9pyo`, `run-5yvdnuy4`,
+`run-5ut2tg7v`. Each retained its screenshot; every disk was closed before
+slot release. The first full automation cycle took 14.262 seconds.
+
+Independent review found the stack-sniffer ordering, root lifecycle, nested
+root services, and single-segment check sound for current root/task scheduling.
+A direct root → A → B service resumes A incorrectly; current executor paths do
+not use direct task/task switching. MAC-05 tracks the bounded correction and
+real-stack regression test. These runs establish current context/startup and
+shell regression coverage, not arbitrary task/task topology or all libc probes.
