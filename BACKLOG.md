@@ -683,7 +683,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-09 — supported guest-owned autorun cycle
 
-- **Status:** Reviewed; exact feature CI and 14.08-second autorun passed; integration pending
+- **Status:** Done; merged at `ca0cd19`, exact integration autorun passed in 13.76 seconds
 - **Base:** `c93e2ba`
 - **Accept:** stage all marker/evidence files before boot; validate exact fresh
   results, completion and readable screenshot; observe app closure, then normal
@@ -691,7 +691,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### REUSE-01 — MacPerl/GUSI source reuse audit
 
-- **Status:** Reviewed; source pins and licenses verified, all three #86 workflows passed; integration pending
+- **Status:** Done; reviewed and merged at `ca0cd19` with all three integration workflows green
 - **Base:** main
 - **Hypothesis:** historical MacPerl and GUSI already implement useful classic
   Mac filesystem, networking and compatibility operations.

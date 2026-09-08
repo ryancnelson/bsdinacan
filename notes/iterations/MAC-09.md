@@ -1,6 +1,6 @@
 # MAC-09: supported guest autorun staging and host driver
 
-- Status: feature reviewed and accepted; integration CI pending
+- Status: merged at `ca0cd19`; exact integration CI and guest acceptance passed
 - Base: `c93e2ba73f62484cced5a8cd31651e56ed4e6187` (explicit integration base)
 - Branch: `work/MAC-09`; worktree: sibling `bsdinacan-MAC-09`
 - Hypothesis: the integrated guest's durable result/PICT/done protocol can drive
@@ -66,3 +66,12 @@ completion and a 39,784-byte PICT, and produced a decoded screenshot visually
 verified by the coordinator. Finder/app closure preceded normal shutdown;
 receipt publication followed shutdown, then slot release. Full cold cycle:
 14.08 seconds. No shell matching or exit typing was used.
+
+## Integrated acceptance
+
+Integration `ca0cd199e82c17463114ab01ac97a42a89ea6c08` passed all three
+Woodpecker #87 workflows and was fast-forwarded to main. Exact archive SHA256:
+`507044bd961258f6f754be6eb161535e5698b0a66d8407116f27b0596c59aa6e`.
+Run `run-o95ac49k` produced the full fresh fifteen-check transcript and a decoded
+PICT visually inspected by the coordinator. App closure and normal shutdown
+preceded receipt publication and slot release. Full cold cycle: 13.76 seconds.

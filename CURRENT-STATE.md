@@ -406,3 +406,8 @@ shutdown and slot release in 14.29 seconds.
 Current work: fix polling errno and finite-deadline scheduling; implement
 owned directory iteration; complete optional fully automatic guest evidence
 collection; audit MacPerl/GUSI source before building more Mac-specific layers.
+
+Main `ca0cd19` additionally includes MAC-09 supported autorun and the reviewed
+MacPerl/GUSI/MoreFiles source audit. All three #87 workflows passed; its exact
+Mac artifact completed fifteen guest checks in 13.76 seconds with decoded
+screenshot, normal shutdown, acceptance receipt, and slot release.
