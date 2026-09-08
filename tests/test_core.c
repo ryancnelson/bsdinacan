@@ -10,6 +10,9 @@ extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern int cb_err_probe_main(int argc, char **argv);
+extern const struct cb_program_v1 cb_dirname_probe_program;
+extern int cb_dirname_probe_main(int argc, char *argv[]);
+extern int cb_dirname_oldtable_main(int argc, char *argv[]);
 
 static char captured[32768];
 static size_t captured_size;
@@ -2991,10 +2994,137 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+static int dirname_noop_main(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    return 0;
+}
+
+static int dirnameoldtableprobe_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* Everything through tcsetattr (the actual current tail on this base)
+       is present; dirname_buffer_location is not -- exactly the "one
+       release older" cb_api_v1 cb_libc_start must still accept. */
+    copy = *api;
+    copy.struct_size = (uint32_t)offsetof(struct cb_api_v1,
+                                          dirname_buffer_location);
+    result = cb_libc_start(&copy, 0, NULL, cb_dirname_oldtable_main);
+    cb_libc_start(api, 0, NULL, dirname_noop_main);
+    if (result != 0)
+        return 490;
+    return 0;
+}
+
+static int dirnamenulltableprobe_main(const struct cb_api_v1 *api, int argc,
+                                      char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* Full current struct_size, but dirname_buffer_location itself NULL --
+       distinct from the shrunk-struct_size case above: catches a
+       regression back to "trust struct_size alone" without also
+       checking the field. */
+    copy = *api;
+    copy.dirname_buffer_location = NULL;
+    result = cb_libc_start(&copy, 0, NULL, cb_dirname_oldtable_main);
+    cb_libc_start(api, 0, NULL, dirname_noop_main);
+    if (result != 0)
+        return 491;
+    return 0;
+}
+
+static int dirnameisolationpeer_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    char path[] = "/peer/entirely/different/path";
+    char *result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (cb_libc_start(api, 0, NULL, dirname_noop_main) != 0)
+        return 1;
+    result = cb_libc_dirname(path);
+    if (result == NULL || strcmp(result, "/peer/entirely/different") != 0)
+        return 2;
+    return 0;
+}
+
+static int dirnameisolationprobe_main(const struct cb_api_v1 *api, int argc,
+                                      char *const argv[], char *const envp[])
+{
+    char path[] = "/parent/only/here";
+    char *peer_argv[] = {(char *)"dirnameisolationpeer", NULL};
+    char *result;
+    cb_pid_t peer;
+    int status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (cb_libc_start(api, 0, NULL, dirname_noop_main) != 0)
+        return 1;
+    result = cb_libc_dirname(path);
+    if (result == NULL || strcmp(result, "/parent/only") != 0)
+        return 2;
+
+    if (api->spawn("dirnameisolationpeer", peer_argv, envp, NULL, 0,
+                   &peer) < 0)
+        return 3;
+    /* Let the peer run its own dirname() call, with a completely
+       different path, to completion before checking back on result. */
+    api->yield();
+    if (api->waitpid(peer, &status) != peer || status != 0)
+        return 4;
+
+    /* result still points at THIS task's own dirname_buffer -- a stable,
+       task-owned field on struct cb_task -- so it must still read back
+       this task's own value. If dirname() instead returned a pointer
+       into a process-wide shared static (the upstream import's own
+       internal buffer, exposed directly instead of copied out), the
+       peer's unrelated dirname() call above would have silently
+       overwritten it by now. */
+    if (strcmp(result, "/parent/only") != 0)
+        return 5;
+    return 0;
+}
+
+static const struct cb_program_v1 dirnameoldtableprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "dirnameoldtableprobe",
+    0, 64 * 1024, dirnameoldtableprobe_main
+};
+
+static const struct cb_program_v1 dirnamenulltableprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "dirnamenulltableprobe",
+    0, 64 * 1024, dirnamenulltableprobe_main
+};
+
+static const struct cb_program_v1 dirnameisolationpeer_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "dirnameisolationpeer",
+    0, 64 * 1024, dirnameisolationpeer_main
+};
+
+static const struct cb_program_v1 dirnameisolationprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "dirnameisolationprobe",
+    0, 64 * 1024, dirnameisolationprobe_main
+};
+
 enum test_fixture {
     FIXTURE_BASE = 0,
     FIXTURE_FULL = 1,
-    FIXTURE_MAC = 2
+    FIXTURE_MAC = 2,
+    FIXTURE_DIRNAME = 3
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -3008,7 +3138,22 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
-           cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 ? 0 : -1;
+           cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 ?
+           0 : -1;
+}
+
+/* FIXTURE_FULL is already at its 64-slot ceiling: scope the new dirname(3)
+ * coverage into its own small fixture rather than growing that limit (a
+ * production struct capacity, not a test-only one) or overflowing it. */
+static int register_dirname_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
+           cb_kernel_register(kernel, &dirnameoldtableprobe_program) == 0 &&
+           cb_kernel_register(kernel, &dirnamenulltableprobe_program) == 0 &&
+           cb_kernel_register(kernel, &dirnameisolationpeer_program) == 0 &&
+           cb_kernel_register(kernel, &dirnameisolationprobe_program) == 0 ?
+           0 : -1;
 }
 
 static void run_case(const char *command, const char *expected_output,
@@ -3035,6 +3180,9 @@ static void run_case(const char *command, const char *expected_output,
     if (fixture == FIXTURE_MAC) {
         if (register_mac_probes(kernel) != 0)
             fail("Mac probe registration");
+    } else if (fixture == FIXTURE_DIRNAME) {
+        if (register_dirname_probes(kernel) != 0)
+            fail("dirname probe registration");
     } else if (fixture == FIXTURE_FULL) {
         if (cb_kernel_register(kernel, &cb_err_probe_program) < 0 ||
             cb_kernel_register(kernel, &err_short_program) < 0 ||
@@ -3698,6 +3846,10 @@ int main(int argc, char **argv)
     test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
+    run_case("libcdirnameprobe", "", 0, FIXTURE_DIRNAME);
+    run_case("dirnameoldtableprobe", "", 0, FIXTURE_DIRNAME);
+    run_case("dirnamenulltableprobe", "", 0, FIXTURE_DIRNAME);
+    run_case("dirnameisolationprobe", "", 0, FIXTURE_DIRNAME);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);

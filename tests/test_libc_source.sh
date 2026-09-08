@@ -292,4 +292,23 @@ if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$locale_source" ||
     exit 1
 fi
 
+dirname_source=tests/libc_dirname_probe.c
+dirname_object=$build_path/dirnameprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$dirname_source"; then
+    echo 'FAIL: dirname source probe uses private names' >&2
+    exit 1
+fi
+if ! matches '\bdirname[[:space:]]*\(' "$dirname_source"; then
+    echo 'FAIL: dirname source probe does not call dirname()' >&2
+    exit 1
+fi
+if nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+dirname$"; then
+    echo 'FAIL: dirname probe imports host-facing dirname' >&2
+    exit 1
+fi
+if ! nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_dirname$"; then
+    echo 'FAIL: dirname probe does not use the private veneer cb_libc_dirname' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

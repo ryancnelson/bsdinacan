@@ -56,6 +56,8 @@ void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);
 int cb_libc_memcmp(const void *left, const void *right, size_t count);
 char *cb_libc_strchr(const char *text, int character);
+char *cb_libc_dirname_upstream(char *path);
+char *cb_libc_dirname(char *path);
 
 #define CB_LIBC_PROGRAM(symbol, command_name, main_function) \
     static int symbol##_start(const struct cb_api_v1 *api, int argc, \

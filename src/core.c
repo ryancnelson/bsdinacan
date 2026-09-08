@@ -1442,6 +1442,11 @@ static const char *api_getprogname(void)
     return active_kernel->current->argv[0];
 }
 
+static char *api_dirname_buffer_location(void)
+{
+    return active_kernel->current->dirname_buffer;
+}
+
 static const struct cb_capabilities_v1 *api_capabilities(void)
 {
     return &active_kernel->capabilities;
@@ -1579,6 +1584,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->isatty = api_isatty;
     api->tcgetattr = api_tcgetattr;
     api->tcsetattr = api_tcsetattr;
+    api->dirname_buffer_location = api_dirname_buffer_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

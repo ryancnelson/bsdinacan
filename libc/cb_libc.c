@@ -428,3 +428,30 @@ char *cb_libc_setlocale(int category, const char *locale)
     }
     return (char *)"C";
 }
+
+char *cb_libc_dirname(char *path)
+{
+    char *upstream;
+    char *owned;
+    size_t length;
+    if (bound_api->struct_size <
+            offsetof(struct cb_api_v1, dirname_buffer_location) +
+                sizeof(bound_api->dirname_buffer_location) ||
+        bound_api->dirname_buffer_location == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    upstream = cb_libc_dirname_upstream(path);
+    owned = bound_api->dirname_buffer_location();
+    /* Copy out of the upstream static into this task's own buffer before
+       returning: that static is shared process-wide across every
+       cooperatively scheduled task, so a task that does not immediately
+       consume the result (e.g. yields before reading through the
+       pointer) could otherwise have it silently overwritten by another
+       task's unrelated dirname() call. Upstream's own result is already
+       bounded to its PATH_MAX (== CB_PATH_MAX here), so this never
+       truncates anything upstream itself would not have. */
+    length = cb_libc_strlen(upstream);
+    cb_libc_memcpy(owned, upstream, length + 1);
+    return owned;
+}

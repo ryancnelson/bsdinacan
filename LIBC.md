@@ -84,6 +84,14 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.
+- `libgen.h`: `dirname`, importing NetBSD's pinned `lib/libc/gen/dirname.c`
+  unchanged. Every task-local call copies the imported routine's own
+  shared, process-wide static result into a task-owned buffer before
+  returning, so one task's call can never be silently overwritten by
+  another's; the copy is exactly what the import itself already computed,
+  so nothing is truncated beyond what NetBSD's own `PATH_MAX`-bounded
+  static would already have truncated. A call on an old or otherwise
+  incompatible runtime table reports `ENOSYS`.
 - `sys/cdefs.h`: declaration metadata macros needed by the imported utility.
 - Startup adaptation from ordinary `main` to a native program descriptor.
 - A separately compiled, original bootstrap `wc -c` command.
