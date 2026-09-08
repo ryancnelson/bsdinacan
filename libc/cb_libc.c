@@ -11,8 +11,10 @@ struct cb_libc_file {
     int descriptor;
 };
 
+static struct cb_libc_file stdin_file = {0};
 static struct cb_libc_file stdout_file = {1};
 static struct cb_libc_file stderr_file = {2};
+struct cb_libc_file *const cb_libc_stdin_stream = &stdin_file;
 struct cb_libc_file *const cb_libc_stdout_stream = &stdout_file;
 struct cb_libc_file *const cb_libc_stderr_stream = &stderr_file;
 
@@ -277,6 +279,72 @@ void cb_libc_setprogname(const char *name)
 char *cb_libc_strerror(int error)
 {
     return (char *)bound_api->strerror(error);
+}
+
+static struct cb_input_state_v1 *input_state(void)
+{
+    struct cb_input_state_v1 *state = NULL;
+    int saved_errno = bound_api->get_errno();
+    if (bound_api->abi_version == CB_ABI_VERSION_V1 &&
+        bound_api->struct_size >= offsetof(struct cb_api_v1, input_state_location) +
+                                  sizeof(bound_api->input_state_location) &&
+        bound_api->input_state_location != NULL)
+        state = bound_api->input_state_location();
+    bound_api->set_errno(saved_errno);
+    if (state == NULL || state->abi_version != CB_ABI_VERSION_V1 ||
+        state->struct_size < CB_INPUT_STATE_V1_MIN_SIZE)
+        return NULL;
+    return state;
+}
+
+int cb_libc_getc(struct cb_libc_file *stream)
+{
+    struct cb_input_state_v1 *state;
+    unsigned char byte;
+    cb_ssize_t result;
+    int saved_errno = bound_api->get_errno();
+    if (stream != cb_libc_stdin_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return EOF;
+    }
+    state = input_state();
+    if (state == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return EOF;
+    }
+    if (state->stdin_eof)
+        return EOF;
+    result = bound_api->read(0, &byte, 1);
+    if (result < 0) {
+        state->stdin_error = 1;
+        return EOF;
+    }
+    if (result > 1) {
+        state->stdin_error = 1;
+        bound_api->set_errno(CB_EIO);
+        return EOF;
+    }
+    if (result == 0)
+        state->stdin_eof = 1;
+    bound_api->set_errno(saved_errno);
+    return result == 0 ? EOF : (int)byte;
+}
+
+int cb_libc_feof(struct cb_libc_file *stream)
+{
+    struct cb_input_state_v1 *state;
+    if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream)
+        return 0;
+    if (stream != cb_libc_stdin_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return 0;
+    }
+    state = input_state();
+    if (state == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return 0;
+    }
+    return state->stdin_eof;
 }
 
 static struct cb_stdio_state_v1 *stdio_state(void)
@@ -721,6 +789,14 @@ int cb_libc_fflush(struct cb_libc_file *stream)
 int cb_libc_ferror(struct cb_libc_file *stream)
 {
     struct cb_stdio_state_v1 *state;
+    if (stream == cb_libc_stdin_stream) {
+        struct cb_input_state_v1 *input = input_state();
+        if (input == NULL) {
+            bound_api->set_errno(CB_ENOSYS);
+            return 1;
+        }
+        return input->stdin_error;
+    }
     if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
         bound_api->set_errno(CB_EINVAL);
         return 1;

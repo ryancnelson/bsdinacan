@@ -72,6 +72,7 @@ void cb_libc_setprogname(const char *name);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);
+extern struct cb_libc_file *const cb_libc_stdin_stream;
 extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
 size_t cb_libc_strlen(const char *text);

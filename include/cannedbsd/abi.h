@@ -148,6 +148,17 @@ struct cb_stdio_state_v1 {
     int stderr_error;
 };
 
+/* Stage 1 prefix: future input fields append after stdin_error. */
+struct cb_input_state_v1 {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    int stdin_eof;
+    int stdin_error;
+};
+#define CB_INPUT_STATE_V1_MIN_SIZE \
+    (offsetof(struct cb_input_state_v1, stdin_error) + \
+     sizeof(((struct cb_input_state_v1 *)0)->stdin_error))
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -208,6 +219,7 @@ struct cb_api_v1 {
     int (*closedir)(int descriptor);
     char *(*basename_buffer_location)(void);
     struct cb_stdio_state_v1 *(*stdio_state_location)(void);
+    struct cb_input_state_v1 *(*input_state_location)(void);
 };
 
 struct cb_program_v1 {
