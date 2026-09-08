@@ -265,3 +265,73 @@ forward as historical evidence only, not promoted to acceptance of
 current `main`. Solaris acceptance for this task remains pending; the
 coordinator carries that gate forward per `notes/CI.md`'s transition
 policy.
+
+## First real guest attempt: diagnosis, not acceptance evidence
+
+With the coordinator's assigned guest slot, staged this exact commit's
+source onto the guest (via a Rock-Ridge ISO built from a `ustar`-format
+tarball -- a plain macOS `tar`'s default PaxHeader extended-attribute
+entries are not understood by this guest's own `tar`/`mkisofs` and
+corrupt the extraction; `COPYFILE_DISABLE=1 tar --format=ustar` avoids
+them) and ran `tools/solaris9-build.sh` for real. **This surfaced two
+further genuine build blockers this branch had not yet encountered**,
+found by reading actual GCC 3.4.6 diagnostics, not by inspection:
+
+1. **The private NetBSD-import veneer's own `libc/include/inttypes.h`
+   shadowed the real system header.** The Makefile's own per-command-
+   object rules add `-Ilibc/include` for sources built against that
+   veneer (e.g. `commands/wc.c`); since that directory sits on the
+   include path before the guest's real system headers regardless of
+   where `-Icompat/solaris9/include` itself is listed, an angle-bracket
+   `#include <inttypes.h>` inside `compat/solaris9/include/stdint.h`
+   re-entered the search from the top and found the private veneer's
+   own `inttypes.h` first, which failed to compile in this context
+   ("syntax error before cb_libc_strtoimax"). This is exactly the
+   "cycles into our private inttypes before fundamental types" concern
+   raised in review before any guest access existed -- now confirmed
+   for real, and fixed for real: `compat/solaris9/include/stdint.h` now
+   includes the guest's real system header by its verified absolute
+   path (`/usr/include/inttypes.h`, confirmed present and correctly
+   guarded on the actual guest), sidestepping the search-path ambiguity
+   entirely rather than guessing at include-order fixes.
+2. **The guest's own system headers trigger a GCC 3.4.6 warning that
+   `-Werror` turns fatal, unrelated to this project's own source.**
+   `/usr/include/inttypes.h` itself contains a Sun-specific `#pragma
+   ident "..."` that GCC 3.4.6 does not recognize
+   ("warning: ignoring #pragma ident"); under `-Werror` this aborted
+   the build. Added `-Wno-unknown-pragmas` to `tools/solaris9-build.sh`'s
+   `CFLAGS` only, narrowly scoped to this one class of vendor-header
+   warning -- every warning this project's own source can trigger stays
+   fatal; this is not a general weakening of the shared `-Werror` gate.
+3. **A genuine, GCC-3.4.6-specific warning in this project's own test
+   source, still fixed at the source level, not suppressed.**
+   `tests/libc_fwrite_probe.c`'s `invalid_streams` case deliberately
+   synthesizes a garbage, non-NULL `FILE *` (`(FILE *)&argc`) to
+   exercise `fwrite`'s own validity check -- never dereferenced as a
+   real `FILE`, so there is no actual aliasing violation. GCC 3.4.6
+   nonetheless warns "type-punning to incomplete type might break
+   strict-aliasing rules" for a direct cast to a pointer-to-incomplete
+   type (`FILE` is opaque in this project's own headers); no other
+   pinned toolchain (Linux, Retro68 Mac68k) warns on this line. Fixed
+   by routing through an intermediate `(FILE *)(void *)&argc` cast --
+   semantically identical, and confirmed via a real, isolated guest
+   recompile of the patched line before committing it, not merely
+   reasoned about.
+
+Progress as of this note: `build/bsdinacan` linked successfully and
+compilation reached deep into the test-object list before hitting
+finding 3 above; that fix has not yet been re-verified with a full,
+uninterrupted guest run reaching `SOLARIS9_CANNEDBSD_TEST=PASS`. A
+partial, patched-guest compile succeeding past a given point is
+diagnosis of what still needs fixing, not exact-source acceptance
+evidence -- that requires a complete, fresh run producing the actual
+final marker, recorded here once it exists. Also noted per the
+coordinator: `origin/main` has since advanced past this branch's own
+base (now including `STAT-01` and the full, corrected `HEAD-02`); final
+qualification must be re-run after merging fresh `origin/main` into
+this branch, not asserted against the older base alone.
+
+All three fixes above were re-verified on the pinned Linux CI toolchain
+(`make test` unchanged) and the pinned Retro68 Mac68k build (still
+succeeds) before being committed, exactly as with every other change in
+this branch.

@@ -41,8 +41,14 @@ CPPFLAGS="-D_XOPEN_SOURCE=600 -D__EXTENSIONS__ -DCANNEDBSD_SOLARIS9 -Icompat/sol
 # gnu99, not strict c99: the historical reference recorded that GCC
 # 3.4.6 needs GNU C99 mode to expose the original Solaris headers' own
 # 64-bit integer types; strict -std=c99 failed there. -pedantic (GCC
-# 3.x spelling), not -Wpedantic.
-CFLAGS="-std=gnu99 -Wall -Wextra -Werror -pedantic -g -O2"
+# 3.x spelling), not -Wpedantic. -Wno-unknown-pragmas: found via a real
+# guest build, not assumed -- the guest's own /usr/include/inttypes.h
+# uses a Sun-specific `#pragma ident "..."` that GCC 3.4.6 does not
+# recognize; under -Werror that becomes a hard build failure from the
+# *vendor's own system header*, not from anything in this project's
+# source. This tolerates only that one class of vendor-header warning;
+# every warning this project's own code can trigger stays fatal.
+CFLAGS="-std=gnu99 -Wall -Wextra -Werror -pedantic -Wno-unknown-pragmas -g -O2"
 LDLIBS="-lrt"
 
 export CC CPPFLAGS CFLAGS LDLIBS
