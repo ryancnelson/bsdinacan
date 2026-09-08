@@ -197,6 +197,7 @@ struct cb_api_v1 {
     int (*readdir)(int descriptor, char *name_out, size_t name_size,
                    uint64_t *inode_out, uint32_t *type_out);
     int (*closedir)(int descriptor);
+    char *(*basename_buffer_location)(void);
 };
 
 struct cb_program_v1 {

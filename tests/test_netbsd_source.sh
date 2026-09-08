@@ -137,4 +137,51 @@ for private_symbol in cb_libc_dirname cb_libc_setlocale cb_libc_getopt \
     fi
 done
 
+
+basename_source=upstream/netbsd/usr.bin/basename/basename.c
+basename_object=$build_path/basename_command.o
+basename_hash=717fc4757e656e2ff70e39e6aee6e8e79aca06b3459caff99f1908a26ee670bd
+
+if [[ ! -f $basename_source ]]; then
+    echo "FAIL: pinned NetBSD basename source is missing: $basename_source" >&2
+    exit 1
+fi
+actual_basename_hash=$(sha256sum "$basename_source" | awk '{print $1}')
+if [[ $actual_basename_hash != "$basename_hash" ]]; then
+    printf 'FAIL: NetBSD basename source changed: expected %s, found %s\n'         "$basename_hash" "$actual_basename_hash" >&2
+    exit 1
+fi
+if [[ ! -f $provenance_file ]] ||
+        ! matches "$basename_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD basename provenance is absent or does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $basename_object ]] ||
+        ! nm "$basename_object" |
+            matches '[[:space:]]T[[:space:]]+cb_basename_main$'; then
+    echo "FAIL: pinned NetBSD basename was not compiled as a command object" >&2
+    exit 1
+fi
+if nm "$basename_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: NetBSD basename exports the enclosing application main' >&2
+    exit 1
+fi
+for host_symbol in basename setlocale getopt exit printf fprintf puts errx err \
+        strlen strcmp; do
+    if nm -u "$basename_object" |
+            matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
+        printf 'FAIL: NetBSD basename imports host-facing %s\n'             "$host_symbol" >&2
+        exit 1
+    fi
+done
+for private_symbol in cb_libc_basename cb_libc_setlocale cb_libc_getopt \
+        cb_libc_exit cb_libc_printf cb_libc_fprintf cb_libc_err \
+        cb_libc_strlen cb_libc_strcmp; do
+    if ! nm -u "$basename_object" |
+            matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
+        printf 'FAIL: NetBSD basename does not import %s\n'             "$private_symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

@@ -334,4 +334,23 @@ if ! nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_dirname$
     exit 1
 fi
 
+basename_source=tests/libc_basename_probe.c
+basename_object=$build_path/basenameprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$basename_source"; then
+    echo 'FAIL: basename source probe uses private names' >&2
+    exit 1
+fi
+if ! matches '\bbasename[[:space:]]*\(' "$basename_source"; then
+    echo 'FAIL: basename source probe does not call basename()' >&2
+    exit 1
+fi
+if nm -u "$basename_object" | matches "[[:space:]]U[[:space:]]+basename$"; then
+    echo 'FAIL: basename probe imports host-facing basename' >&2
+    exit 1
+fi
+if ! nm -u "$basename_object" | matches "[[:space:]]U[[:space:]]+cb_libc_basename$"; then
+    echo 'FAIL: basename probe does not use the private veneer cb_libc_basename' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

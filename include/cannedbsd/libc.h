@@ -80,6 +80,8 @@ int cb_libc_memcmp(const void *left, const void *right, size_t count);
 char *cb_libc_strchr(const char *text, int character);
 char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
+char *cb_libc_basename_upstream(char *path);
+char *cb_libc_basename(char *path);
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
 int cb_libc_closedir(struct cb_libc_dir *dirp);

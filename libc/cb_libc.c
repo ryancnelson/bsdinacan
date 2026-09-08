@@ -494,6 +494,33 @@ char *cb_libc_dirname(char *path)
     return owned;
 }
 
+char *cb_libc_basename(char *path)
+{
+    char *upstream;
+    char *owned;
+    size_t length;
+    if (bound_api->struct_size <
+            offsetof(struct cb_api_v1, basename_buffer_location) +
+                sizeof(bound_api->basename_buffer_location) ||
+        bound_api->basename_buffer_location == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    upstream = cb_libc_basename_upstream(path);
+    owned = bound_api->basename_buffer_location();
+    /* Copy out of the upstream static into this task's own buffer before
+       returning, exactly like cb_libc_dirname -- and into a SEPARATE
+       buffer/accessor from dirname's: reusing dirname's buffer would let
+       a basename() call silently invalidate an already-returned
+       dirname() result in the same task, coupling two otherwise
+       independent pinned imports for no reason. Upstream's own result is
+       already bounded to its PATH_MAX (== CB_PATH_MAX here), so this
+       never truncates anything upstream itself would not have. */
+    length = cb_libc_strlen(upstream);
+    cb_libc_memcpy(owned, upstream, length + 1);
+    return owned;
+}
+
 struct cb_libc_dir {
     int descriptor;       /* the opaque runtime handle; meaningless outside
                               the runtime that issued it */

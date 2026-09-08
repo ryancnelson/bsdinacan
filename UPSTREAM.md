@@ -194,6 +194,67 @@ slashes, trailing slashes, an exact-fit boundary length), same-task
 repeated calls, cross-task isolation under forced interleaving, and
 `ENOSYS` on an old or field-absent runtime table.
 
+## NetBSD `basename`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `lib/libc/gen/basename.c` /
+  `upstream/netbsd/lib/libc/gen/basename.c`
+- SHA-256: `f6202a8d1a89118f4743a2aa5880bc985ed8a6ca01b1c4ca654d789ff14adb87`
+- Embedded RCS identifier: `$NetBSD: basename.c,v 1.12 2023/01/18 08:07:22 simonb Exp $`
+- License: file-specific two-clause NetBSD Foundation license, retained
+  verbatim -- distinct from the three-clause Regents license on every
+  other pinned import in this file (matching `dirname`'s own license).
+
+The imported file is byte-for-byte unchanged and builds as
+`cb_libc_basename_upstream` (a plain `-D` link-name rename, like
+`dirname`; confirmed by reading the file that no `#undef`/macro games
+would defeat it -- the only other occurrence of the literal text
+`basename` is inside an `__weak_alias(basename,_basename)` line gated on
+a macro this project's minimal `namespace.h` shim never defines). Reuses
+the three existing import-only shims `dirname` already needed
+(`compat/netbsd/include/sys/param.h`, `limits.h`, `libgen.h`) -- no new
+shims required.
+
+The imported `basename()` itself returns a pointer into a function-local
+static buffer shared process-wide across every cooperatively scheduled
+task, exactly like `dirname()`. The `cb_libc_basename` veneer
+(`libc/cb_libc.c`) copies that result into a new, genuinely task-owned
+buffer (`struct cb_task.basename_buffer`, reached via a new append-only
+`cb_api_v1` accessor, `basename_buffer_location`, appended after
+`closedir` -- the actual current tail) before ever returning to the
+caller. This buffer is deliberately separate from `dirname`'s: reusing
+it would let a `basename()` call silently invalidate an already-returned
+`dirname()` result in the same task, coupling two otherwise independent
+pinned imports for no reason. The boundary test pins the source and
+provenance hashes; direct tests cover the same NetBSD-documented
+pathname edge cases `dirname` covers, same-task repeated calls,
+cross-task isolation under forced interleaving, retained `dirname`
+results alongside a `basename` call in the same task, and `ENOSYS` on an
+old or field-absent runtime table.
+
+## NetBSD `basename` (command)
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/basename/basename.c`
+- Local path: `upstream/netbsd/usr.bin/basename/basename.c`
+- SHA-256: `717fc4757e656e2ff70e39e6aee6e8e79aca06b3459caff99f1908a26ee670bd`
+- Embedded RCS identifier: `$NetBSD: basename.c,v 1.16 2019/02/01 08:29:04 mrg Exp $`
+- License: file-specific three-clause Regents of the University of California license, retained verbatim.
+
+The imported file is byte-for-byte unchanged. The build renames `main`
+to `cb_basename_main`. It depends on a C-only locale boundary
+(`setlocale`), a libc `basename` implementation, and (unlike `dirname`'s
+command) `strlen`/`strcmp` for its optional suffix-stripping argument --
+it accepts one path and an optional suffix, strips the suffix only when
+it is strictly shorter than the result and matches its end, and writes a
+NUL into the returned buffer at the truncation point, so the returned
+string must be genuinely writable (satisfied by `cb_libc_basename`'s
+task-owned buffer, not an immutable string). For an empty path it prints
+just a newline and exits `0` *before* ever calling libc `basename`,
+unlike libc `basename("")`, which returns `"."`.
+
 ## NetBSD `printenv`
 
 - Repository: `https://github.com/NetBSD/src`

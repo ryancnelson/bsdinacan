@@ -5,5 +5,7 @@
 
 char *cb_libc_dirname(char *path);
 #define dirname cb_libc_dirname
+char *cb_libc_basename(char *path);
+#define basename cb_libc_basename
 
 #endif

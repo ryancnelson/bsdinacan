@@ -210,6 +210,7 @@ struct cb_task {
     char dirname_buffer[CB_PATH_MAX];
     struct cb_fd_entry descriptors[CB_MAX_FDS];
     struct cb_dir_handle directories[CB_MAX_DIRS];
+    char basename_buffer[CB_PATH_MAX];
     struct cb_vfs_node *root;
     struct cb_vfs_node *cwd;
     int *error_cell;
