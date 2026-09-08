@@ -61,13 +61,41 @@ static int fault_mode;
 static size_t fault_read_budget;
 static size_t fault_read_delivered;
 static size_t fault_read_calls;
+/* fd==1 (stdout) call count only -- what expect_write_calls asserts.
+   Distinct from fault_write_total_calls below, which is the safety-cap
+   counter and must see every invocation regardless of destination fd. */
 static size_t fault_write_calls;
+/* Every fault_write() invocation, any fd (including fd 2/stderr, which
+   err()/warn() write through the same overridden API). A review found
+   the previous cap only counted fd==1 calls, since fault_write returned
+   early for any other fd before ever reaching the counter -- leaving
+   stderr writes completely unbounded despite the documented "hard,
+   defensive cap on how many times fault_read()/fault_write() may be
+   called" claim above. This counter is what HEAD_FAULT_CALL_LIMIT is
+   actually checked against now. */
+static size_t fault_write_total_calls;
 /* Set by fault_exit() (below) once it has actually run. Checked by
  * run_one() after waitpid for every fault-mode case, on both the success
  * and the failure path, since the pinned head.c's own main() always
  * calls exit() itself -- there is no other path back out of
- * cb_libc_start(&copy, ...) to restore anything from. */
+ * cb_libc_start(&fault_api_copy, ...) to restore anything from. */
 static int fault_restored;
+
+/* The task-local API override, given fixture-owned (static) storage
+   rather than a stack-local variable inside head_fault_dispatch. A
+   review found that with stack-local storage, an omitted-rebind
+   regression left cb_libc's internal binding pointing into the exited
+   child's now-deallocated stack frame -- reading it back from run_one()
+   after waitpid reaped that child is undefined behavior (whether it
+   "looks like" the old fault_write pointer is happenstance, not a
+   defined test outcome), even though it happened to reproduce the
+   intended failure when this was tried. Static storage keeps the
+   pointed-to memory legitimately alive for the lifetime of the whole
+   fixture (which only ever runs one fault-mode child at a time, see
+   the sequential-fixture-only note above), so a genuine omitted-rebind
+   bug is now well-defined to detect via run_one's cb_libc_write()
+   probe, not merely observed to happen to work. */
+static struct cb_api_v1 fault_api_copy;
 
 /* Forward-declared so fault_read/fault_write can route a call-count
    budget overrun through it: a bare -1 return only stops one call, and
@@ -99,10 +127,11 @@ static cb_ssize_t fault_read(int fd, void *buffer, size_t count)
 
 static cb_ssize_t fault_write(int fd, const void *buffer, size_t count)
 {
+    if (++fault_write_total_calls > HEAD_FAULT_CALL_LIMIT)
+        fault_exit(HEAD_FAULT_BUDGET_EXIT_STATUS); /* never returns */
     if (fd != 1)
         return fault_real_api->write(fd, buffer, count);
-    if (++fault_write_calls > HEAD_FAULT_CALL_LIMIT)
-        fault_exit(HEAD_FAULT_BUDGET_EXIT_STATUS); /* never returns */
+    ++fault_write_calls;
     switch (fault_mode) {
     case HEAD_FAULT_WRITE_NEGATIVE:
         fault_real_api->set_errno(CB_EPIPE);
@@ -132,7 +161,7 @@ static int head_fault_noop(int argc, char *argv[])
  * routed here via the task-local API copy's own .exit override, the
  * *only* point that reliably runs before this task terminates, on both
  * the success and the failure path; restoring cb_libc's internal binding
- * after cb_libc_start(&copy, ...) returns (as an earlier version of this
+ * after cb_libc_start(&fault_api_copy, ...) returns (as an earlier version of this
  * file did) is dead code -- it never executes, on either path, and was
  * wrong to claim as a running restoration. fault_restored is set only
  * after cb_libc_start(real, ...) actually returns, so the flag reflects
@@ -161,13 +190,12 @@ static void fault_exit(int status)
  * not "head", for exactly this reason -- confirmed by running this
  * fixture, not assumed. Validates argc/argv bounds before indexing
  * anything, and caps the copy to this file's own fixed 8-slot
- * inner_argv. cb_libc_start(&copy, ...) below never returns (see
+ * inner_argv. cb_libc_start(&fault_api_copy, ...) below never returns (see
  * fault_exit's own comment); the trailing return exists only to satisfy
  * the compiler. */
 static int head_fault_dispatch(const struct cb_api_v1 *api, int argc,
                                char *const argv[], char *const envp[])
 {
-    struct cb_api_v1 copy = *api;
     char *inner_argv[8];
     int i, inner_argc;
     (void)envp;
@@ -179,16 +207,18 @@ static int head_fault_dispatch(const struct cb_api_v1 *api, int argc,
     fault_read_delivered = 0;
     fault_read_calls = 0;
     fault_write_calls = 0;
+    fault_write_total_calls = 0;
     fault_restored = 0;
-    copy.read = fault_read;
-    copy.write = fault_write;
-    copy.exit = fault_exit;
+    fault_api_copy = *api;
+    fault_api_copy.read = fault_read;
+    fault_api_copy.write = fault_write;
+    fault_api_copy.exit = fault_exit;
     inner_argv[0] = (char *)"head";
     for (i = 2; i < argc; ++i)
         inner_argv[i - 1] = argv[i];
     inner_argc = argc - 1;
     inner_argv[inner_argc] = NULL;
-    cb_libc_start(&copy, inner_argc, inner_argv, cb_head_main);
+    cb_libc_start(&fault_api_copy, inner_argc, inner_argv, cb_head_main);
     return 1;
 }
 
@@ -453,13 +483,16 @@ done:
            not merely a flag: cb_libc_write() dispatches through
            cb_libc's own internal binding, opaque to this file. If
            fault_exit's rebind call had not actually run, that binding
-           would still hold the exited child's task-local copy -- its
-           function pointers are valid code addresses (not stack
-           garbage), so the call would silently route through
-           fault_write and bump this counter, rather than erroring or
-           crashing. A zero-length write to fd 1 is side-effect-free
-           either way it resolves, so this probe is safe to run
-           unconditionally here. */
+           would still hold fault_api_copy -- static, fixture-owned
+           storage (not the exited child's now-deallocated stack), so
+           reading it back here is well-defined, not merely
+           happenstance: its function pointers are still exactly the
+           values head_fault_dispatch installed, and the call would
+           reliably route through fault_write and bump this counter,
+           rather than erroring, crashing, or reading stack garbage.
+           A zero-length write to fd 1 is side-effect-free either way
+           it resolves, so this probe is safe to run unconditionally
+           here. */
         write_calls_before_probe = fault_write_calls;
         cb_libc_write(1, NULL, 0);
         if (fault_write_calls != write_calls_before_probe) result = -1;

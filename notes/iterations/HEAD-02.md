@@ -116,6 +116,16 @@ genuine head exit. Not expected to be hit by any scenario here -- this
 is a defensive cap for a regression that does not exist today, not a
 behavior this fixture claims `head` or `cb_libc` actually has.
 
+`fault_write`'s cap counts **every** invocation, any destination fd
+(`fault_write_total_calls`) -- not just fd==1/stdout. A round-4 review
+found the previous version returned early for `fd != 1` *before*
+incrementing or checking anything, so writes to fd 2 (stderr, what
+`err()`/`warn()` actually write through when a fault case's own stdout
+write fails) were completely uncounted and unbounded, contradicting
+this file's own "hard, defensive cap ... may be called" claim. The
+existing `fault_write_calls` counter (fd==1 only, what
+`expect_write_calls` asserts) is unchanged in meaning.
+
 `struct head_case` gained three fields: `expect_write_calls` (existing;
 `0` = "not checked", matching every existing/non-fault case via C's own
 zero-fill), and new `expect_read_calls`/`expect_read_delivered`, which
@@ -213,6 +223,28 @@ host Woodpecker's own `ci` check runs on):
    fails with the budget exhausted; the third, in the second outer
    iteration, fails again and this time yields `fread`'s own `rv == 0`,
    which is what actually stops `head`). Corrected to 3; verified green.
+4. **Fourth round**, both caught by independent review, not by a failing
+   test (as with round 2's dead-code finding):
+   - The task-local API override (`copy` in `head_fault_dispatch`) was a
+     stack-local variable. An omitted-rebind regression would leave
+     `cb_libc`'s internal binding pointing into that stack frame *after*
+     the child was reaped by `waitpid` -- reading it back from
+     `run_one`'s `cb_libc_write()` probe was undefined behavior; that the
+     round-3 control (below) observed the expected failure was
+     happenstance, not a guaranteed outcome. Fixed by giving the override
+     fixture-owned, static storage (`fault_api_copy`) that legitimately
+     outlives the reap, for the lifetime of the whole (sequential-only)
+     fixture. Re-ran the round-3 control against the corrected code and
+     it still fails as expected -- now for a well-defined reason.
+   - `fault_write`'s early return for `fd != 1` happened *before* the
+     call-count cap check, so writes to fd 2 (stderr -- what `err()`/
+     `warn()` actually write through) were completely uncounted and
+     unbounded, despite this file's own claim of a "hard, defensive cap
+     on how many times fault_read()/fault_write() may be called". Fixed
+     by splitting into two counters: `fault_write_total_calls` (every
+     invocation, any fd -- what the cap now checks) and the existing
+     `fault_write_calls` (fd==1/stdout only -- what `expect_write_calls`
+     asserts, unchanged in meaning).
 
 These are genuine defects found during development, kept here separate
 from the disposable negative control below, per the reviewer's
@@ -247,6 +279,24 @@ deliberately-broken control:
   behavioral probe** (not the flag, which was still true and would have
   passed) is what actually catches this class of regression. Restored
   the real rebind call; reran; green again.
+- **Fourth round**: re-ran the round-3 omitted-rebind control
+  unchanged, against the corrected, static-storage `fault_api_copy` --
+  `./build/test_core` still fails at the first fault-mode case (status
+  41). This confirms the storage fix did not weaken the control; the
+  detection is now a defined outcome of well-defined memory, not a
+  previously-happenstance read of a freed stack frame. Restored; reran;
+  green. Separately, to check the stderr/cap fix rather than just read
+  the diff: temporarily set `HEAD_FAULT_CALL_LIMIT` to `1`, rebuilt,
+  reran -- `./build/test_core` failed immediately at the first
+  fault-mode case (status 41, `fault_write_total_calls` exceeding the
+  now-tiny cap), confirming the cap is actually enforced end to end.
+  Restored `HEAD_FAULT_CALL_LIMIT` to `64`; reran; green again. This
+  smoke check confirms the cap fires; it does not by itself isolate
+  stderr specifically from stdout (the failing case's own stdout writes
+  alone already exceed a cap of 1) -- the stderr-inclusiveness itself is
+  a direct, small code change (moving the fd-dispatch after the counter
+  increment) verified by reading the corrected code, not by a dedicated
+  stderr-only reproduction.
 
 ## Verified end to end, real execution
 
@@ -261,27 +311,34 @@ deliberately-broken control:
    compiles cleanly for that target too. No guest run was attempted --
    that remains the coordinator's own action.
 
-## Solaris 9 SPARC portability policy (informational only)
+## Solaris 9 SPARC portability status
 
 `origin/main` (`a1c85ba`) has since added a Solaris 9 SPARC portability
-requirement (`AGENTS.md`) for runtime, libc, VFS, shell, command, shared
-ABI, and host-adapter changes. This branch's own change is tests-only,
-confined to `tests/head_probe.c` and this note -- none of those
-categories -- so it does not itself add a new Solaris obligation. Noted
-here per the coordinator's own instruction: Solaris acceptance is
-reported as pending integration elsewhere; this branch does not import
-the Solaris reference or touch its shared rig.
+requirement (`AGENTS.md`, `notes/CI.md`) for runtime, libc, VFS, shell,
+command, shared ABI, and host-adapter changes -- and this applies to
+shared test/probe surface too, including `tests/head_probe.c`, not only
+to `head.c`/`cb_libc.c` themselves; a "tests-only" change is not
+automatically exempt merely for being tests-only. Per the transition
+policy (SOLARIS-01 pending), **Solaris acceptance for this branch is
+reported as pending integration**, not as not-required. This branch
+does not import the Solaris reference (`work/SOLARIS-01-reference`) and
+does not touch the shared Solaris rig; that work is tracked separately
+under SOLARIS-01.
 
 ## Sequential-fixture-only safety, stated explicitly
 
 The fault-mode globals (`fault_mode`, `fault_read_delivered`,
 `fault_real_api`, `fault_read_calls`, `fault_write_calls`,
-`fault_restored`) are safe only because this whole fixture spawns one
-child, waits for it to fully exit, then moves to the next -- never two
-fault-mode children concurrently, and nothing in this file yields back
-to the scheduler while a copy is bound. This is sequential-fixture-only
-safety, not a general task-isolation mechanism, and is stated as such
-in the source comment, not left implicit.
+`fault_write_total_calls`, `fault_restored`, and now the API override
+itself, `fault_api_copy`) are safe only because this whole fixture
+spawns one child, waits for it to fully exit, then moves to the next --
+never two fault-mode children concurrently, and nothing in this file
+yields back to the scheduler while `fault_api_copy` is bound. This is
+sequential-fixture-only safety, not a general task-isolation mechanism,
+and is stated as such in the source comment, not left implicit. Giving
+`fault_api_copy` static storage (round 4, see "Genuine bugs") relies on
+this exact same guarantee -- a second concurrent fault-mode child would
+corrupt it, which is precisely why this fixture never runs one.
 
 ## Not claimed
 
