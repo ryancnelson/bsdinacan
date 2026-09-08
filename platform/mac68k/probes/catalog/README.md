@@ -25,9 +25,26 @@ publication. Root contains Empty, Subdir, Zero, Eight (`fixture\n`), Forked
 Only the coordinator owns emulator input. Reuse a fresh existing MAC-01 staged
 run and its exclusive slot, verified clean seed, native prefs, and dedicated
 share. Verify the exact probe archive and fixture against SHA256SUMS first.
-Use `MoreFilesProbe.tar.gz` as the staged app archive: it contains the ordinary
-file names expected by staging, but no ordinary acceptance result is implied.
-Copy the fixture into this run as a separate file. Before boot:
+The existing stager requires the archive filename `CannedBSD.tar.gz` and a
+single-entry checksum file. Create a dedicated adapter directory without
+changing the original published probe artifact (example on macOS):
+
+```sh
+probe=/absolute/path/to/downloaded/morefiles-probe
+(cd "$probe" && shasum -a 256 -c SHA256SUMS)
+adapter=$(mktemp -d /tmp/morefiles-stage.XXXXXX)
+cp "$probe/MoreFilesProbe.tar.gz" "$adapter/CannedBSD.tar.gz"
+cp "$probe/commit.txt" "$adapter/commit.txt"
+(cd "$adapter" && shasum -a 256 CannedBSD.tar.gz > SHA256SUMS)
+cmp "$probe/MoreFilesProbe.tar.gz" "$adapter/CannedBSD.tar.gz"
+```
+
+Pass this `$adapter` directory as the existing stager's `--artifact` argument,
+with its usual commit/seed/slot/native-config arguments. The bytes still match
+the original published MoreFilesProbe checksum. Preserve that original checksum,
+fixture checksum and pipeline for the receipt; this naming adapter does not
+turn the probe into ordinary CannedBSD acceptance. Copy the fixture into this
+run as a separate file. Before boot:
 
 1. Check no Basilisk PID or open disk handles conflict with the slot.
 2. Keep the fixture chmod 0444, save its SHA256, and append this native prefs line:
