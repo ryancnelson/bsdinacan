@@ -2,6 +2,7 @@
 """Synthetic crops verify the matcher without controlling any desktop."""
 import importlib.util
 import json
+import selectors
 from pathlib import Path
 import subprocess
 import sys
@@ -80,6 +81,24 @@ class MatchTests(unittest.TestCase):
         request = self.request()
         request['frame']['w'] = 1
         self.assertFalse(self.matcher.match(request)['found'])
+
+    def test_ready_arrives_without_stdin_or_eof(self):
+        process = subprocess.Popen([sys.executable, '-u', str(SCRIPT), '--ready'],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ)
+                self.assertTrue(selector.select(10), 'matcher never became ready')
+            self.assertEqual(json.loads(process.stdout.readline()),
+                             {'ready': True, 'protocol': 1})
+            output, _ = process.communicate('null\n', timeout=10)
+            self.assertFalse(json.loads(output)['found'])
+            self.assertEqual(process.returncode, 0)
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
 
     def test_protocol_handles_multiple_lines_and_bad_input(self):
         # Missing images fail immediately; no private or live screenshots needed.

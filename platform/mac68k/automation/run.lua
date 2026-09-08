@@ -54,7 +54,7 @@ local function finish(ok,why)
  if not R.active then return end
  if R.held then hs.eventtap.event.newMouseEvent(types.leftMouseUp,R.mouse):post(); R.held=false end
  R.active=false; for _,t in ipairs(R.timers) do t:stop() end
- if R.matcher then R.matcher:closeInput() end
+ if R.matcher then R.matcher:closeInput(); R.matcher:terminate() end
  log(why); save(R.dir..'/run.json',hs.json.encode({ok=ok,reason=why,elapsed=hs.timer.secondsSinceEpoch()-R.start,events=R.events,commit=manifest.commit,artifact_sha256=manifest.artifact_sha256,
  acceptance=staged..'/acceptance.json'},true))
  if not ok then snap(R.dir..'/failure.png') end
@@ -64,17 +64,30 @@ local function focused(frame)
  local a=app(); local w=a and a:mainWindow(); if not w or not a:isFrontmost() then return false end
  local f=w:frame(); return f.x==frame.x and f.y==frame.y and f.w==frame.w and f.h==frame.h
 end
-local pending,buffer
+local pending,buffer,beginBoot,startupTimer
 buffer=''
 R.matcher=hs.task.new(cfg.python,function(code) if R.active then finish(false,'Matcher exited: '..code) end end,function(_,out,err)
+ if not R.active then return false end
  if err~='' then finish(false,'Matcher error: '..err); return false end
  buffer=buffer..out
  while buffer:find('\n') do
   local line,rest=buffer:match('^(.-)\n(.*)$'); buffer=rest
-  local cb=pending; pending=nil; if cb and R.active then cb(hs.json.decode(line)) end
+  local message=hs.json.decode(line)
+  if not R.ready then
+   if type(message)~='table' or message.ready~=true or message.protocol~=1 then
+    finish(false,'Invalid matcher readiness handshake'); return false
+   end
+   R.ready=true; startupTimer:stop(); log('Matcher ready'); beginBoot()
+  else
+   local cb=pending; pending=nil
+   if cb and R.active then
+    if type(message)~='table' then finish(false,'Invalid matcher response'); return false end
+    cb(message)
+   end
+  end
  end
  return true
-end,{'-u',root..'match.py'}); assert(R.matcher:start())
+end,{'-u',root..'match.py','--ready'})
 local function find(name,cb)
  local frame=snap(R.dir..'/screen.png'); if not frame then after(.15,function() find(name,cb) end); return end
  pending=function(m)
@@ -166,6 +179,17 @@ local function booted()
 end
 -- The stage command created the empty placeholder before boot. Never mutate it live.
 log('Verified empty staged result')
+beginBoot=function()
+if hs.application.find('BasiliskII') then
+ finish(false,'Another guest started during matcher initialization; guest was not launched'); return
+end
 R.launch=hs.task.new('/usr/bin/open',function(code) if code~=0 then finish(false,'Basilisk launch failed') end end,{'-na',cfg.app,'--args','--config',cfg.prefs})
 assert(R.launch:start()); log('Boot started'); after(.15,booted)
 after(cfg.timeout or 60,function() finish(false,'Timed out; guest left running for inspection') end)
+end
+-- Imports can block on evicted cloud files. No guest starts before readiness.
+startupTimer=hs.timer.doAfter(cfg.startup_timeout or 30,function()
+ finish(false,'Matcher startup timed out; guest was not launched. Keep runtime and state on local storage.')
+end)
+R.timers[#R.timers+1]=startupTimer
+if not R.matcher:start() then finish(false,'Cannot start matcher; guest was not launched') end

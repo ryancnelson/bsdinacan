@@ -10,11 +10,21 @@ disks closed. It never force-terminates the emulator.
 ## Set up once
 
 Install Hammerspoon with its `hs` command and enable Accessibility and Screen
-Recording for it. Install the host matcher in a Python 3.14 virtual environment:
+Recording for it. Keep the Python virtual environment, private configuration,
+staged guest state, and temporary screenshots on **local, non-synchronized
+storage**, for example `~/Library/Caches/bsdinacan`. Do not use iCloud-managed
+Documents/Desktop paths. Evicted (`dataless`) NumPy files blocked Python imports
+and an evicted scratch JSON blocked Hammerspoon's main thread during a measured
+failure. A runner timer cannot interrupt a filesystem call blocked in the kernel.
+Reinstall the environment in local storage rather than copying an evicted one;
+leave live guest exports and mounted disks untouched until clean shutdown.
+
+Install the host matcher in a Python 3.14 virtual environment:
 
 ```sh
-python3.14 -m venv /path/to/mac-test-venv
-/path/to/mac-test-venv/bin/python -m pip install -r platform/mac68k/automation/requirements.txt
+python3.14 -m venv "$HOME/Library/Caches/bsdinacan/mac-test-venv"
+"$HOME/Library/Caches/bsdinacan/mac-test-venv/bin/python" -m pip install -r platform/mac68k/automation/requirements.txt
+"$HOME/Library/Caches/bsdinacan/mac-test-venv/bin/python" -c 'import cv2; print(cv2.__version__)'
 ```
 
 Copy `config.example.json` to a private file outside the repository. Set `app`
@@ -52,6 +62,13 @@ Then execute the driver, giving both paths explicitly:
 ```sh
 hs -c 'macTestConfigPath="/path/to/private-config.json"; dofile("/path/to/bsdinacan/platform/mac68k/automation/run.lua")'
 ```
+
+The driver waits for the matcher's JSON readiness handshake before launching the
+guest. Imports must finish within `startup_timeout` (default 30 seconds); a
+startup failure leaves the guest unlaunched. Overall guest timeout starts after
+readiness. Failures terminate only the runner's own matcher helper and retain
+the staged slot. This does not make cloud-backed filesystem access safe: keep
+all operational paths local, including the driver source and its templates.
 
 The driver derives all disk, preferences, and result paths from the active MAC-01
 slot. It refuses an already running Basilisk II, reused evidence, a mismatching
@@ -106,6 +123,7 @@ Focused tests run with:
 
 ```sh
 /path/to/mac-test-venv/bin/python tests/test_mac_image_match.py
+lua tests/test_mac_runner_startup.lua
 luac -p platform/mac68k/automation/run.lua
 ```
 

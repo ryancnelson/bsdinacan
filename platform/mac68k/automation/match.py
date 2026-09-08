@@ -79,6 +79,8 @@ class Matcher:
 
 def main():
     matcher = Matcher(Path(__file__).parent / 'templates')
+    if '--ready' in sys.argv[1:]:
+        print(json.dumps({'ready': True, 'protocol': 1}), flush=True)
     for line in sys.stdin:
         try:
             response = matcher.match(json.loads(line))
