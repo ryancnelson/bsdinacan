@@ -63,8 +63,13 @@ Legacy task write behavior stays unchanged.
 
 When no task is runnable, wait on the union of useful input/output interests,
 with the earliest finite task deadline. Suspend input interest when the engine
-cannot accept more bytes. Output interest exists for pending echo and blocked
-writers; existing canonical guest readiness comes from queues, not raw input.
+cannot accept more bytes. Output interest exists for pending echo, blocked
+writers and blocked poll callers requesting writable console descriptors.
+The current poll task state has no stored descriptor/event interests; the
+scheduler implementation must retain a bounded validated copy for each blocked
+poll call and clear it on wake/exit/exec. Recompute interests against live
+descriptors when evaluating readiness. Existing canonical guest readiness comes
+from queues, not raw input.
 When tasks are runnable use nonblocking host checks and retain fair task turns.
 
 A ready indication followed by EAGAIN can race. It must not cause a tight retry
@@ -73,16 +78,27 @@ still servicing other interests/tasks and their earlier deadlines. Propose a
 1 ms retry eligibility deadline for that stream, not a blocking sleep. A
 zero/failed monotonic clock uses the existing explicit scheduler error policy;
 it cannot be used to skip an otherwise finite output deadline indefinitely.
-Independent streams continue to progress while one is backed off.
+Independent streams continue to progress while one is backed off. Exclude a
+backed-off stream from the wait mask and bound the wait by the minimum of task
+deadlines, stream retry eligibility and any shutdown deadline. If all interests
+are temporarily suppressed, issue an empty finite timer wait; never empty/-1.
+This also applies to an indefinite output-only poll with no task writer/echo.
 
 ## Completion and failure
+
+A negative wait result or genuine non-backpressure root echo write error sets
+an explicit sticky kernel I/O failure, stops further input draining and retains
+the unsent suffix for diagnostics. The run returns failure and destruction
+restores the lease. Do not retry/wake-loop after that error or later report
+normal success. Ordinary task write errors remain task-local as before.
 
 Normal input operation has no invented congestion timeout. Pending bytes may
 wait while tasks/deadlines remain serviceable. Program completion is different:
 before reporting a successful orderly shutdown, service pending echo with a
 finite drain deadline. Proposed initial bound is 1000 ms, measured from the
 start of shutdown, not reset by partial progress. No suffix means no wait.
-On expiry or a genuine write error, preserve the unsent count for diagnostics,
+Shutdown drains only the suffix already pending; it does not accept new input.
+On expiry or a genuine write/wait error, preserve the unsent count for diagnostics,
 restore host state through the established cleanup path, and report failure;
 do not publish successful terminal completion or guest acceptance.
 
@@ -101,13 +117,18 @@ cancellation of echo is permitted.
 - Inject zero/EAGAIN, readiness races, partial writes, and genuine errors. Prove
   suffix/input preservation, bounded retry count per sweep, independent stderr,
   runnable-peer progress and earlier finite poll deadlines.
+- An indefinite output-only poll with no echo/writer contributes output interest
+  and wakes. A sole backed-off output uses an empty finite timer wait and later
+  re-enables interest; assert mask/timeouts against task and drain deadlines.
 - Task writers block/yield on congestion; short positive writes remain partial.
   Zero-length calls do not wait. Writable poll changes with actual host readiness.
 - Test timed waits across repeated interruption and aliased descriptors using
   isolated fixtures, never the developer's terminal. Exact host state restores.
 - Shutdown succeeds immediately with no suffix; completes a partial suffix;
   reports failure at the original deadline under endless partial/no progress;
-  always attempts restoration before normal caller completion.
+  always attempts restoration before normal caller completion. Inject wait
+  errors during normal input and shutdown: sticky run failure, no retry loop,
+  retained suffix and lease cleanup; no new input is accepted during drain.
 - Old-size, full-size NULL, and partial capability combinations preserve legacy
   startup/input without raw acquisition. Existing console tests remain enabled.
 
