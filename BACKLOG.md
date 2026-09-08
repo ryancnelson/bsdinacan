@@ -14,8 +14,8 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude is running HEAD-02 fault-characterization tests.
-Antigravity is correcting TEE-STATE-01-design after the reviewed utility audit.
-Codex owns WRITE-02-linux and coordinates the portable write worker, reviews,
+Antigravity implements the reviewed synthetic TEE-STATE-01 prerequisite.
+Codex coordinates STAT-01, reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
 FWRITE-01 was accepted at `885d83c` with 64 records.
@@ -1312,7 +1312,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-linux — finite Linux console writes
 
-- **Status:** Claimed by Codex on `work/WRITE-02-linux`; reviewed `df7b298`, exact #332 all three checks passed; integration pending
+- **Status:** Done in `e290168`; exact #340 all three checks and fresh 66-record Mac acceptance
 - **Base:** main at `e65e36f`
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** zero progress must terminate and a failed continuation must
@@ -1324,7 +1324,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-portable — validate console callback counts
 
-- **Status:** Implemented by Codex worker at `5f03a94`; review, exact CI and guest integration pending
+- **Status:** Done in `e290168`; exact #340 all three checks and fresh 66-record Mac acceptance
 - **Base:** main
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** a real task must receive EIO for nonempty zero progress or
@@ -1338,7 +1338,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-STATE-01-design — isolate tee's output list per execution
 
-- **Status:** Claimed by Antigravity on `work/TEE-STATE-01-design`; review corrections required
+- **Status:** Done; reviewed `bda5c6c`, exact #341 all three checks passed
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 audit
 - **Scope:** documentation-only design using existing executor delegation and
@@ -1350,3 +1350,55 @@ accepted. Future stream or integer extensions still require explicit design.
   exec and allocation rollback, deterministic pre-teardown ownership assertions.
   No tee import or implementation authorized by this design task. Signal and
   raw-write progress remain separate prerequisites.
+
+### STAT-01 — private default file-creation mode for tee
+
+- **Status:** Claimed by Codex worker on `work/STAT-01`
+- **Base:** main
+- **Depends on:** reviewed NEXT-UTIL-02 source audit
+- **Scope:** private sys/stat.h exposes only the DEFFILEMODE integer constant
+  0666 required by pinned tee. Do not advertise struct stat, stat/fstat,
+  chmod, umask or a permissions system that does not exist.
+- **Red:** missing private header is compile feasibility evidence. A deliberately
+  incorrect constant must fail the actual mode assertion as a labeled
+  after-implementation regression control.
+- **Accept:** ordinary private-header open with DEFFILEMODE; runtime-side stat
+  and fstat observe stored mode 0666, close/unlink cleanup is checked, and source
+  fences reject host header/open fallback. Preserve existing records/capacity;
+  independent review, all three exact CI checks and fresh Mac acceptance.
+
+### TEE-STATE-01 — synthetic proof of isolated module state
+
+- **Status:** Claimed by Antigravity on `work/TEE-STATE-01`
+- **Base:** main
+- **Depends on:** TEE-STATE-01-design
+- **Scope:** implement only the reviewed executor wrapper with a synthetic
+  pointer-global program; no actual tee import or signal implementation.
+- **Red:** repeated and interleaved execution with a shared list must demonstrate
+  cross-task state failure before the adapter.
+- **Accept:** typed saved state, native delegate with inner execution, all
+  lifecycle methods, no list traversal during teardown, and exact ownership
+  observations. Separately inject sidecar allocation, native execution allocation
+  and host context creation failures. Preserve another active task's state;
+  prove failed/successful exec and blocked teardown. Review, exact CI and actual
+  shared Mac tests required before runtime integration.
+
+### SIG-01-design — define honest interrupt behavior before tee -i
+
+- **Status:** Claimed by Codex on `work/SIG-01-design`; documentation only
+- **Base:** main
+- **Depends on:** reviewed NEXT-UTIL-02 audit
+- **Scope:** define a bounded task-owned interrupt/disposition contract and real
+  deterministic delivery path before exposing signal(SIGINT, SIG_IGN). A stub
+  returning failure or success does not establish tee -i because tee ignores
+  the return value. No implementation or new API is authorized by this task.
+- **Red:** current core exposes no task signal/disposition API; identify exact
+  task lifecycle and scheduling boundaries rather than treating missing headers
+  as the only requirement.
+- **Accept:** specify supported signal/dispositions, unsupported requests,
+  previous-disposition return, ownership, spawn inheritance, exec reset/preserve
+  behavior, blocked/running task delivery and cleanup. Distinguish proposed API
+  from existing declarations and cooperative delivery from host preemption.
+  Define bounded Linux/Mac tests for ignored versus default delivery, peer-task
+  isolation and failed/successful exec. Do not advertise host keyboard wiring,
+  arbitrary handlers, full POSIX signals or tee acceptance without proof.

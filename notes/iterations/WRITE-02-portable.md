@@ -82,3 +82,13 @@ native/shared cases, ASAN/UBSAN, architecture/source boundaries, publication,
 protocol checks, clean build-mode isolation and GCC static analysis.
 Exact Woodpecker and coordinator-owned fresh Mac acceptance: pending. No guest
 execution, throughput, or host-adapter progress guarantee is claimed here.
+
+## Accepted combined integration
+
+Both halves are accepted on main at
+`e290168f0e080bd55dbbdcff65f87c4ecd2d2479` after independent review and
+all three exact Woodpecker #340 workflows. Fresh System 7 run `run-nlaw0wk6`
+passed all 66 records in 28.45 seconds, preserving all prior cases. The complete
+fresh transcript and screenshot were inspected; normal shutdown, closed app and
+disks, and slot release were verified. Archive SHA256:
+`774c1d5aea25b54201d75ef86405f1ac21d4f4056275acf5796cda8ac3a9248d`.

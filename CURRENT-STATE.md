@@ -4,14 +4,30 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted console-write boundary, 2026-09-08
+
+Main `e290168f0e080bd55dbbdcff65f87c4ecd2d2479` includes the finite Linux
+console loop and portable callback count validation. Independent feature and
+integration reviews passed; exact Woodpecker #340 passed ci, mac68k and
+mac-automation. Fresh Basilisk II run `run-nlaw0wk6` passed all 66 records,
+retaining all prior 65 and adding consolewrite. The complete transcript and
+screenshot were inspected; app and guest disks closed normally and the slot
+was released in 28.45 seconds. Archive SHA256:
+`774c1d5aea25b54201d75ef86405f1ac21d4f4056275acf5796cda8ac3a9248d`.
+
+Linux tests observed both old zero-progress and lost-prefix failures before the
+fix. The shared portable test observed the old nonempty zero-return failure
+before its guard. These are bounded deterministic callback tests; no real
+terminal fault or complete nonblocking/signal support is claimed.
+
 ## Active work after head acceptance
 
-Claude implements HEAD-02 failure characterization. Antigravity corrects the
-tee executor-state design; the reviewed next-utility audit identifies tee as a
+Claude implements HEAD-02 failure characterization. Antigravity implements the
+reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition, per-execution list state and
 finite raw-write progress. Resetting a global or adding a signal stub is not
-acceptance. Codex owns WRITE-02-linux and coordinates the portable console-count
-validation worker, independent reviews and serialized Mac acceptance.
+acceptance. WRITE-02 is accepted. Codex coordinates STAT-01, independent reviews and
+serialized Mac acceptance while preparing the remaining signal contract.
 
 ## What this is
 
@@ -62,9 +78,9 @@ its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude is running HEAD-02, tests-only characterization
 of unchanged head input/output failures and repeated recovery, extending the
-existing helper while preserving all current records. Antigravity is correcting
-the TEE-STATE-01-design proposal after the reviewed uniq/cut/tee audit. Codex
-owns WRITE-02-linux and coordinates the portable write worker, reviews,
+existing helper while preserving all current records. Antigravity implements
+TEE-STATE-01 from the reviewed design after the uniq/cut/tee audit. Codex
+coordinates STAT-01, independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
 implementation assignments. New signals, upstream head patches and general

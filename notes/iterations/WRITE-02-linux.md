@@ -56,3 +56,13 @@ and all three Woodpecker #332 workflows. An additional focused Clang
 ASan/UBSan build ran all eight cases successfully. The coordinator combines
 this host-only fix with the portable counterpart for a separate exact-commit
 CI and Mac acceptance gate; feature success is not that integration result.
+
+## Accepted combined integration
+
+Both halves are accepted on main at
+`e290168f0e080bd55dbbdcff65f87c4ecd2d2479` after independent review and
+all three exact Woodpecker #340 workflows. Fresh System 7 run `run-nlaw0wk6`
+passed all 66 records in 28.45 seconds, preserving all prior cases. The complete
+fresh transcript and screenshot were inspected; normal shutdown, closed app and
+disks, and slot release were verified. Archive SHA256:
+`774c1d5aea25b54201d75ef86405f1ac21d4f4056275acf5796cda8ac3a9248d`.
