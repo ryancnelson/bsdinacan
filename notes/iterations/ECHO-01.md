@@ -197,6 +197,11 @@ fabricated or assumed. This note will keep recording the exact result
 of each subsequent push honestly -- this is not being claimed green
 before Woodpecker actually says so on the exact pushed commit.
 
+**Outcome**: `1d27c1e` (the commit fixing the missed `FIXTURE_YES` call
+site and the `bound_api` rebind) came back `success` on all three
+Woodpecker checks -- `ci`, `mac-automation`, and `mac68k`. This is the
+exact candidate commit for the coordinator's review.
+
 ## Preparation pass (superseded by the above; kept for history)
 
 The section below is the original preparation-only record from before
