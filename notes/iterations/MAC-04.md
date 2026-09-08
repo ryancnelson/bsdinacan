@@ -54,3 +54,17 @@
 - Bounds: one timed source trial, not a reliability series; layout/font/menu
   changes need explicit recalibration. Unknown dialogs time out for inspection.
   Tests do not simulate Hammerspoon event delivery or prove guest UI behavior.
+
+
+## Coordinator runtime validation
+
+The committed project driver `13c0061` completed a staged MAC-03 artifact run
+in **15.4431 seconds**, including PID/preferences verification, exact artifact
+acceptance, screenshot, normal guest shutdown, and slot release. Artifact:
+`86c6754e211a849db57938b25b5652f8d13b2283`; archive SHA-256:
+`386030c623aa2df9f1e639385a8f48c73a5e4e2c6e8e62d82e04228b8548e8bc`.
+The retained MAC-01 receipt is `run-evhesz6f/acceptance.json`; its automation
+subdirectory holds the screenshot and timestamped action record. Default
+interactive mode was used; optional guest-owned PICT mode was not exercised.
+This validates the driver against that artifact, not the merged integration
+artifact, which must receive its own CI build and guest run.

@@ -48,6 +48,23 @@ That statement is bounded by the current tests. It is not evidence of complete
 POSIX semantics, memory safety under untested operations, classic-host
 portability, networking, dynamic modules, or WASM execution.
 
+## Mac acceptance automation update, 2026-09-07
+
+The Hammerspoon runner and supplied image templates live in
+`platform/mac68k/automation`. It uses MAC-01 staging, validates the launched
+PID/preferences, saves a fresh result and screenshot, exits the guest program,
+and selects normal guest shutdown. A prototype cold cycle took 12.7 seconds;
+the project version with staging/receipt/slot checks took 15.4 seconds.
+
+MAC-02's exact CI artifact passed three independent cold guest runs. The
+reviewed root/task scheduler path avoids the intermittent error28 cause;
+MAC-05 tracks direct task/task service resumption as a separate follow-up.
+Claude is working on FS-01 design and PENV-03 review corrections. Antigravity is
+fixing PORT-01 review findings; VFS-01 also needs corrections. Failed exact-head
+CI statuses override earlier worker claims of green. Those branches remain
+unmerged. MAC-03 guest-owned optional screenshot mode needs separate runtime
+acceptance before integration.
+
 ## Current evidence
 
 The experimental `mac-system7` branch adds `platform/mac68k` without changing
