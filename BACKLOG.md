@@ -1232,7 +1232,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### MAC-14 — reject hidden bytes and truncated acceptance output
 
-- **Status:** Claimed by Codex on `work/MAC-14`
+- **Status:** Done at `f16873d`; exact #308 all three CI checks and fresh 62-record Mac acceptance
 - **Base:** main at `731b447`
 - **Depends on:** current native/Mac acceptance harness
 - **Hypothesis:** string-only comparisons can falsely accept output beginning

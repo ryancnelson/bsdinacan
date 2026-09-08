@@ -36,3 +36,14 @@ All 18 guest protocol tests pass. The focused executable is required by `make ci
 Exact Woodpecker ci, mac68k and mac-automation, independent review and a fresh
 complete 62-record Mac guest run are required before merge. No guest result is
 claimed by this initial candidate.
+
+## Exact acceptance and merge
+
+Candidate `f16873d246ab3afcc70966b89ae11b9557f6055a` passed independent review
+and all three exact Woodpecker #308 workflows. Fresh guest `run-6i_uo4y9`
+passed all 62 records in 21.58 seconds. The complete fresh transcript and
+screenshot were inspected; receipt confirms app and guest disks closed, with
+normal shutdown and slot release verified. Artifact archive SHA256:
+`e8c6c8e4cb0989a06dc5f6c6bf0805272f0217eb9e663c8eecab5420b3f24789`.
+Merged to main after all gates passed. The earlier Remaining acceptance section
+records the initial candidate state and is satisfied by this evidence.

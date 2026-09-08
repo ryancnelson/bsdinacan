@@ -24,6 +24,18 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Acceptance comparison correction, 2026-09-08
+
+MAC-14 is accepted at `f16873d246ab3afcc70966b89ae11b9557f6055a`.
+Native and Mac text acceptance now require exact captured byte lengths; Mac
+capture also rejects discarded output. Focused tests reproduce and reject the
+former leading-NUL false pass, hidden suffix and truncated matching prefix.
+Independent review and exact Woodpecker #308 all three checks passed. Fresh
+Basilisk II run `run-6i_uo4y9` passed all 62 records in 21.58 seconds, with the
+screenshot/full transcript inspected and normal shutdown, closed disks and
+slot release verified. Artifact archive SHA256:
+`e8c6c8e4cb0989a06dc5f6c6bf0805272f0217eb9e663c8eecab5420b3f24789`.
+
 ## Latest accepted head prerequisites, 2026-09-08
 
 Bounded unbuffered fread and pinned NetBSD strtoimax with C-locale ctype helpers
