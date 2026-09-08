@@ -501,10 +501,15 @@ if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$fwrite_source"; then
     echo 'FAIL: fwrite source uses private names' >&2
     exit 1
 fi
-for symbol in fwrite ferror; do
+for symbol in fwrite ferror errno_location strcmp; do
     if nm -u "$fwrite_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
        ! nm -u "$fwrite_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
         echo "FAIL: fwrite probe lacks private $symbol boundary" >&2
         exit 1
     fi
 done
+
+if nm -u "$fwrite_object" | matches '[[:space:]]U[[:space:]]+(stdin|stdout|stderr)$'; then
+    echo 'FAIL: fwrite probe imports host stream identities' >&2
+    exit 1
+fi

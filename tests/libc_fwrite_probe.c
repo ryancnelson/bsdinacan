@@ -9,6 +9,46 @@ int main(int argc, char **argv)
     if (argc != 2) return 1;
     mode = argv[1];
 
+    /* This path deliberately does not access errno or query flags. */
+    if (strcmp(mode, "zero_quiet") == 0)
+        return fwrite((void *)1, 0, SIZE_MAX, (FILE *)1) == 0 &&
+               fwrite(NULL, SIZE_MAX, 0, NULL) == 0 &&
+               fwrite(NULL, 0, 0, stdin) == 0 ? 0 : 40;
+    if (strcmp(mode, "split") == 0) {
+        errno = ENOENT;
+        return fwrite("abcdefgh", 4, 2, stdout) == 2 && errno == ENOENT &&
+               !ferror(stdout) ? 0 : 41;
+    }
+    if (strcmp(mode, "partial_recover") == 0) {
+        errno = ENOENT;
+        if (fwrite("abcdefgh", 4, 2, stdout) != 1 || errno != EPIPE ||
+            !ferror(stdout) || ferror(stderr)) return 42;
+        return fwrite("ij", 2, 1, stdout) == 1 && errno == EPIPE &&
+               ferror(stdout) && !ferror(stderr) ? 0 : 43;
+    }
+    if (strcmp(mode, "clip") == 0) {
+        /* No-write adapter observes the request; it never reads this buffer. */
+        errno = ENOENT;
+        return fwrite("x", 1, SIZE_MAX, stdout) == 0 && errno == EIO &&
+               ferror(stdout) ? 0 : 44;
+    }
+    if (strcmp(mode, "wide_return") == 0) {
+        errno = ENOENT;
+        return fwrite("abcdefgh", 4, 2, stdout) == 0 && errno == EIO &&
+               ferror(stdout) ? 0 : 45;
+    }
+    if (strcmp(mode, "bounds") == 0) {
+        errno = ENOENT;
+        if (EOVERFLOW != 84 || fwrite("x", SIZE_MAX / 2 + 1, 2, stdout) ||
+            errno != EOVERFLOW || ferror(stdout) || ferror(stderr)) return 46;
+        if (fwrite(NULL, SIZE_MAX, 2, stdout) || errno != EOVERFLOW ||
+            fwrite(NULL, 1, 1, stdout) || errno != EINVAL ||
+            fwrite("x", SIZE_MAX, 2, stdin) || errno != EINVAL ||
+            fwrite("x", 1, 1, NULL) || errno != EINVAL ||
+            fwrite("x", 1, 1, (FILE *)1) || errno != EINVAL) return 47;
+        return !ferror(stdout) && !ferror(stderr) ? 0 : 48;
+    }
+
     if (strcmp(mode, "ordinary") == 0) {
         const char binary[] = "\x00\xff" "AB";
         if (fwrite(binary, 1, 4, stdout) != 4) return 1;

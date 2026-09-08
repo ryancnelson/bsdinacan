@@ -101,6 +101,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_stdin_probe_module.c
     ${ROOT}/tests/libc_stdin_compat_module.c
     ${ROOT}/tests/libc_stdio_state_probe_module.c
+    ${ROOT}/tests/libc_fwrite_compat_module.c
     ${ROOT}/tests/libc_fwrite_probe_module.c
     ${ROOT}/tests/libc_stdio_oldtable_probe_module.c
     ${ROOT}/tests/libc_getopt_arg_probe_module.c

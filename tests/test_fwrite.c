@@ -115,9 +115,13 @@ static int injected_main(const struct cb_api_v1 *api, int argc,
     }
     if (strcmp(argv[1], "state_recover") == 0) {
         global_state.struct_size = 0;
-        char *fake_argv[] = { argv[0], "state_old", NULL }; if (cb_libc_start(&copy, argc, fake_argv, cb_fwrite_probe_main) != 0) return 90;
+        char *fake_argv[] = { argv[0], "state_old", NULL }; if (cb_libc_start(&copy, argc, fake_argv, cb_fwrite_probe_main) != 0) {
+            (void)cb_libc_start(api, 0, NULL, noop); return 90;
+        }
         global_state.struct_size = sizeof(global_state);
-        if (global_state.stdout_error) return 91;
+        if (global_state.stdout_error) {
+            (void)cb_libc_start(api, 0, NULL, noop); return 91;
+        }
         result = cb_libc_start(&copy, argc, argv, cb_fwrite_probe_main);
         if (cb_libc_start(api, 0, NULL, noop) != 0) return 92;
         return result;
@@ -164,6 +168,8 @@ static void run(const char *command, const struct cb_program_v1 *program)
     }
 }
 
+extern const struct cb_program_v1 cb_fwrite_compat_program;
+
 void cb_test_fwrite(void)
 {
     static const struct {
@@ -194,6 +200,7 @@ void cb_test_fwrite(void)
         {"fwriteinject state_recover", 0, "a", "", 1}
     };
     size_t index;
+    run("fwritecompat", &cb_fwrite_compat_program);
     for (index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
         write_plan = cases[index].plan;
         write_calls = 0;
