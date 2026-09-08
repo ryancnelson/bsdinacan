@@ -24,8 +24,11 @@ Do not put local paths or config files into the repository. No Hammerspoon
 `init.lua` modification is needed.
 
 The clean System 7 boot seed must have the compiled `zzz-run-tests` applet on
-the desktop. It must open the application on the attached `CannedBSD` volume,
-not an older copy elsewhere. The supplied templates match the calibrated
+the desktop. Its exact tested source is `zzz-run-tests.applescript`: Finder opens
+`CannedBSD:CannedBSD` on the attached volume. The calibrated seed used this source
+saved as a Compiled Script and packed into Apple's applet stub, preserving the
+`scpt` resource 128; its Finder type/creator were APPL/aplt. A seed containing
+this verified applet is a prerequisite; host automation does not rebuild it. The supplied templates match the calibrated
 System 7 layout, fonts, and 2x template scale. Recalibrate explicitly if these
 change; a new dialog is not automatically dismissed.
 
