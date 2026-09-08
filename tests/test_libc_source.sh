@@ -395,4 +395,18 @@ for symbol in putchar fflush ferror; do
     fi
 done
 
+argv_source=tests/libc_argv_probe.c
+argv_object=$build_path/libc_argv_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$argv_source"; then
+    echo 'FAIL: argv source uses private names' >&2
+    exit 1
+fi
+for symbol in malloc memcpy; do
+    if nm -u "$argv_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$argv_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: argv probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'
