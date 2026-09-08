@@ -15,7 +15,7 @@ their paths do not overlap.
 
 **Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
 A Codex worker repairs the synthetic TEE-STATE-01 fixture in an isolated
-review worktree; Antigravity audits the actual lifecycle read-only.
+review worktree; Antigravity audits imported-source provenance.
 Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
@@ -1430,7 +1430,8 @@ accepted. Future stream or integer extensions still require explicit design.
 
 - **Status:** Repair assigned to Codex on `work/TEE-STATE-01-review`; original
   Antigravity branch frozen after repeated fixture setup failures. Antigravity
-  performs a read-only lifecycle audit. No tee-state acceptance is claimed.
+  completed a read-only lifecycle audit. Reviewed replacement df00ae8 is
+  pending exact integration CI and fresh 67-record Mac acceptance.
 - **Base:** main
 - **Depends on:** TEE-STATE-01-design
 - **Scope:** implement only the reviewed executor wrapper with a synthetic
@@ -1510,3 +1511,24 @@ accepted. Future stream or integer extensions still require explicit design.
   zero progress through the real console callback boundary, where WRITE-02
   converts it to EIO, not a fake raw write that bypasses that contract. Preserve prior
   guest coverage/capacity and require exact applicable platform gates.
+
+### TEE-01-matrix — concrete upstream command acceptance cases
+
+- **Status:** Reviewed source-derived matrix integrated; no command execution claimed
+- **Base:** main; documentation only
+- **Scope:** exact inputs, output/status/diagnostics and ownership requirements
+  for pinned tee, with runtime prerequisites and source analysis distinguished.
+- **Accept:** raw binary and block boundaries, truncation/append, continued valid
+  outputs after bad paths, bounded read/write/close failures, and real default
+  versus ignored interrupts. Actual tee execution remains blocked on TEE-01.
+
+### UPSTREAM-AUDIT-01 — verify imported-source provenance and wiring
+
+- **Status:** Claimed by Antigravity on `work/UPSTREAM-AUDIT-01`; documentation only
+- **Base:** freshly fetched main
+- **Scope:** inventory actual imported files versus cannedBSD-owned commands,
+  local hashes and pinned revisions, retained license notices, symbol renaming,
+  build wiring and existing source-fence coverage. No source replacement.
+- **Accept:** report only verified mismatches and distinguish executed checks
+  from inspection. Propose a separate bounded fix for a discovered defect;
+  no runtime or guest changes in the audit note.
