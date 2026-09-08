@@ -83,7 +83,7 @@ python3 platform/mac68k/guest.py check --state /path/to/shared-guest-state
 ```
 
 Acceptance requires a newly written regular result file with the exact ordered
-transcript from `acceptance_cases.def`: eleven named `PASS` lines including
+transcript from `acceptance_cases.def`: a named `PASS` line for every case plus
 `PASS contexts`, followed by `ALL PASS`. Missing or duplicated probe lines are
 rejected. Staging also saves `expected-result.txt` for the Hammerspoon driver. Missing,
 stale, or incomplete results fail with a nonzero exit. A passing check writes
@@ -121,7 +121,11 @@ health. Use the same verified HFS artifact and fresh evidence procedure for both
 
 ## Optional unattended evidence mode
 
-Normal launches remain interactive. To request an unattended guest run, create
+Normal launches remain interactive. Prefer `guest.py stage --autorun` with the
+normal artifact/staging arguments: it records the mode and prepares all files
+before boot. The Hammerspoon runner detects this mode automatically.
+
+For manual setup with the emulator stopped, create
 `cannedbsd-autorun.txt` in the shared host directory before boot. Also precreate
 empty writable `cannedbsd-result.txt`, `cannedbsd-screen.pict`, and
 `cannedbsd-done.txt`. Native Basilisk II's shared-folder backend does not
@@ -162,3 +166,32 @@ the core's RAM filesystem. Only the acceptance evidence file uses the shared
 host volume. Self-hosted compilation with Symantec C++ 7.0 is a possible later
 experiment: https://macintoshgarden.org/apps/symantec-c-70 . It is not part of
 this cross-build gate.
+
+### Autorun host acceptance
+
+`stage --autorun` creates the marker and empty result, PICT, and done files in
+the fresh shared directory before its staging timestamp. It records
+`"autorun": true` in the manifest. Without the flag, staging and the driver keep
+the existing interactive behavior.
+
+The autorun driver waits for the exact expected result and `PASS\n` completion,
+then calls `guest.py inspect`. Inspection checks fresh regular files, archive
+identity, the PICT header/bounds, and a real macOS `sips` decode through the
+configured local OpenCV runtime. It rejects blank or incorrectly sized images
+and saves the decoded `cannedbsd-screen.png` beside the manifest. Pixel contrast
+is a readability guard; the exact text assertions remain in the result file.
+Inspection does not create an acceptance receipt.
+
+The driver observes Finder's Special menu and absence of the CannedBSD title
+before requesting normal Finder shutdown. It sends no shell exit keystrokes in
+this mode. After the emulator exits, `guest.py check --app-closed` repeats the
+evidence validation, checks that staged disks are closed, and writes a receipt
+that also binds the completion and screenshot hashes. The driver then releases
+the slot. The flag is the controller's explicit window-closure observation;
+a done token alone is insufficient.
+
+An invalid completion, failed test, missing/stale/undecodable screenshot, or
+setup timeout stops automation and retains the guest and evidence for review.
+Neither inspection nor a failed check writes an acceptance receipt. The
+existing timeout also covers an app that never closes or a shutdown confirmation
+that has not completed; the runner does not terminate the emulator to force it.

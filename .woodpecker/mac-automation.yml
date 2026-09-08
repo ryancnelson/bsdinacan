@@ -12,5 +12,7 @@ steps:
     commands:
       - apt-get update && apt-get install -y --no-install-recommends lua5.4
       - lua tests/test_mac_runner_startup.lua
+      - lua tests/test_mac_autorun_driver.lua
       - python -m pip install --no-cache-dir -r platform/mac68k/automation/requirements.txt
       - python tests/test_mac_image_match.py
+      - python tests/test_mac_picture.py

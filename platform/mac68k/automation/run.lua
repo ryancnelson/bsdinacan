@@ -33,6 +33,13 @@ assert(#disks==2 and disks[1]==staged..'/System.dsk' and disks[2]==staged..'/Can
 local resultFile=assert(io.open(cfg.result,'rb'),'Missing precreated guest result')
 local initial=resultFile:read('*a'); resultFile:close()
 assert(initial=='','Stage a fresh run; existing evidence must not be overwritten')
+if manifest.autorun then
+ for _,name in ipairs({'autorun.txt','screen.pict','done.txt'}) do
+  local f=assert(io.open(staged..'/shared/cannedbsd-'..name,'rb'),'Missing precreated autorun file: '..name)
+  local bytes=f:read('*a'); f:close()
+  assert(bytes=='','Stage fresh empty autorun files before boot')
+ end
+end
 assert(not (macTestRun and macTestRun.active),'A test run already owns the UI')
 assert(not hs.application.find('BasiliskII'),'Shut down the existing guest before running')
 assert(hs.screenRecordingState() and hs.accessibilityState(),'Hammerspoon needs Screen Recording and Accessibility')
@@ -58,6 +65,7 @@ local function finish(ok,why)
  if R.held then hs.eventtap.event.newMouseEvent(types.leftMouseUp,R.mouse):post(); R.held=false end
  R.active=false; for _,t in ipairs(R.timers) do t:stop() end
  if R.matcher then R.matcher:closeInput(); R.matcher:terminate() end
+ if not ok and R.guestTask then R.guestTask:terminate() end
  log(why); save(R.dir..'/run.json',hs.json.encode({ok=ok,reason=why,elapsed=hs.timer.secondsSinceEpoch()-R.start,events=R.events,commit=manifest.commit,artifact_sha256=manifest.artifact_sha256,
  acceptance=staged..'/acceptance.json'},true))
  if not ok then snap(R.dir..'/failure.png') end
@@ -91,16 +99,20 @@ R.matcher=hs.task.new(cfg.python,function(code) if R.active then finish(false,'M
  end
  return true
 end,{'-u',root..'match.py','--ready'})
-local function find(name,cb)
- local frame=snap(R.dir..'/screen.png'); if not frame then after(.15,function() find(name,cb) end); return end
+local function observe(name,cb)
+ local frame=snap(R.dir..'/screen.png'); if not frame then after(.15,function() observe(name,cb) end); return end
  pending=function(m)
   if m.error then finish(false,m.error)
-  elseif m.found then
-   if not focused(m.frame) then finish(false,'Focus or window frame changed'); return end
-   log('Matched '..name); cb(m)
-  else after(.15,function() find(name,cb) end) end
+  elseif not focused(m.frame) then finish(false,'Focus or window frame changed')
+  else cb(m) end
  end
  R.matcher:setInput(hs.json.encode({image=R.dir..'/screen.png',frame=frame,name=name})..'\n')
+end
+local function find(name,cb)
+ observe(name,function(m)
+  if m.found then log('Matched '..name); cb(m)
+  else after(.15,function() find(name,cb) end) end
+ end)
 end
 local function click(m,double,cb)
  if not focused(m.frame) then finish(false,'Focus or window frame changed before click'); return end
@@ -117,21 +129,27 @@ local function click(m,double,cb)
   one(1)
  end)
 end
-local function guestCommand(command,callback)
+local function guestCommand(command,callback,appClosed)
+ local args={root..'../guest.py',command,'--state',cfg.state}
+ if appClosed then args[#args+1]='--app-closed' end
  local task=hs.task.new(cfg.python,function(code,out,err)
   if not R.active then return end
   if code~=0 then finish(false,'guest.py '..command..' rejected: '..out..err)
   else callback(out) end
- end,{root..'../guest.py',command,'--state',cfg.state})
+ end,args)
  R.guestTask=task
  if not task:start() then finish(false,'Cannot start guest.py '..command) end
 end
+local function releaseAccepted()
+ guestCommand('release',function() finish(true,'ALL PASS; screenshot saved; guest shut down; slot released') end)
+end
 local function waitExit()
  if not app() then
-  guestCommand('release',function() finish(true,'ALL PASS; screenshot saved; guest shut down; slot released') end)
+  if R.exitCallback then R.exitCallback() else releaseAccepted() end
  else after(.15,waitExit) end
 end
-local function shutdown()
+local function shutdown(onExited)
+ R.exitCallback=onExited
  find('special',function(m)
   R.mouse={x=m.x,y=m.y}; hs.eventtap.event.newMouseEvent(types.mouseMoved,R.mouse):post()
   after(.06,function()
@@ -148,6 +166,41 @@ local function shutdown()
   end)
  end)
 end
+local function waitCannedBSDClosed(callback)
+ -- Require Finder's menu and absence of the CannedBSD title on fresh frames.
+ -- No click hides or switches away from the app during this observation.
+ observe('special',function(finder)
+  if not finder.found then after(.15,function() waitCannedBSDClosed(callback) end); return end
+  observe('cannedbsd-close',function(title)
+   if type(title.score)~='number' or title.score>=.90 then
+    after(.15,function() waitCannedBSDClosed(callback) end); return
+   end
+   log('CannedBSD title absent; Finder menu visible'); callback()
+  end)
+ end)
+end
+local autorunEvidence=dofile(root..'autorun.lua')({
+ expected=expectedResult,
+ read=function()
+  local function read(path)
+   local f=io.open(path,'rb'); if not f then return nil end
+   local text=f:read('*a'); f:close(); return text
+  end
+  return read(cfg.result),read(staged..'/shared/cannedbsd-done.txt')
+ end,
+ after=function(fn) after(.15,fn) end,
+ fail=function(why) finish(false,why) end,
+ inspect=function(callback) guestCommand('inspect',function()
+  log('Fresh autorun result, PASS completion, and decoded screenshot verified'); callback()
+ end) end,
+ waitClosed=waitCannedBSDClosed,
+ accept=function(callback) guestCommand('check',function()
+  log('Autorun acceptance saved after app and guest shutdown'); callback()
+ end,true) end,
+ shutdown=shutdown,
+ release=releaseAccepted
+})
+
 local function evidence()
  local f=io.open(cfg.result,'rb'); local text=f and f:read('*a') or ''; if f then f:close() end
  if text:find('FAIL',1,true) then finish(false,'Guest test failure'); return end
@@ -172,7 +225,9 @@ local function booted()
   a:activate(); after(.15,function()
   find('trash',function(m) click(m,false,function()
    find('zzz',function(z) click(z,true,function()
-    log('Launched zzz-run-tests'); find('shell',function(s) R.shell=s; evidence() end)
+    log('Launched zzz-run-tests')
+    if manifest.autorun then autorunEvidence()
+    else find('shell',function(s) R.shell=s; evidence() end) end
    end) end)
   end) end)
  end)

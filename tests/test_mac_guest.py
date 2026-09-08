@@ -64,6 +64,82 @@ class GuestTests(unittest.TestCase):
                       'export EMPTY=; printenv EMPTY', 'printenv FOO=bar']:
             self.assertIn('PASS ' + probe + '\n', expected)
 
+    def test_autorun_stage_precreates_evidence_before_timestamp(self):
+        run = guest.stage(self.artifact, self.state, 'a' * 40, None, autorun=True)
+        manifest = json.loads((run / 'manifest.json').read_text())
+        self.assertTrue(manifest['autorun'])
+        for name in ['autorun.txt', 'result.txt', 'screen.pict', 'done.txt']:
+            path = run / ('shared/cannedbsd-' + name)
+            self.assertTrue(path.is_file())
+            self.assertLessEqual(path.stat().st_mtime_ns, manifest['staged_ns'])
+        for name in ['result.txt', 'screen.pict', 'done.txt']:
+            self.assertEqual((run / ('shared/cannedbsd-' + name)).read_bytes(), b'')
+
+    def autorun_evidence(self):
+        run = guest.stage(self.artifact, self.state, 'a' * 40, None, autorun=True)
+        self.result(run)
+        (run / 'shared/cannedbsd-done.txt').write_bytes(b'PASS\n')
+        (run / 'shared/cannedbsd-screen.pict').write_bytes(b'protocol fixture, decoder injected')
+        return run
+
+    @staticmethod
+    def decoder(picture, output):
+        # File protocol test only; actual PICT decoding is a separate Mac gate.
+        return {'screenshot_png_sha256': 'decoded', 'screenshot_width': 630,
+                'screenshot_height': 384}
+
+    def test_autorun_inspection_and_app_closure_precede_receipt(self):
+        run = self.autorun_evidence()
+        receipt = guest.inspect(self.state, self.decoder)
+        self.assertEqual(receipt['done_sha256'], hashlib.sha256(b'PASS\n').hexdigest())
+        self.assertFalse((run / 'acceptance.json').exists())
+        with self.assertRaisesRegex(guest.Rejection, 'closure'):
+            guest.check(self.state, picture_validator=self.decoder)
+        self.assertFalse((run / 'acceptance.json').exists())
+        with self.assertRaisesRegex(guest.Rejection, 'still open'):
+            guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: True)
+        self.assertFalse((run / 'acceptance.json').exists())
+        receipt = guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: False)
+        self.assertTrue(receipt['app_closed'])
+        self.assertTrue((run / 'acceptance.json').exists())
+        self.assertTrue((self.state / 'slot').exists())
+
+    def test_autorun_rejects_failed_incomplete_and_stale_completion(self):
+        run = self.autorun_evidence()
+        done = run / 'shared/cannedbsd-done.txt'
+        for token in [b'', b'FAIL\n', b'PASS', b'garbage']:
+            done.write_bytes(token)
+            with self.assertRaises(guest.Rejection):
+                guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: False)
+            self.assertFalse((run / 'acceptance.json').exists())
+        done.write_bytes(b'PASS\n')
+        stamp = json.loads((run / 'manifest.json').read_text())['staged_ns']
+        os.utime(done, ns=(stamp - 1, stamp - 1))
+        with self.assertRaisesRegex(guest.Rejection, 'stale'):
+            guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: False)
+
+    def test_autorun_rejects_missing_stale_and_undecodable_screenshot(self):
+        run = self.autorun_evidence()
+        picture = run / 'shared/cannedbsd-screen.pict'
+        picture.unlink(); picture.mkdir()
+        with self.assertRaisesRegex(guest.Rejection, 'regular'):
+            guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: False)
+        picture.rmdir(); picture.write_bytes(b'picture')
+        stamp = json.loads((run / 'manifest.json').read_text())['staged_ns']
+        os.utime(picture, ns=(stamp - 1, stamp - 1))
+        with self.assertRaisesRegex(guest.Rejection, 'stale'):
+            guest.check(self.state, app_closed=True, picture_validator=self.decoder, is_open=lambda paths: False)
+        picture.write_bytes(b'invalid PICT')
+        with self.assertRaisesRegex(guest.Rejection, 'PICT'):
+            guest.check(self.state, app_closed=True, is_open=lambda paths: False)
+        self.assertFalse((run / 'acceptance.json').exists())
+
+    def test_default_stage_does_not_enable_autorun(self):
+        run = self.stage()
+        self.assertFalse(json.loads((run / 'manifest.json').read_text())['autorun'])
+        for name in ['autorun.txt', 'done.txt', 'screen.pict']:
+            self.assertFalse((run / ('shared/cannedbsd-' + name)).exists())
+
     def test_bad_checksum_rejected_without_claiming_slot(self):
         (self.artifact / 'CannedBSD.tar.gz').write_bytes(b'corrupt')
         with self.assertRaisesRegex(guest.Rejection, 'checksum'):

@@ -137,3 +137,30 @@ Mac and Linux tests. The driver requires that complete transcript before asking
 `guest.py check` to verify freshness and write the bound receipt; a numerical
 PASS count or an older eight-pass transcript is insufficient. Restage old runs
 before using this driver version.
+
+## Optional guest autorun
+
+Add `--autorun` to `guest.py stage` before boot. The manifest selects the mode;
+no Hammerspoon configuration change is needed. The driver waits for the guest's
+complete result, durable PASS token, and decodable nonblank PICT, observes the
+CannedBSD title gone and Finder menu visible, then performs normal Finder
+shutdown. It skips interactive-shell matching and exit typing. Acceptance is
+published only after emulator exit and the staged disks are confirmed closed.
+The guest PICT and decoded `cannedbsd-screen.png` remain in the staged run.
+
+Use the configured local Python runtime containing the pinned OpenCV dependency;
+PICT decoding additionally uses macOS `/usr/bin/sips`. Neither files nor markers
+are created or changed after boot. For failures, inspect the retained guest,
+`automation-*/failure.png`, and shared outputs; perform a verified clean shutdown
+before releasing the slot. The title template is the actual MAC-08 capture,
+not a generated image.
+
+Host-only sequencing and pixel validation tests:
+
+```sh
+lua tests/test_mac_autorun_driver.lua
+python tests/test_mac_picture.py
+```
+
+These tests validate controller ordering and rejection of blank decoded pixels.
+They do not replace the exact-artifact guest PICT and shutdown acceptance gate.

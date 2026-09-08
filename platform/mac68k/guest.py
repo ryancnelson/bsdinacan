@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -40,7 +41,7 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom=None):
+def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom=None, autorun=False):
     artifact, state = Path(artifact).resolve(), Path(state).resolve()
     native_settings = None
     if native_template is not None or rom is not None:
@@ -78,6 +79,9 @@ def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom
             # Native extfs can open an existing result more reliably than HCreate.
             # This empty placeholder predates staging and can never pass check.
             (run / 'shared/cannedbsd-result.txt').write_bytes(b'')
+            if autorun:
+                for name in ('autorun.txt', 'screen.pict', 'done.txt'):
+                    (run / ('shared/cannedbsd-' + name)).write_bytes(b'')
             (run / 'expected-result.txt').write_text(expected_result())
             shutil.copyfile(archive_path, run / 'CannedBSD.tar.gz')
             if digest(run / 'CannedBSD.tar.gz') != archive_sha:
@@ -96,7 +100,7 @@ def stage(artifact, state, expected_commit, boot_seed, native_template=None, rom
             manifest = {'commit': commit, 'artifact_sha256': archive_sha,
                         'disk_sha256': digest(run / 'CannedBSD.dsk'),
                         'staged_ns': time.time_ns(), 'run_directory': str(run),
-                        'boot_copy': boot_seed is not None}
+                        'boot_copy': boot_seed is not None, 'autorun': bool(autorun)}
             write_json(run / 'manifest.json', manifest)
             write_json(slot / 'active.json', {'run_directory': str(run)})
             return run
@@ -116,7 +120,57 @@ def active(state):
     return run, json.loads((run / 'manifest.json').read_text())
 
 
-def check(state):
+def validate_picture(picture, output):
+    """Decode the actual guest PICT; a nonempty file alone is not evidence."""
+    data = picture.read_bytes()
+    if len(data) < 526 or data[522:526] != b'\x00\x11\x02\xff':
+        raise Rejection('guest screenshot is not an extended version-2 PICT')
+    top, left, bottom, right = struct.unpack_from('>4h', data, 514)
+    width, height = right - left, bottom - top
+    if not 1 <= width <= 8192 or not 1 <= height <= 8192:
+        raise Rejection('invalid guest screenshot bounds')
+    # The driver already uses this pinned local OpenCV runtime for matching.
+    try:
+        import cv2
+    except ImportError as error:
+        raise Rejection('autorun screenshot validation requires the local OpenCV runtime') from error
+    with tempfile.TemporaryDirectory(prefix='picture-', dir=output.parent) as temporary:
+        decoded = Path(temporary) / 'screen.png'
+        try:
+            conversion = subprocess.run(['/usr/bin/sips', '-s', 'format', 'png',
+                                         str(picture), '--out', str(decoded)],
+                                        capture_output=True, timeout=15, check=False)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise Rejection('guest screenshot decoder failed') from error
+        if conversion.returncode != 0:
+            raise Rejection('guest screenshot cannot be decoded')
+        image = cv2.imread(str(decoded), cv2.IMREAD_GRAYSCALE)
+        validate_pixels(image, width, height)
+        decoded.replace(output)
+    return {'screenshot_width': width, 'screenshot_height': height,
+            'screenshot_png_sha256': digest(output)}
+
+
+def validate_pixels(image, width, height):
+    if image is None or image.shape != (height, width):
+        raise Rejection('guest screenshot decode dimensions do not match PICT')
+    if int((image < 128).sum()) < 100 or int((image > 240).sum()) < 100:
+        raise Rejection('guest screenshot is blank or has insufficient visible content')
+
+
+def fresh_file(run, manifest, name, maximum):
+    path = run / 'shared' / name
+    if not path.is_file() or path.is_symlink():
+        raise Rejection('missing regular ' + name)
+    stat = path.stat()
+    if stat.st_mtime_ns <= manifest['staged_ns']:
+        raise Rejection('stale ' + name)
+    if not 0 < stat.st_size <= maximum:
+        raise Rejection('empty or oversized ' + name)
+    return path
+
+
+def inspect(state, picture_validator=validate_picture):
     run, manifest = active(state)
     result = run / 'shared/cannedbsd-result.txt'
     if not result.is_file() or result.is_symlink():
@@ -135,6 +189,29 @@ def check(state):
     receipt = dict(manifest, result_sha256=hashlib.sha256(evidence).hexdigest(),
                    result_mtime_ns=stat.st_mtime_ns, checked_ns=time.time_ns(),
                    result='ALL PASS', verification='fresh shared directory and host mtime')
+    if manifest.get('autorun', False):
+        done = fresh_file(run, manifest, 'cannedbsd-done.txt', 16)
+        if done.read_bytes() != b'PASS\n':
+            raise Rejection('autorun completion is not PASS')
+        picture = fresh_file(run, manifest, 'cannedbsd-screen.pict', 8 * 1024 * 1024)
+        receipt.update(picture_validator(picture, run / 'cannedbsd-screen.png'))
+        receipt.update(done_sha256=digest(done), screenshot_sha256=digest(picture))
+    return receipt
+
+
+def check(state, app_closed=False, picture_validator=validate_picture, is_open=None):
+    run, manifest = active(state)
+    if manifest.get('autorun', False) and not app_closed:
+        raise Rejection('autorun requires observed CannedBSD window closure before acceptance')
+    if manifest.get('autorun', False):
+        paths = [run / 'CannedBSD.dsk']
+        if (run / 'System.dsk').exists():
+            paths.append(run / 'System.dsk')
+        if (is_open or disks_open)(paths):
+            raise Rejection('autorun guest disks are still open; shutdown is incomplete')
+    receipt = inspect(state, picture_validator)
+    if manifest.get('autorun', False):
+        receipt.update(app_closed=True, guest_disks_closed=True)
     write_json(run / 'acceptance.json', receipt)
     return receipt
 
@@ -170,12 +247,16 @@ def main():
     prepare.add_argument('--boot-seed', type=Path, help='copy a known-good shutdown boot disk into this run')
     prepare.add_argument('--native-template', type=Path, help='existing Basilisk preferences; disk/extfs/rom entries replaced')
     prepare.add_argument('--rom', type=Path, help='ROM to use with --native-template and --boot-seed')
-    for command in ('check', 'status', 'release'):
+    prepare.add_argument('--autorun', action='store_true', help='precreate guest autorun marker and all evidence files')
+    check_parser = sub.add_parser('check')
+    check_parser.add_argument('--state', type=Path, required=True)
+    check_parser.add_argument('--app-closed', action='store_true', help='controller observed CannedBSD window closed (autorun only)')
+    for command in ('inspect', 'status', 'release'):
         sub.add_parser(command).add_argument('--state', type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == 'stage':
-            run = stage(args.artifact, args.state, args.commit, args.boot_seed, args.native_template, args.rom)
+            run = stage(args.artifact, args.state, args.commit, args.boot_seed, args.native_template, args.rom, args.autorun)
             print(run)
             if args.boot_seed is not None:
                 print('Boot disk: ' + str(run / 'System.dsk'))
@@ -184,7 +265,9 @@ def main():
                 print('Native configuration: ' + str(run / 'basilisk_prefs'))
             print('Set extfs: ' + str(run / 'shared'))
         elif args.command == 'check':
-            print(json.dumps(check(args.state), indent=2))
+            print(json.dumps(check(args.state, args.app_closed), indent=2))
+        elif args.command == 'inspect':
+            print(json.dumps(inspect(args.state), indent=2))
         elif args.command == 'status':
             _, manifest = active(args.state)
             print(json.dumps(manifest, indent=2))

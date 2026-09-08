@@ -1,13 +1,18 @@
 -- No desktop is touched: only the startup/task boundary is simulated.
 local script='platform/mac68k/automation/run.lua'
-local function scenario()
+local function scenario(autorun,done)
  local tasks,timers,saved={},{},{}
  local state='/local/state'; local run=state..'/run-test'
  local documents={config={app='/local/BasiliskII.app',python='/local/python',state=state},
-  slot={run_directory=run},manifest={run_directory=run,boot_copy=true,commit='test'}}
+  slot={run_directory=run},manifest={run_directory=run,boot_copy=true,commit='test',autorun=autorun}}
  local data={['/local/config']='config',[state..'/slot/active.json']='slot',
   [run..'/manifest.json']='manifest',[run..'/basilisk_prefs']='disk '..run..'/System.dsk\ndisk '..run..'/CannedBSD.dsk\nextfs '..run..'/shared',
   [run..'/shared/cannedbsd-result.txt']='',[run..'/expected-result.txt']='fixture\nALL PASS\n'}
+ if autorun then
+  data[run..'/shared/cannedbsd-autorun.txt']=''
+  data[run..'/shared/cannedbsd-screen.pict']=''
+  data[run..'/shared/cannedbsd-done.txt']=done or ''
+ end
  local env=setmetatable({macTestConfigPath='/local/config'}, {__index=_G})
  env.io={open=function(path,mode)
   if mode=='rb' then
@@ -61,3 +66,11 @@ s.documents.ready={ready=true,protocol=1}
 s.tasks[1].stream(nil,'ready\n','')
 assert(not s.env.macTestRun.active and launches(s)==0,'raced guest must not cause second launch')
 print('matcher startup gate passed')
+
+s=scenario(true)
+assert(launches(s)==0,'autorun must still wait for matcher readiness')
+s.documents.ready={ready=true,protocol=1}; s.tasks[1].stream(nil,'ready\n','')
+assert(launches(s)==1,'empty precreated autorun files may boot')
+local ok,message=pcall(function() scenario(true,'PASS\n') end)
+assert(not ok and tostring(message):find('fresh empty autorun files',1,true),
+ 'stale done token must reject startup before any guest launch')
