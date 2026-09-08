@@ -94,6 +94,43 @@ hs -c 'if macTestRun and macTestRun.active then macTestRun.stop() end'
 After inspecting a failure, shut down the guest cleanly and release its slot
 with `guest.py release`. Start from a newly staged run for another attempt.
 
+## Close a failed guest application after inspection
+
+If MAC-03 is showing a setup/evidence failure, use the separate manual recovery
+action after inspecting it. The main driver must be stopped, the same staged
+Basilisk II process must remain frontmost, and its PID must be supplied explicitly:
+
+```sh
+hs -c 'macTestConfigPath="/path/to/local-config.json"; macClosePID=INSPECTED_PID; dofile("/path/to/bsdinacan/platform/mac68k/automation/close-window.lua")'
+```
+
+This action matches a crop containing both the cannedBSD title and its classic
+Mac go-away box, then posts one mouseMoved/down/up sequence at the crop's
+calibrated hotspot. It does not send Command-Q: the coordinator observed
+`hs.eventtap.keyStroke({'cmd'}, 'q', ...)` reaching this native Basilisk build as
+bare `q`. It does not shut down or terminate the emulator, release the guest
+slot, overwrite failed evidence, or alter the normal driver's happy path.
+
+The action verifies PID/preferences ownership and stable frontmost window
+geometry before input. Low-confidence or ambiguous images cause no click. Each
+attempt creates `recovery-close-<timestamp>/` in the staged run with a fresh
+`before.png`, an `after.png` following input, and `action.json`. **Inspect the
+after screenshot to verify the application closed**; `click_sent` means input
+was delivered, not proof that Finder is ready. A confirmation dialog or another
+unexpected state requires inspection. The emulator and slot remain owned by the
+coordinator for the ordinary, separately verified shutdown procedure.
+
+The supplied 842×36 pixel crop is normalized to the matcher's 2x point scale;
+its hotspot is (28,18) pixels inside the crop. It comes from the active System 7
+cannedBSD title bar in the 2026-09-07 failure-inspection capture. It contains no
+host desktop or guest output. Window movement is supported through image
+matching; title/layout/font changes require recalibration. The synthetic test
+checks translated targets and rejects duplicates. It does not simulate UI
+behavior. The coordinator separately verified one live failure-inspection close
+on 2026-09-07: match score 0.99935, followed by an after screenshot showing Finder
+without the cannedBSD window. This is one observed recovery, not a repeated-run
+reliability claim.
+
 ## Calibration evidence and bounds
 
 The source driver completed one measured cold cycle in **12.6957 seconds** on

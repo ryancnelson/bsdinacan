@@ -82,6 +82,25 @@ class MatchTests(unittest.TestCase):
         request['frame']['w'] = 1
         self.assertFalse(self.matcher.match(request)['found'])
 
+    def test_cannedbsd_close_crop_tracks_hotspot_after_translation(self):
+        # Exact guest-only title crop; no live UI or full-host capture.
+        template = cv2.imread(str(SCRIPT.parent / 'templates/cannedbsd-close.png'))
+        self.assertIsNotNone(template)
+        height, width = template.shape[:2]
+        image = np.full((300, 1200, 3), 170, dtype=np.uint8)
+        image[80:80+height, 120:120+width] = template
+        cv2.imwrite(str(self.path), image)
+        matcher = module.Matcher(SCRIPT.parent / 'templates')
+        request = {'image': str(self.path), 'name': 'cannedbsd-close',
+                   'frame': {'x': 200, 'y': 40, 'w': 600, 'h': 150}}
+        result = matcher.match(request)
+        self.assertTrue(result['found'])
+        self.assertEqual((result['x'], result['y']), (274, 89))
+        # Same close box on two matching windows must not generate a click.
+        image[180:180+height, 200:200+width] = template
+        cv2.imwrite(str(self.path), image)
+        self.assertFalse(matcher.match(request)['found'])
+
     def test_ready_arrives_without_stdin_or_eof(self):
         process = subprocess.Popen([sys.executable, '-u', str(SCRIPT), '--ready'],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
