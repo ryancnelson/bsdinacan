@@ -4899,6 +4899,16 @@ static void test_err(void)
     capture_write_limit = (size_t)-1;
 }
 
+int cb_terminal_engine_probe(void);
+static void test_terminal_engine(void)
+{
+    int result = cb_terminal_engine_probe();
+    if (result != 0) {
+        fprintf(stderr, "FAIL: terminal engine probe status %d\n", result);
+        exit(1);
+    }
+}
+
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 static void test_tee_state(void)
 {
@@ -4920,6 +4930,7 @@ static void test_console_write(void)
 
 static void test_mac_acceptance(void)
 {
+    test_terminal_engine();
     test_tee_state();
     test_console_write();
 #define CB_MAC_CASE(command, expected, status) \
@@ -5081,6 +5092,11 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--terminal-engine") == 0) {
+        test_terminal_engine();
+        puts("terminal engine tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--tee-state") == 0) {
         test_tee_state();
         puts("tee state tests passed");
