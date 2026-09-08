@@ -61,13 +61,55 @@
   defaults immediately before `exec`, and `pidcheck` (the post-exec image)
   asserts all four are back to their fresh-task defaults.
 - Documentation: `LIBC.md` gains `unistd.h`'s `getopt` surface.
-- Remaining risk or follow-up: scope was deliberately kept to the empty-
-  optstring/`--`/unknown-option surface `printenv` needs, per the backlog —
-  `cb_libc_getopt` does implement the standard `:`-required-argument branch
-  faithfully (it is the well-defined POSIX/NetBSD `getopt(3)` contract, not a
-  speculative extension), but that branch is not exercised by this
-  iteration's red/green test since no consumer needs it yet. **Guest
-  acceptance under the new AGENTS.md step 7 is outstanding** — this change
-  touches libc, so it requires the exact `mac68k` Woodpecker artifact tested
-  in the shared Basilisk II guest before integration; that slot is
-  coordinator-assigned and was not run in this session.
+
+## Review correction (post-push, same branch)
+
+A design/coverage review of the first push (`3c7328f`) found two real
+issues, both fixed in a follow-up commit on this same branch:
+
+1. **Scope overclaim.** The first `LIBC.md` entry said `getopt` supports
+   "any optstring," but only the empty-optstring/`--`/unknown-option surface
+   was ever tested — the `:`-required-argument branch had zero coverage.
+   Per AGENTS.md's "no speculative surface" rule, an untested branch
+   shouldn't ship at all rather than ship-but-be-honest-about-it: the
+   `:`-required-argument branch is now removed from `cb_libc_getopt`
+   entirely (`libc/cb_libc.c`), and `LIBC.md` now says exactly what's true —
+   flag-only optstrings, explicitly not the `:` convention. The core
+   flag-matching algorithm (`strchr(optstring, ch)`) stays general (it has
+   to be, to correctly reject an unknown option under an empty optstring at
+   all), so this is a narrowing of the untested edge, not a rewrite.
+2. **`opterr` was inert.** It was tracked (gettable/settable, isolated,
+   reset-on-exec) but had zero effect on behavior — nothing ever branched on
+   it. `cb_libc_getopt` now writes a real diagnostic to `stderr`
+   (`"<argv[0]>: illegal option -- <c>\n"`, assembled with the same
+   `write()`-per-fragment idiom `commands/wc.c`'s `report_error` already
+   uses, since there is still no formatter) when an unknown option is hit
+   and `opterr != 0`, and writes nothing when `opterr == 0`.
+   `getopterrprobe`/`getoptwaitprobe` (`tests/test_core.c`) prove both
+   sides: `getoptwaitprobe`'s existing unknown-option case runs with the
+   default `opterr == 1` and now asserts the exact diagnostic text landed on
+   the captured stderr stream; the new `getopterrprobe` spawns a task with
+   `opterr = 0` and asserts the captured stderr stream gained zero bytes.
+
+Additionally, per the same review, added `getoptclusterprobe`
+(`tests/test_core.c` + new roles C/D in `tests/libc_getopt_probe.c`):
+role C's argv contains one clustered token, `"-xy"` — two unknown options
+packed into a single argv element. Its first `getopt()` call must consume
+only `'x'` and leave the private scan cursor mid-element; it is then forced
+to block (the same past-pipe-capacity mechanism as role A/B), during which
+role D — a separate task — runs two of its *own* unrelated `getopt()` calls
+to completion. Role C's second call, after resuming, must still resume
+exactly at `'y'`. This was already correct by construction (the scan cursor
+lives in the same per-task struct as `optind`/etc., not a `cb_libc.c`
+file-static), but had no dedicated test proving the specific
+multi-character-cluster-split-across-a-real-task-switch shape before this
+correction.
+
+- Remaining risk or follow-up: `cb_libc_getopt` deliberately does not
+  implement the `:` required-argument convention (see correction #1 above)
+  — a future consumer that needs it is a separate, independently
+  red/green-tested extension. **Guest acceptance under the new AGENTS.md
+  step 7 is outstanding** — this change touches libc, so it requires the
+  exact `mac68k` Woodpecker artifact tested in the shared Basilisk II guest
+  before integration; that slot is coordinator-assigned and was not run in
+  this session.

@@ -42,10 +42,13 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 
 - `unistd.h`: `read`, `write`, `close`, standard descriptor numbers, and a
   task-local `environ` lvalue.
-- `unistd.h`: a task-local `getopt`, supporting any optstring (including the
-  empty optstring pinned `printenv` needs) with isolated
-  `optind`/`optarg`/`opterr`/`optopt`, reset on exec. No `getopt_long` or
-  GNU `::`-optional-argument extension.
+- `unistd.h`: a task-local `getopt` for flag-only optstrings — including the
+  empty optstring pinned `printenv` needs — with isolated
+  `optind`/`optarg`/`opterr`/`optopt`, reset on exec, and a real diagnostic
+  on `stderr` for an unrecognized option when `opterr` is nonzero. No
+  `getopt_long`, no GNU `::`-optional-argument extension, and no `:`
+  required-argument convention: that is untested surface this iteration
+  does not claim.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.

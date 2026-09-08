@@ -130,10 +130,29 @@ struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void)
     return bound_api->getopt_state_location();
 }
 
+static void getopt_diagnostic(const char *program, int character)
+{
+    static const char middle[] = ": illegal option -- ";
+    char letter = (char)character;
+    bound_api->write(2, program, cb_libc_strlen(program));
+    bound_api->write(2, middle, sizeof(middle) - 1);
+    bound_api->write(2, &letter, 1);
+    bound_api->write(2, "\n", 1);
+}
+
+/*
+ * Supports flag-only optstrings (any set of single-character flags with no
+ * argument), which is everything the commissioned empty-optstring use case
+ * (pinned printenv) needs. Deliberately does NOT implement the ':'
+ * required-argument convention: that branch had no consumer and no test
+ * coverage, so per AGENTS.md's "no speculative surface" rule it does not
+ * belong here. A future caller that needs required-argument options is a
+ * separate, independently red/green-tested extension, not a silent
+ * broadening of this one.
+ */
 int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
 {
     struct cb_getopt_state_v1 *state = bound_api->getopt_state_location();
-    const char *option;
 
     if (*state->place == '\0') {
         if (state->optind >= argc || argv[state->optind][0] != '-' ||
@@ -147,29 +166,14 @@ int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
     }
 
     state->optopt = (int)*state->place++;
-    option = cb_libc_strchr(optstring, state->optopt);
-    if (state->optopt == (int)':' || option == NULL) {
-        if (*state->place == '\0')
-            ++state->optind;
+    if (*state->place == '\0')
+        ++state->optind;
+    if (cb_libc_strchr(optstring, state->optopt) == NULL) {
+        if (state->opterr)
+            getopt_diagnostic(argv[0], state->optopt);
         return (int)'?';
     }
-    ++option;
-    if (*option != ':') {
-        state->optarg = NULL;
-        if (*state->place == '\0')
-            ++state->optind;
-    } else {
-        if (*state->place != '\0') {
-            state->optarg = state->place;
-        } else if (argc > ++state->optind) {
-            state->optarg = argv[state->optind];
-        } else {
-            state->place = (char *)"";
-            return *optstring == ':' ? (int)':' : (int)'?';
-        }
-        state->place = (char *)"";
-        ++state->optind;
-    }
+    state->optarg = NULL;
     return state->optopt;
 }
 
