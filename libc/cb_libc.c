@@ -6,6 +6,7 @@
 
 #include <limits.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 struct cb_libc_file {
     int descriptor;
@@ -929,4 +930,69 @@ int cb_libc_ferror(struct cb_libc_file *stream)
         return 1;
     }
     return stream == cb_libc_stdout_stream ? state->stdout_error : state->stderr_error;
+}
+
+
+size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_libc_file *stream)
+{
+    if (size == 0 || count == 0)
+        return 0;
+
+    if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
+        if (bound_api != NULL) bound_api->set_errno(CB_EINVAL);
+        return 0;
+    }
+
+    struct cb_stdio_state_v1 *state = stdio_state();
+    if (state == NULL || bound_api == NULL || bound_api->write == NULL) {
+        if (bound_api != NULL) bound_api->set_errno(CB_ENOSYS);
+        return 0;
+    }
+
+    if (size > SIZE_MAX / count) {
+        bound_api->set_errno(CB_EOVERFLOW);
+        return 0;
+    }
+
+    if (buffer == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return 0;
+    }
+
+    int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
+    int saved_incoming_errno = bound_api->get_errno();
+    size_t total_bytes = size * count;
+    size_t remaining = total_bytes;
+    const char *text = (const char *)buffer;
+
+    while (remaining != 0) {
+        size_t chunk = remaining;
+#if SIZE_MAX > INT64_MAX
+        if ((uint64_t)chunk > (uint64_t)INT64_MAX) {
+            chunk = (size_t)INT64_MAX;
+        }
+#endif
+
+        cb_ssize_t written = bound_api->write(descriptor, text, chunk);
+        if (written < 0) {
+            int actual_error = bound_api->get_errno();
+            mark_stdio_error(descriptor);
+            bound_api->set_errno(actual_error);
+            break;
+        }
+        if (written == 0 || (uint64_t)written > (uint64_t)chunk) {
+            mark_stdio_error(descriptor);
+            bound_api->set_errno(CB_EIO);
+            break;
+        }
+
+        text += (size_t)written;
+        remaining -= (size_t)written;
+    }
+
+    if (remaining == 0) {
+        bound_api->set_errno(saved_incoming_errno);
+    }
+
+    return (total_bytes - remaining) / size;
 }

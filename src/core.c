@@ -1511,6 +1511,7 @@ static const char *api_strerror(int error)
     case CB_EMFILE: return "too many open files";
     case CB_ENOTTY: return "inappropriate ioctl for device";
     case CB_ENOSPC: return "no space left";
+    case CB_EOVERFLOW: return "Value too large to be stored in data type";
     case CB_ESPIPE: return "illegal seek";
     case CB_EPIPE: return "broken pipe";
     case CB_ENAMETOOLONG: return "file name too long";
