@@ -8,4 +8,10 @@
 #define __strong_alias(alias, symbol)
 #define __UNCONST(pointer) ((void *)(uintptr_t)(const void *)(pointer))
 
+#if defined(__GNUC__) || defined(__clang__)
+#define __dead __attribute__((__noreturn__))
+#else
+#define __dead
+#endif
+
 #endif

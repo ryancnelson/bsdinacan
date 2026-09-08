@@ -18,6 +18,9 @@ memory_source=tests/libc_memory_source.c
 memory_object=$build_path/libc_memory_source.o
 environ_source=tests/libc_environ_source.c
 environ_object=$build_path/libc_environ_source.o
+exit_source=tests/libc_exit_probe.c
+exit_object=$build_path/exitprobe_command.o
+exit_header=libc/include/stdlib.h
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -124,6 +127,27 @@ fi
 if ! nm -u "$environ_object" |
         matches '[[:space:]]U[[:space:]]+cb_libc_environ_location$'; then
     echo 'FAIL: environ probe does not use the private veneer accessor' >&2
+    exit 1
+fi
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$exit_source"; then
+    echo 'FAIL: exit source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! matches '\bexit[[:space:]]*\(' "$exit_source"; then
+    echo 'FAIL: exit source probe does not call exit()' >&2
+    exit 1
+fi
+if nm -u "$exit_object" | matches '[[:space:]]U[[:space:]]+exit$'; then
+    echo 'FAIL: exit probe imports a host-facing exit symbol' >&2
+    exit 1
+fi
+if ! nm -u "$exit_object" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_exit$'; then
+    echo 'FAIL: exit probe does not use the private veneer function' >&2
+    exit 1
+fi
+if ! matches 'cb_libc_exit\([^;]*\)\s*__dead' "$exit_header"; then
+    echo 'FAIL: exit declaration does not carry __dead metadata' >&2
     exit 1
 fi
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern const struct cb_program_v1 cb_exitprobe_program;
+
 static char captured[32768];
 static size_t captured_size;
 static char captured_streams[3][32768];
@@ -1129,6 +1131,58 @@ static int environprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int exitwaitprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    char fd_argument[32];
+    char *child_argv[3];
+    unsigned char observed[4];
+    cb_ssize_t total = 0;
+    int descriptors[2];
+    cb_pid_t child;
+    int status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->pipe(descriptors) < 0)
+        return 290;
+    snprintf(fd_argument, sizeof(fd_argument), "%d", descriptors[1]);
+    child_argv[0] = (char *)"libcexitprobe";
+    child_argv[1] = fd_argument;
+    child_argv[2] = NULL;
+    /* The child inherits descriptors[1] directly and must never close it
+       itself; only cb_libc_exit's automatic reclamation may close it. */
+    if (api->spawn("libcexitprobe", child_argv, NULL, NULL, 0, &child) < 0)
+        return 291;
+    if (api->close(descriptors[1]) < 0)
+        return 292;
+    for (;;) {
+        cb_ssize_t count = api->read(descriptors[0], observed + total,
+                                     sizeof(observed) - (size_t)total);
+        if (count < 0)
+            return 293;
+        if (count == 0)
+            break;
+        total += count;
+        if ((size_t)total >= sizeof(observed))
+            return 294;
+    }
+    /* Only the write before exit() must have landed: proves the write after
+       exit(7) never executed (no fallthrough). */
+    if (total != 1 || observed[0] != 'A')
+        return 295;
+    /* The child is a zombie but not yet reaped: its heap must already be
+       reclaimed by cb_libc_exit's underlying task cleanup. */
+    if (cb_test_task_allocation_count(child) != 0)
+        return 296;
+    if (api->waitpid(child, &status) != child || status != 7)
+        return 297;
+    if (api->close(descriptors[0]) < 0)
+        return 298;
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -1950,6 +2004,11 @@ static const struct cb_program_v1 environprobe_program = {
     64 * 1024, environprobe_main
 };
 
+static const struct cb_program_v1 exitwaitprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "exitwaitprobe", 0,
+    64 * 1024, exitwaitprobe_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -2066,6 +2125,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &pipecapacityprobe_program) < 0 ||
             cb_kernel_register(kernel, &environpeer_program) < 0 ||
             cb_kernel_register(kernel, &environprobe_program) < 0 ||
+            cb_kernel_register(kernel, &cb_exitprobe_program) < 0 ||
+            cb_kernel_register(kernel, &exitwaitprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -2328,6 +2389,7 @@ int main(void)
     run_case("pipeedgeprobe", "", 0, 1);
     run_case("pipecapacityprobe", "", 0, 1);
     run_case("environprobe", "", 0, 1);
+    run_case("exitwaitprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
