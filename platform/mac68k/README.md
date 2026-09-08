@@ -32,6 +32,26 @@ written result file for the artifact under test; remove any old result before
 launch. A successful run then opens an interactive shell in the same window.
 Type `exit`, press Command-Q, or close the window to quit.
 
+## Optional unattended evidence mode
+
+Normal launches remain interactive. To request an unattended guest run, create
+`cannedbsd-autorun.txt` in the shared host directory before boot. Also precreate
+empty writable `cannedbsd-result.txt`, `cannedbsd-screen.pict`, and
+`cannedbsd-done.txt`. Native Basilisk II's shared-folder backend does not
+reliably create absent files. Use fresh or emptied outputs for every run.
+
+The app clears done before testing, writes and flushes the detailed result,
+redraws and captures its actual window pixels as a PICT file, then writes and
+flushes `PASS` or `FAIL` plus a newline to done. Both test outcomes exit normally
+after evidence succeeds. Any evidence error leaves the app open and withholds
+completion. Remove the autorun marker to restore the interactive shell.
+
+An external controller must require both an exact done token and the app's
+normal exit before requesting a guest shutdown. A token alone is insufficient:
+a failed final flush can leave visible bytes while the app remains open. The
+app itself never requests System 7 shutdown. The PICT contains a standard
+512-byte file header and the captured content area of the app window.
+
 ## Host implementation and limits
 
 Memory uses non-relocatable Toolbox pointers. The application heap is expanded

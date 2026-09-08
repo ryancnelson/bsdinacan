@@ -1,8 +1,12 @@
 #include "host_mac.h"
+#include "autorun.h"
 
 #include <string.h>
 
 struct acceptance_case { const char *command, *expected; int status; };
+static const struct cb_mac_autorun_ops autorun_ops = {
+    cb_mac_write_result, cb_mac_capture_screen, cb_mac_write_done
+};
 static const struct acceptance_case cases[] = {
     {"echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result", "HELLO\n", 0},
     {"echo -n hello | wc -c", "5\n", 0},
@@ -16,10 +20,17 @@ static const struct acceptance_case cases[] = {
 int main(void)
 {
     size_t index;
-    int passed;
+    int passed, autorun;
     char result[2048] = "cannedBSD System 7 / Retro68\n";
     struct cb_kernel *kernel;
     if (cb_mac_initialize() < 0) return 1;
+    autorun = cb_mac_autorun_requested();
+    if (autorun < 0 || (autorun && cb_mac_write_done("") < 0)) {
+        cb_mac_text("Autorun setup failed. Shared evidence files must be writable.\n");
+        while (!cb_mac_quitting()) cb_mac_pump(-1);
+        cb_mac_shutdown();
+        return 1;
+    }
     cb_mac_text("cannedBSD: native 68K System 7 backend\n");
     passed = cb_mac_context_check() == 0;
     cb_mac_text(passed ? "PASS: independent stacks, 512 yields\n" : "FAIL: contexts\n");
@@ -43,6 +54,16 @@ int main(void)
     }
     strcat(result, passed ? "ALL PASS\n" : "FAILED\n");
     cb_mac_text(passed ? "\nALL PASS\n" : "\nFAILED\n");
+    if (autorun) {
+        if (cb_mac_finish_autorun(passed, result, &autorun_ops) < 0) {
+            cb_mac_text("Autorun evidence failed; completion withheld.\n");
+            while (!cb_mac_quitting()) cb_mac_pump(-1);
+            cb_mac_shutdown();
+            return 1;
+        }
+        cb_mac_shutdown();
+        return passed ? 0 : 1;
+    }
     cb_mac_text(cb_mac_write_result(result) == 0
         ? "Evidence: Unix:cannedbsd-result.txt\n"
         : "Could not write evidence to Unix volume.\n");
