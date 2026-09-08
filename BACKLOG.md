@@ -812,7 +812,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-02 — console classification and honest fallback
 
-- **Status:** Ready
+- **Status:** Done at `592ae41`; eighteen Mac records passed in 13.21 seconds
 - **Base:** main
 - **Depends on:** TERM-01-design (Done)
 - **Scope:** first stage of the reviewed terminal design: shared console owner,
@@ -854,3 +854,28 @@ with an ID, dependencies, red test, and acceptance boundary above.
 Scheduler/mock-lease integration, Linux raw control and Mac raw control remain
 blocked until TERM-04 and TERM-05-design are accepted. Give those later stages
 separate IDs before assigning implementation.
+
+### LOCALE-01 — C-only locale needed by NetBSD dirname
+
+- **Status:** Claimed by Codex on `work/LOCALE-01`
+- **Base:** main
+- **Scope:** measured `setlocale(LC_ALL, "")` dependency; private locale header,
+  honest C/POSIX support, task-environment selection, unsupported requests
+  return NULL with no state change and no host locale calls.
+- **Accept:** ordinary-source private symbols, empty-string environment
+  precedence, explicit C/POSIX, query, rejection and task isolation; exact CI
+  and guest evidence. No full locale subsystem or speculative categories.
+
+### DIRNAME-01 — unchanged NetBSD dirname command milestone
+
+- **Status:** Blocked on LIBGEN-01 and LOCALE-01
+- **Base:** integrated dependencies
+- **Scope:** import pinned `usr.bin/dirname/dirname.c` unchanged with module,
+  source hash/license and private linkage. See `notes/iterations/DIRNAME-01-plan.md`.
+- **Accept:** exact stdout/stderr/status for paths, root/repeated slashes,
+  empty input, argument-count/option failures, dash-leading path, repeated
+  invocation and pipeline; exact Woodpecker artifact runs in Basilisk II.
+
+The next visible project milestone is the real `dirname` command. Defer broader
+terminal and filesystem feature expansion unless needed to finish an active
+review or to satisfy this measured command's dependencies.
