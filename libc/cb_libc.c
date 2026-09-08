@@ -16,6 +16,9 @@ static const struct cb_api_v1 *bound_api;
 
 static int api_is_usable(const struct cb_api_v1 *api)
 {
+    /* Keep the established mandatory prefix through getprogname. Poll,
+       terminal, dirname and directory operations remain optional tails;
+       wrappers check their own field ends and callbacks when called. */
     return api != NULL && api->abi_version == CB_ABI_VERSION_V1 &&
            api->struct_size >= offsetof(struct cb_api_v1, poll) && api->read != NULL &&
            api->write != NULL && api->open != NULL && api->close != NULL &&
@@ -26,6 +29,41 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->exit != NULL && api->getopt_state_location != NULL &&
            api->truncate != NULL && api->ftruncate != NULL &&
            api->getprogname != NULL;
+}
+
+/* Each of opendir/readdir/closedir checks only its own field here, not
+   the other two -- matching cb_vfs_node_ops's per-operation independence
+   (truncate and child_at are each checked on their own): a table missing
+   only readdir must still let opendir()/closedir() work, since readdir's
+   absence alone never prevents acquiring or releasing anything. A table
+   missing only closedir is NOT an equally safe case, despite otherwise
+   following the same per-field shape: closedir is the only thing that
+   can ever release what opendir() acquires, so cb_libc_opendir (below)
+   additionally requires closedir_api_available() itself before it ever
+   calls bound_api->opendir() -- it does not rely on this helper's
+   independence alone. See cb_libc_opendir's own comment for why. */
+static int opendir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, opendir) +
+                   sizeof(bound_api->opendir) &&
+           bound_api->opendir != NULL;
+}
+
+static int readdir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, readdir) +
+                   sizeof(bound_api->readdir) &&
+           bound_api->readdir != NULL;
+}
+
+static int closedir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, closedir) +
+                   sizeof(bound_api->closedir) &&
+           bound_api->closedir != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -454,4 +492,83 @@ char *cb_libc_dirname(char *path)
     length = cb_libc_strlen(upstream);
     cb_libc_memcpy(owned, upstream, length + 1);
     return owned;
+}
+
+struct cb_libc_dir {
+    int descriptor;       /* the opaque runtime handle; meaningless outside
+                              the runtime that issued it */
+    struct dirent entry;  /* reused every readdir() call, like FILE* */
+};
+
+struct cb_libc_dir *cb_libc_opendir(const char *path)
+{
+    struct cb_libc_dir *dir;
+    int descriptor;
+    /* closedir must be usable too, not just opendir: opendir is the only
+       thing that acquires the raw runtime descriptor, and closedir is the
+       only thing that can ever release it (readdir cannot). A table
+       missing closedir would otherwise let this acquire a descriptor that
+       nothing -- not even a later allocation failure's own cleanup below
+       -- can ever release, leaking it for the rest of the task's
+       lifetime. Requiring closedir up front means that leak path simply
+       cannot be reached. readdir is not required here: its absence alone
+       never prevents cleanup, so opendir()/closedir() must still work
+       without it. */
+    if (!opendir_api_available() || !closedir_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    descriptor = bound_api->opendir(path);
+    if (descriptor < 0)
+        return NULL;
+    dir = bound_api->allocate(sizeof(*dir));
+    if (dir == NULL) {
+        bound_api->closedir(descriptor);
+        bound_api->set_errno(CB_ENOMEM);
+        return NULL;
+    }
+    dir->descriptor = descriptor;
+    return dir;
+}
+
+struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp)
+{
+    uint64_t inode;
+    uint32_t type;
+    if (dirp == NULL) {
+        bound_api->set_errno(CB_EBADF);
+        return NULL;
+    }
+    if (!readdir_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    if (bound_api->readdir(dirp->descriptor, dirp->entry.d_name,
+                           sizeof(dirp->entry.d_name), &inode, &type) < 0)
+        return NULL;
+    if (dirp->entry.d_name[0] == '\0')
+        return NULL;
+    dirp->entry.d_ino = inode;
+    switch (type) {
+    case CB_NODE_REGULAR: dirp->entry.d_type = DT_REG; break;
+    case CB_NODE_DIRECTORY: dirp->entry.d_type = DT_DIR; break;
+    default: dirp->entry.d_type = DT_UNKNOWN; break;
+    }
+    return &dirp->entry;
+}
+
+int cb_libc_closedir(struct cb_libc_dir *dirp)
+{
+    int result;
+    if (dirp == NULL) {
+        bound_api->set_errno(CB_EBADF);
+        return -1;
+    }
+    if (!closedir_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    result = bound_api->closedir(dirp->descriptor);
+    bound_api->release(dirp);
+    return result;
 }

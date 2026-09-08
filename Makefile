@@ -29,7 +29,7 @@ CORE_SOURCES := \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_dirname_probe_module.c $(CORE_SOURCES)
+TEST_SOURCES := tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
@@ -40,6 +40,11 @@ ERRXPROBE_COMMAND_OBJECT := $(BUILD)/errxprobe_command.o
 ERRPROBE_COMMAND_OBJECT := $(BUILD)/errprobe_command.o
 DIRNAMEPROBE_COMMAND_OBJECT := $(BUILD)/dirnameprobe_command.o
 DIRNAME_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirname_oldtable_probe.o
+DIRENTPROBE_COMMAND_OBJECT := $(BUILD)/direntprobe_command.o
+DIRENT_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirent_oldtable_probe.o
+DIRENT_ALLOCFAIL_TEST_OBJECT := $(BUILD)/libc_dirent_allocfail_probe.o
+DIRENT_READDIR_UNAVAIL_TEST_OBJECT := $(BUILD)/libc_dirent_readdir_unavailable_probe.o
+DIRENT_CLOSEDIR_REBIND_TEST_OBJECT := $(BUILD)/libc_dirent_closedir_rebind_probe.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
@@ -143,6 +148,35 @@ $(ERRXPROBE_COMMAND_OBJECT): tests/libc_errx_probe.c include/cannedbsd/abi.h \
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_errxprobe_main \
 		-c tests/libc_errx_probe.c -o $@
 
+$(DIRENTPROBE_COMMAND_OBJECT): tests/libc_dirent_probe.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/dirent.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntprobe_main \
+		-c tests/libc_dirent_probe.c -o $@
+
+$(DIRENT_OLDTABLE_TEST_OBJECT): tests/libc_dirent_oldtable_probe.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/dirent.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntoldtable_main \
+		-c tests/libc_dirent_oldtable_probe.c -o $@
+
+$(DIRENT_ALLOCFAIL_TEST_OBJECT): tests/libc_dirent_allocfail_probe.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/dirent.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntallocfail_main \
+		-c tests/libc_dirent_allocfail_probe.c -o $@
+
+$(DIRENT_READDIR_UNAVAIL_TEST_OBJECT): tests/libc_dirent_readdir_unavailable_probe.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/dirent.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntreaddirunavail_main \
+		-c tests/libc_dirent_readdir_unavailable_probe.c -o $@
+
+$(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT): tests/libc_dirent_closedir_rebind_probe.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/dirent.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) \
+		-c tests/libc_dirent_closedir_rebind_probe.c -o $@
+
 $(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c libc/cb_libc.c -o $@
@@ -230,10 +264,10 @@ $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRIN
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 $(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) \
-		$(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(LIBC_ARCHIVE) \
+		$(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 
@@ -341,6 +375,21 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_errxprobe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_errx_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntprobe_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_dirent_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntoldtable_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_dirent_oldtable_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntallocfail_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_dirent_allocfail_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntreaddirunavail_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_dirent_readdir_unavailable_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_dirent_closedir_rebind_probe.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \

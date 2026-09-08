@@ -21,6 +21,28 @@ char *cb_libc_setlocale(int category, const char *locale);
 
 typedef int (*cb_libc_main_fn)(int argc, char *argv[]);
 struct cb_libc_file;
+struct cb_libc_dir;
+
+/*
+ * Defined here, not in the ordinary-facing libc/include/dirent.h, so both
+ * cb_libc.c (which must write d_ino/d_type/d_name) and dirent.h (which
+ * exposes them to ordinary source by field access, unlike the opaque
+ * FILE/DIR handles) share exactly one definition. Unlike cb_vfs_node,
+ * this struct carries no runtime-private pointers -- it is plain data -- so
+ * defining it at this layer does not cross the veneer's layer boundary.
+ * d_ino is spelled uint64_t rather than ino_t (defined only in the
+ * ordinary-facing libc/include/sys/types.h) because the two are the same
+ * type either way and this header cannot reach that ordinary include path.
+ */
+#define DT_UNKNOWN 0
+#define DT_REG 1
+#define DT_DIR 2
+
+struct dirent {
+    uint64_t d_ino;
+    unsigned char d_type;
+    char d_name[CB_PATH_MAX];
+};
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
                   cb_libc_main_fn main_function);
@@ -58,6 +80,9 @@ int cb_libc_memcmp(const void *left, const void *right, size_t count);
 char *cb_libc_strchr(const char *text, int character);
 char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
+struct cb_libc_dir *cb_libc_opendir(const char *path);
+struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
+int cb_libc_closedir(struct cb_libc_dir *dirp);
 
 #define CB_LIBC_PROGRAM(symbol, command_name, main_function) \
     static int symbol##_start(const struct cb_api_v1 *api, int argc, \

@@ -29,6 +29,8 @@ truncate_source=tests/libc_truncate_probe.c
 truncate_object=$build_path/libc_truncate_probe.o
 errx_source=tests/libc_errx_probe.c
 errx_object=$build_path/errxprobe_command.o
+dirent_source=tests/libc_dirent_probe.c
+dirent_object=$build_path/direntprobe_command.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -216,6 +218,27 @@ if ! nm -u "$errx_object" |
     echo 'FAIL: errx probe does not use the private veneer function' >&2
     exit 1
 fi
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$dirent_source"; then
+    echo 'FAIL: dirent source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+for interface in opendir readdir closedir; do
+    if ! matches "\\b${interface}[[:space:]]*\\(" "$dirent_source"; then
+        printf 'FAIL: dirent source probe does not call %s()\n' \
+            "$interface" >&2
+        exit 1
+    fi
+    if nm -u "$dirent_object" | matches "[[:space:]]U[[:space:]]+${interface}\$"; then
+        printf 'FAIL: dirent probe imports host-facing %s\n' "$interface" >&2
+        exit 1
+    fi
+    if ! nm -u "$dirent_object" |
+            matches "[[:space:]]U[[:space:]]+cb_libc_${interface}\$"; then
+        printf 'FAIL: dirent probe does not use the private veneer %s\n' \
+            "$interface" >&2
+        exit 1
+    fi
+done
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then
     echo 'FAIL: allocation source probe uses cannedBSD-specific names' >&2
     exit 1

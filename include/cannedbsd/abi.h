@@ -193,6 +193,10 @@ struct cb_api_v1 {
     int (*tcgetattr)(int fd, struct cb_termios_v1 *attributes);
     int (*tcsetattr)(int fd, int action, const struct cb_termios_v1 *attributes);
     char *(*dirname_buffer_location)(void);
+    int (*opendir)(const char *path);
+    int (*readdir)(int descriptor, char *name_out, size_t name_size,
+                   uint64_t *inode_out, uint32_t *type_out);
+    int (*closedir)(int descriptor);
 };
 
 struct cb_program_v1 {
