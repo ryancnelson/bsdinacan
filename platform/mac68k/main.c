@@ -91,8 +91,8 @@ int main(void)
                 status = cb_kernel_run(kernel);
             cb_kernel_destroy(kernel);
         }
-        passed = status == cases[index].status &&
-                 strcmp(cb_mac_capture(), cases[index].expected) == 0;
+        passed = cb_mac_capture_matches(cases[index].expected) &&
+                 status == cases[index].status;
         strcat(result, passed ? "PASS " : "FAIL ");
         strcat(result, cases[index].command); strcat(result, "\n");
         cb_mac_text(passed ? "PASS\n" : "FAIL\n");

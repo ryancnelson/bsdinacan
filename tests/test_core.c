@@ -1,3 +1,4 @@
+#include "../platform/mac68k/acceptance_output.h"
 #include "internal.h"
 #include "cannedbsd/libc.h"
 
@@ -4489,7 +4490,8 @@ static void run_case(const char *command, const char *expected_output,
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
     status = cb_kernel_run(kernel);
-    if (status != expected_status || strcmp(captured, expected_output) != 0) {
+    if (status != expected_status ||
+        !cb_acceptance_output_matches(captured, captured_size, 0, expected_output)) {
         fprintf(stderr,
                 "command: %s\nexpected status/output: %d <%s>\n"
                 "actual status/output: %d <%s>\n",
@@ -4521,8 +4523,10 @@ static void run_interactive_case(const char *input, const char *expected_stdout,
         fail("interactive kernel boot");
     status = cb_kernel_run(kernel);
     if (status != expected_status ||
-        strcmp(captured_streams[1], expected_stdout) != 0 ||
-        strcmp(captured_streams[2], expected_stderr) != 0) {
+        !cb_acceptance_output_matches(captured_streams[1],
+            captured_stream_sizes[1], 0, expected_stdout) ||
+        !cb_acceptance_output_matches(captured_streams[2],
+            captured_stream_sizes[2], 0, expected_stderr)) {
         fprintf(stderr,
                 "interactive expected status/stdout/stderr: %d <%s> <%s>\n"
                 "interactive actual status/stdout/stderr: %d <%s> <%s>\n",
@@ -4536,8 +4540,10 @@ static void run_interactive_case(const char *input, const char *expected_stdout,
 static void expect_streams(const char *expected_stdout,
                            const char *expected_stderr)
 {
-    if (strcmp(captured_streams[1], expected_stdout) != 0 ||
-        strcmp(captured_streams[2], expected_stderr) != 0) {
+    if (!cb_acceptance_output_matches(captured_streams[1],
+            captured_stream_sizes[1], 0, expected_stdout) ||
+        !cb_acceptance_output_matches(captured_streams[2],
+            captured_stream_sizes[2], 0, expected_stderr)) {
         fprintf(stderr,
                 "expected stdout/stderr: <%s> <%s>\n"
                 "actual stdout/stderr: <%s> <%s>\n",

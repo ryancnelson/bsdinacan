@@ -1,4 +1,5 @@
 #include "host_mac.h"
+#include "acceptance_output.h"
 #include "root_dispatch.h"
 
 #include <Quickdraw.h>
@@ -33,6 +34,7 @@ static char display_text[8192];
 static size_t display_used;
 static char captured[4096];
 static size_t captured_used;
+static int captured_truncated;
 static int capturing;
 static int quit_requested;
 /* Canonical input: a partial line is editable until Return is pressed. */
@@ -282,6 +284,7 @@ static cb_ssize_t console_write(int stream, const void *buffer, size_t count)
     if (capturing) {
         size_t room = sizeof(captured) - 1 - captured_used;
         size_t copied = count < room ? count : room;
+        if (copied != count) captured_truncated = 1;
         memcpy(captured + captured_used, buffer, copied);
         captured_used += copied;
         captured[captured_used] = '\0';
@@ -314,8 +317,19 @@ static const struct cb_host_ops_v1 mac_ops = {
 };
 
 const struct cb_host_ops_v1 *cb_mac_host_ops(void) { return &mac_ops; }
-void cb_mac_capture_begin(void) { capturing = 1; captured_used = 0; captured[0] = 0; }
-const char *cb_mac_capture(void) { capturing = 0; return captured; }
+void cb_mac_capture_begin(void)
+{
+    capturing = 1;
+    captured_used = 0;
+    captured_truncated = 0;
+    captured[0] = 0;
+}
+int cb_mac_capture_matches(const char *expected)
+{
+    capturing = 0;
+    return cb_acceptance_output_matches(captured, captured_used,
+                                        captured_truncated, expected);
+}
 int cb_mac_quitting(void) { return quit_requested; }
 
 int cb_mac_initialize(void)

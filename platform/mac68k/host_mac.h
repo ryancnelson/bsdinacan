@@ -8,7 +8,7 @@ int cb_mac_initialize(void);
 void cb_mac_pump(int timeout_ms);
 void cb_mac_text(const char *text);
 void cb_mac_capture_begin(void);
-const char *cb_mac_capture(void);
+int cb_mac_capture_matches(const char *expected);
 int cb_mac_write_result(const char *text);
 int cb_mac_autorun_requested(void);
 int cb_mac_capture_screen(void);

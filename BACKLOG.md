@@ -1229,3 +1229,19 @@ stream ownership and cross-target integer contracts still require explicit desig
   pending measurements clearly labeled, no runtime changes, unchanged captures,
   and no claim of new platform support. This supports the user's required
   32-bit direction; 16-bit work remains deferred. Run publication and exact CI.
+
+### MAC-14 — reject hidden bytes and truncated acceptance output
+
+- **Status:** Claimed by Codex on `work/MAC-14`
+- **Base:** main at `731b447`
+- **Depends on:** current native/Mac acceptance harness
+- **Hypothesis:** string-only comparisons can falsely accept output beginning
+  with NUL as empty output, or ignore bytes after an expected string.
+- **Scope:** shared length-aware text acceptance comparison, Mac capture
+  truncation tracking, and focused regression cases; preserve capture sizes,
+  expected transcript and worker runtime changes.
+- **Red:** leading NUL plus nonempty bytes must not match empty expected text;
+  exact text followed by NUL/suffix and a truncated prefix must fail.
+- **Accept:** focused behavior tests, full exact CI and the unchanged complete
+  actual Mac suite using the corrected comparison. No binary console-output
+  fixture may rely on text comparison; verify binary data internally instead.
