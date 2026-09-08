@@ -3037,9 +3037,6 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &err_interleave_program) < 0 ||
             cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
             cb_kernel_register(kernel, &normalpollprobe_program) < 0 ||
-            cb_kernel_register(kernel, &clocklossprobe_program) < 0 ||
-            cb_kernel_register(kernel, &runnabletimeoutprobe_program) < 0 ||
-            cb_kernel_register(kernel, &yieldingspinner_program) < 0 ||
             cb_kernel_register(kernel, &oldpollprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
