@@ -52,25 +52,34 @@ unless the coordinating prompt explicitly asks for it.
    for the expected missing behavior, and record the command and exact red
    failure in `notes/iterations/<ID>.md` using the template in that directory.
    A setup error or unrelated compiler failure is not useful red evidence.
+   A deliberately reverted fix can validate a regression test, but must not be
+   described as a test written before implementation.
 3. Make the smallest coherent implementation pass that test. Keep refactoring
    inside the tested boundary and keep the test green.
-4. Run the focused test, then the complete `make ci` gate.
+4. Run the focused test, then the complete `make ci` gate. Assert setup,
+   boot and child/probe exit results; a harness that discards a failed probe
+   has not passed. Lifecycle tests must observe cleanup before a later
+   exit/reap/teardown can hide its absence.
 5. Inspect `git diff --check`, `git diff`, and `git status`. Review ABI version
    and structure-size handling, task ownership, cleanup, host-OS leakage,
    overflow, and tests that assert implementation details instead of behavior.
-6. Commit one behavior change and push the feature branch. Wait for both the
+6. Commit one behavior change and push the feature branch. Wait for the
    Linux `ci`, `mac68k`, and applicable `mac-automation` Woodpecker workflows
    on the exact commit. See `notes/CI.md` for actual step logs. A local
    build is not Woodpecker evidence.
 7. For every runtime, libc, VFS, shell, command, or `platform/mac68k` behavior
    change, test the exact `mac68k` Woodpecker artifact in the shared Basilisk II
-   System 7 guest. Verify `SHA256SUMS`, remove the prior result file, require a
-   newly written `ALL PASS`, and record the commit, checksum, and guest result
-   in the iteration note. Only one worker may control the guest at a time; the coordinator assigns
-   that serialized slot. Use the checked-in Hammerspoon runner and staging
+   System 7 guest. Verify `SHA256SUMS`, stage fresh empty evidence before boot,
+   require the complete newly written expected transcript including `ALL PASS`, and record the commit, checksum, and guest result
+   in the iteration note. Only one worker may control the guest at a time;
+   the coordinator assigns that serialized slot. Use the checked-in Hammerspoon runner and staging
    protocol; see `platform/mac68k/automation/README.md`. Documentation-only and
    Linux-host-only changes may record guest acceptance as not required with a
    reason.
+
+Do not delete or disable existing tests to make a gate green. An intentional
+contract change requires an explicit design decision and replacement assertions
+that preserve the remaining coverage.
 
 If a check fails, diagnose it, add or refine a reproducer when appropriate,
 fix the cause, and rerun every affected check. A pushed fix is not completion;

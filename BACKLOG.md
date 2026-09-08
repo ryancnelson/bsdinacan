@@ -13,12 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns `VFS-03` directory iteration and its
-reviewed design corrections. Antigravity owns `IO-01` polling corrections.
-Codex owns review, serialized guest acceptance, integration, and the next
-bounded reuse/utility plans. MAC-09 and REUSE-01 are merged at `ca0cd19`,
-with fifteen actual guest checks accepted after Woodpecker #87.
-Antigravity also has the separate VFS-02 design queued behind polling fixes.
+**Current assignments:** Claude owns VFS-03 cleanup acceptance and the following
+LIBGEN-01 design. Antigravity owns VFS-02 executable nodes and review fixes.
+Codex owns review, serialized guest acceptance, integration and REUSE-03's
+bounded catalog experiment. Main contains IO-01 and direct polling acceptance
+from `819a964`: seventeen guest checks passed after Woodpecker #118.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
