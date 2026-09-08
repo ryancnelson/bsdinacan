@@ -41,34 +41,60 @@ Append optional `int (*console_set_raw)(int enable)` to the *actual end* of
 
 - `enable=1` acquires one exclusive console lease. Success means input will
   arrive without host canonical editing, echo, signal-character handling, or
-  input newline translation. The host saves every setting it changes first.
+  input newline translation. The host saves every setting it changes first. While leased, both console
+  reads and writes must be bounded, nonblocking calls returning actual progress
+  or a host error; the current Linux write-all loop does not meet this promise.
   A second acquisition while leased fails `-CB_EBUSY` and changes nothing;
   callers must not disable a lease they did not acquire.
 - `enable=0` restores the saved state for the acquired lease; calling it with
   no lease is a harmless success. Restore the saved values, never generic
   "cooked" defaults. No newly allocated cleanup resource may be needed here.
-- Unsupported acquisition returns `-CB_ENOSYS`; all acquisition failures leave
-  the host exactly as found. Partial setup must roll back before failure is
-  returned. A restore failure must be reported, retain the saved snapshot for
-  retry/fatal host cleanup, and must not be labeled successful restoration.
+- Unsupported acquisition returns `-CB_ENOSYS` without changing the host. An
+  ordinary returned acquisition error likewise means partial setup was fully
+  rolled back. If that rollback itself fails, the adapter must retain ownership
+  of its saved snapshot, report the cleanup failure, and enter its existing
+  nonreturning fatal path; it must not return an ordinary error claiming the
+  host is unchanged. The adapter's cleanup owner exists independently of the
+  kernel lease flag, which cannot be set for a failed acquisition.
+- A restore failure retains the saved snapshot and active ownership. Do not
+  clear the lease or free its owner before restoration succeeded. Reporting a
+  fatal cleanup failure is an explicit failure outcome, not an assertion that
+  restoration happened.
 
 The kernel negotiates once for a successfully prepared boot, before any guest
 runs. Queues and default attributes must exist first. `ENOSYS` or an absent
-optional field selects legacy pass-through; another host error fails boot and
-unwinds its staged resources. Record lease ownership only on successful
-acquisition. Boot failure after acquisition, normal shutdown, and kernel
-teardown must each restore exactly once. Destroy guest execution instances and
-close console users before releasing the kernel's terminal owner. Restoration
-failure goes through the host's reported failure path, not a successful shutdown
-receipt. Abrupt external process death (for example SIGKILL) cannot promise a
-cleanup callback; this design claims orderly/error-unwind restoration only.
+optional field selects legacy pass-through; another ordinary host error fails
+boot and unwinds its staged resources. Record kernel lease ownership only on
+successful acquisition.
+
+**Cleanup/reporting boundary:** `cb_kernel_run` returning is not restoration;
+it can leave execution instances and blocked tasks alive. Restore during
+`cb_kernel_destroy`, after destroying guest execution instances and closing
+console users, but before freeing the terminal owner or kernel. On successful
+restore, clear the lease and complete destruction. Because this existing API
+returns `void`, restore failure must call `host->fatal` and must not return
+normally or publish successful shutdown. The host retains its saved cleanup
+state until successful restore or explicit fatal termination; a failure-path
+test can intercept fatal before termination to inspect that retained ownership.
+Normal application completion requires destroy to return, not just run to
+return. No new public shutdown API is proposed.
+
+Post-acquire boot failure uses the same internal restore-or-fatal path before
+returning the boot error. Every successful acquisition has exactly one successful
+restore; repeated cleanup cannot restore another kernel's lease. A failure is
+never counted as that successful restore. Abrupt external process death (for
+example SIGKILL), or an unrecoverable host restoration failure, cannot promise
+restored physical terminal state; these are reported limitations, not normal
+shutdown outcomes.
 
 A Linux implementation must save the original complete `tcgetattr` state and
 any file-status flags it changes, including pre-existing `O_NONBLOCK` bits.
 Do not overwrite unrelated flags, reopen stdin, or close inherited descriptors.
 Disable inherited input processing/echo before selecting core mode; make input
-reads nonblocking while leased, and restore the exact saved termios and flags
-on every covered exit. If input is not a tty, retain legacy pipe/file input
+reads and writes nonblocking while leased, and restore the exact saved termios
+and file-status flags on every covered exit, including any output descriptor
+whose flags changed. Handle aliased descriptors/open-file descriptions without
+resnapshotting already-modified flags as if they were the original state. If input is not a tty, retain legacy pipe/file input
 rather than pretending raw terminal control succeeded. One active console lease
 per adapter is the explicit limit; a second kernel cannot restore the first
 kernel's console by failing its own acquisition.
@@ -162,10 +188,35 @@ Echo occurs once when input is accepted, never again when read or moved between
 queues. In canonical mode, erase of a retained byte emits `\b \b`; erase at
 an empty line and VEOF emit nothing. Accepted NL echoes NL. Overflow-discarded
 bytes do not echo. Raw-mode ECHO writes the accepted bytes literally, with no
-erase interpretation. Short echo writes retain their unwritten bounded suffix;
-never busy-loop on a zero-progress writer. The pump must finish/queue an echo
-suffix before accepting further echo-producing input. Output errors follow the
-existing host-console error policy and must not corrupt the input record.
+erase interpretation.
+
+The only echo storage is **three bytes** plus offset/remaining counters: the
+largest generated response is the three-byte erase sequence. Before consuming
+another host input byte, finish the pending suffix. This conservative rule
+forbids all additional input draining while echo remains, so no later character
+can produce another suffix or reorder echo. There is no separate output queue.
+
+At the start of each root scheduler sweep, service a pending suffix with one
+bounded host `console_write(1, ...)` call. A positive short write advances its
+offset; since at most three bytes exist, at most three progress-making calls
+finish it. While a suffix remains, schedule another root sweep before any
+blocking stdin poll, even if no further input ever arrives. Other runnable
+tasks and deadline checks still get a turn between sweeps. Current input-only
+`console_poll` is never used as a proxy for output readiness.
+
+TERM-01 deliberately does not implement waiting for writable output. Zero
+progress, `-CB_EAGAIN`, another negative result, or an impossible count greater
+than the requested suffix latches a terminal I/O failure. Stop draining input,
+preserve accepted input and the unwritten suffix for inspection, wake blocked
+terminal readers with `-1`/`CB_EIO`, and report `CB_POLLERR` rather than spinning
+or claiming echo completion. Later reads fail without consuming queued data;
+changing attributes does not clear this terminal fault. Before reporting run
+completion, the scheduler services any pending suffix using the same bounded
+sweeps even if the boot task has exited; a latched terminal fault makes
+`cb_kernel_run` return failure, not a successful run with silently lost echo.
+Teardown still restores the host. This fail-fast backpressure policy is a stated limitation; supporting
+recovery from temporarily unwritable output needs a separately designed host
+output-wait capability. Do not advertise such support through this interface.
 
 ## One drain owner, readiness, and EOF
 
@@ -186,8 +237,9 @@ eligible waiters only after the relevant guest readiness changes, and recheck
 readiness when each task resumes. Competing readers share and consume the same
 queue; readiness is not a reservation of a line for every reader.
 
-If the edit contains incomplete input and no more host input is available, the
-scheduler waits through the host's blocking/timed poll using the earliest finite
+If no echo suffix remains, the edit contains incomplete input, and no more host
+input is available, the scheduler waits through the host's blocking/timed poll
+using the earliest finite
 poll deadline. It must not keep waking canonical readers on that incomplete
 line. If core queues are full, suspend input draining and do not spin on the
 host's still-readable backlog; service ready consumers/other tasks instead.
@@ -202,6 +254,32 @@ readable at EOF. This is distinct from the one-shot VEOF event. In raw mode,
 `VMIN=1` blocks until data or source EOF, whereas `VMIN=0` returns 0 immediately
 when empty; `poll` still reports actual data/EOF rather than readiness merely
 because a zero-minimum read would return immediately.
+
+## Raw storage invariant
+
+Raw input uses the same two byte arrays, never a third queue. At all times,
+including repeated transitions, `fifo_used <= CB_PATH_MAX`,
+`edit_used <= CB_PATH_MAX`, and their sum is at most **2048 input bytes** today.
+The independent three-byte echo suffix does not hold additional input. Metadata
+is bounded by the existing 16 record descriptors plus fixed counters/flags;
+mode changes cannot append an unbounded list of transition records.
+
+On entering raw mode, drop canonical record boundaries and empty-VEOF markers
+but retain payload bytes: FIFO bytes precede edit-buffer bytes. Raw reads drain
+that order. While old edit-buffer bytes remain, do not append new host bytes
+ahead of them in the FIFO; pause host draining until both old segments have been
+consumed. Normal raw ingestion thereafter uses only the FIFO, with `edit_used`
+zero, stopping at FIFO capacity. Raw data needs no per-byte record descriptors.
+
+On entering canonical mode, coalesce the entire existing FIFO payload into one
+committed record (if nonempty). If the edit array also contains old raw-readable
+bytes from an immediate reverse transition, mark that array as one completed
+pending record and stop host draining until it can be enqueued. Thus a transition
+requires at most one FIFO record and one fixed pending-edit state, regardless
+of how many times mode changes occur without a read. No bytes are copied into
+insufficient space, discarded for metadata exhaustion, or reprocessed as control
+characters. Queue lengths/offsets and at most 16 canonical records continue to
+bound subsequent input. These invariants must be asserted by transition tests.
 
 ## Mode transitions and pending input
 
@@ -253,7 +331,12 @@ all existing console/IO tests. The bounded acceptance matrix is:
    flags once. Inject partial setup failure, post-acquire boot failure, normal
    exit, kernel destruction with blocked readers, second-owner acquisition,
    and restoration failure; inspect restoration before freeing its owner.
-   Host-specific tests must never change the developer's actual terminal.
+   Assert that run returning alone does not restore; destroy returning does.
+   Inject acquisition rollback failure separately: intercept adapter fatal and
+   inspect its saved cleanup owner, with no false unchanged-host return. Inject
+   destroy restoration failure: intercept core fatal before owner release and
+   assert no successful shutdown return. Host-specific tests must never change
+   the developer's actual terminal.
 3. Canonical ordinary/erase/CR/NL input, exact echo, erase-at-empty, and short
    reads across multiple lines. Test 1022/1023 ordinary bytes, discarded
    overflow followed by NL/VEOF, erase after overflow, 16 empty VEOF records,
@@ -262,19 +345,70 @@ all existing console/IO tests. The bounded acceptance matrix is:
    physical EOF with an unfinished line, queued data before EOF, and persistent
    EOF after subsequent mode changes. Assert exact bytes and number of zero
    reads; do not equate transient EAGAIN with physical EOF.
-5. Raw `VMIN=0/1`, literal control bytes, empty/readable poll, and two readers
+5. A three-byte erase echo with successive one-byte host writes drains fully
+   without any additional stdin event; no input read occurs between partial
+   writes. Zero/EAGAIN/hard-error/invalid-count writes latch the explicit I/O
+   failure without retry spins. Existing Linux write-all behavior must not be
+   used to satisfy this mock contract by assumption.
+6. Raw `VMIN=0/1`, literal control bytes, empty/readable poll, and two readers
    consuming one ready line. Count host reads to prove only root drains and
    count scheduling/wakeup events to reject repeated incomplete-line wakeups,
    full-queue readiness spin, stale-ready/EAGAIN spin and zero-progress echo
    loops. Interleave a runnable peer and finite IO-01 deadlines.
-6. Reject unsupported VTIME/VMIN, actions and flag bits atomically, including
+7. Reject unsupported VTIME/VMIN, actions and flag bits atomically, including
    a request that also changes ICANON/ECHO. Assert attributes, bytes, markers
    and readiness stayed unchanged. Exercise both mode transitions with queued,
    partial, overflowed and EOF input; assert no double echo or retroactive edit.
-7. Ordinary-source private-header/symbol checks plus full exact Woodpecker
+   Repeat transitions at 2048 bytes and at 16 records without intervening reads,
+   then verify byte order and fixed storage/metadata limits.
+8. Ordinary-source private-header/symbol checks plus full exact Woodpecker
    checks. A future Mac adapter claiming raw capability requires a direct guest
    probe of that exact artifact. A legacy-only Mac result must be labeled
    ENOSYS/pass-through, not evidence of raw/termios behavior.
+
+## Implementation stages, not one combined runtime assignment
+
+Each stage is a separate future worker assignment with its own red test,
+applicable full CI, review, and exact-artifact guest obligations. This document
+queues no work by itself. Dependencies below are required, not suggestions to
+implement all stages in one branch:
+
+1. **Classification and honest fallback.** Introduce the shared console owner,
+   private isatty classification and unsupported attribute results, and old
+   public/host prefix guards. Preserve existing console reads/poll unchanged.
+   No host enters raw mode. Depends only on this approved design and the actual
+   API tail in the implementation base.
+2. **Isolated canonical engine.** Pure bounded queue/record/erase/VEOF/echo
+   state transitions, exercised with deterministic byte inputs and no host
+   calls. Prove the 2048-byte input and three-byte echo limits, delimiters at
+   capacity, and error states. Depends on stage 1's owner/layout; does not
+   change live console input routing.
+3. **Attributes and mode transitions.** Add validation and the supported
+   attribute model using the engine, sharing and atomic-rejection tests.
+   Demonstrate repeated transitions preserve the storage invariant. Depends
+   on stages 1 and 2; real hosts still take legacy fallback.
+4. **Scheduler and mock lease.** Integrate the single root drain owner, pending
+   echo service independent of stdin, readiness, and restore-or-fatal lifecycle
+   using deterministic mocks. Preserve IO-01 deadline behavior. Depends on
+   stages 2/3 and accepted IO-01; prove the documented bounded/nonblocking host
+   writer and fail-fast output policy before any real adapter is enabled.
+5. **Linux adapter.** Implement exclusive acquisition, saved state, bounded
+   nonblocking reads/writes, exact restoration and injected failure tests on
+   isolated fixtures. Remove the leased writer's write-all/zero-progress loop;
+   this is a prerequisite, not assumed current behavior. Depends on stage 4.
+   Raw acquisition must remain disabled until all callback/restoration promises
+   are satisfied. A proposal to support output EAGAIN recovery instead of this
+   design's fail-fast policy blocks that part of the stage pending a separate
+   output-wait interface decision; do not quietly add an output API here.
+6. **Mac adapter, later.** Inventory and implement bounded root-stack keyboard
+   delivery without host edit/echo, plus exact UI-mode restoration. Depends on
+   stage 4 and a separate reviewed Mac buffer/event contract; remains **blocked
+   for assignment** until that contract and serialized guest acceptance plan
+   exist. Mac legacy ENOSYS/pass-through remains supported in all earlier stages.
+
+Prior design commit `50b6093` passed all three exact Woodpecker workflows.
+This revision makes the output failure policy, cleanup boundary, raw-storage
+invariant, and staging dependencies explicit; its own exact checks are pending.
 
 This branch has no runtime red/green claim and needs no guest execution.
 Validation for the revised design: source inventory above, design consistency
