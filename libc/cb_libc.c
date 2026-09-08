@@ -40,16 +40,35 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->getprogname != NULL;
 }
 
-/* opendir/readdir/closedir share one boundary check: they were appended
-   together, contiguously, so if the struct is big enough to include
-   closedir (the last of the three) and all three are non-NULL, all three
-   are safe to call. */
-static int dirent_api_available(void)
+/* Each of opendir/readdir/closedir checks only its own field, not the
+   other two -- matching cb_vfs_node_ops's per-operation independence
+   (truncate and child_at are each checked on their own). A table can, in
+   principle, carry one of these three as NULL while the other two are
+   present (e.g. a runtime variant omitting closedir alone); bundling all
+   three into one shared availability check would incorrectly reject
+   opendir()/readdir() in that case even though their own fields are
+   perfectly usable. */
+static int opendir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, opendir) +
+                   sizeof(bound_api->opendir) &&
+           bound_api->opendir != NULL;
+}
+
+static int readdir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, readdir) +
+                   sizeof(bound_api->readdir) &&
+           bound_api->readdir != NULL;
+}
+
+static int closedir_api_available(void)
 {
     return bound_api->struct_size >=
                offsetof(struct cb_api_v1, closedir) +
                    sizeof(bound_api->closedir) &&
-           bound_api->opendir != NULL && bound_api->readdir != NULL &&
            bound_api->closedir != NULL;
 }
 
@@ -355,7 +374,7 @@ struct cb_libc_dir *cb_libc_opendir(const char *path)
 {
     struct cb_libc_dir *dir;
     int descriptor;
-    if (!dirent_api_available()) {
+    if (!opendir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return NULL;
     }
@@ -364,7 +383,13 @@ struct cb_libc_dir *cb_libc_opendir(const char *path)
         return NULL;
     dir = bound_api->allocate(sizeof(*dir));
     if (dir == NULL) {
-        bound_api->closedir(descriptor);
+        /* Only release the acquired descriptor if this table's closedir
+           is itself usable -- a table providing opendir without closedir
+           is a degenerate combination no real runtime ships, but must not
+           crash on a NULL call here; the descriptor is simply left open
+           in that case, same as any other closedir()-unavailable table. */
+        if (closedir_api_available())
+            bound_api->closedir(descriptor);
         bound_api->set_errno(CB_ENOMEM);
         return NULL;
     }
@@ -380,7 +405,7 @@ struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp)
         bound_api->set_errno(CB_EBADF);
         return NULL;
     }
-    if (!dirent_api_available()) {
+    if (!readdir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return NULL;
     }
@@ -405,7 +430,7 @@ int cb_libc_closedir(struct cb_libc_dir *dirp)
         bound_api->set_errno(CB_EBADF);
         return -1;
     }
-    if (!dirent_api_available()) {
+    if (!closedir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
     }

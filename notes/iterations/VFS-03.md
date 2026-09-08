@@ -252,6 +252,80 @@ had no test proving it, as opposed to merely reading correct.
 All of these, plus the existing suite, pass `make LDLIBS=-lucontext test`
 and the full `make LDLIBS=-lucontext SANITIZE_CC=clang ci` gate.
 
+## Fifth review pass: tests that could mask the cleanup they claim to prove
+
+A further independent review found the fourth pass's runtime still sound,
+but three specific ways the *tests themselves* could pass even if the
+cleanup they claim to verify were broken:
+
+1. **Allocation-failure loop only covered `fail_at == 0`.** `bound_api
+   ->allocate` (`api_allocate`) makes two underlying `cb_allocate` calls
+   per logical allocation: one for the payload, one for its own
+   bookkeeping node (the task-allocation-tracking entry). Testing only
+   `fail_at == 0` exercises "the payload allocation itself fails" but
+   never reaches the separate branch where the payload succeeds and the
+   *bookkeeping* allocation fails, forcing `api_allocate` to release the
+   payload it had already acquired. `direntlibcallocfailprobe` now loops
+   `fail_at` over `{0, 1}`, independently verifying both.
+2. **The exit and exec reclaim checks were both only observable from
+   *outside*, after `cb_kernel_run` had already returned -- and a shell
+   booted via `cb_kernel_boot` always spawns its single command and
+   blocks in `waitpid()` for it immediately.** For the exit scenario this
+   meant the shell's own reap (`task_destroy`, which also calls
+   `dir_close_all`) would run immediately after the target task's own
+   `api_exit`, with no way to tell whether `api_exit`'s cleanup had
+   actually run or the shell's reap was silently covering for a missing
+   one. Fixed by adding `direntreapexitboot`, an orchestrator the shell
+   spawns instead: it spawns the real target itself, `yield()`s once (the
+   target runs to completion -- open, self-check, exit -- entirely within
+   that turn), and only *then* checks the node's reference count and
+   `waitpid()`s to reap it -- a window that exists only because this
+   orchestrator, not the shell, is the target's actual parent. This
+   isolates `api_exit`'s own cleanup from `task_destroy`'s. For the exec
+   scenario, the fix was simpler: `direntreapexecpeer` (the program
+   exec'd into) now records the reference count as the very first thing
+   it does, before anything else could have released the old task's
+   retain -- including its own eventual exit -- which is what actually
+   attributes the release to `task_finish_exec` specifically rather than
+   to whatever runs whenever the process eventually exits regardless.
+3. **The null-tail coverage set all three directory callbacks `NULL`
+   together, then only ever called `opendir()`.** This could never prove
+   that `cb_libc_readdir`/`cb_libc_closedir` check their *own* fields --
+   only that `cb_libc_opendir` does, transitively making the other two
+   unreachable. Testing this way also papered over a real bundling bug:
+   `dirent_api_available()` required all three fields non-`NULL`
+   *together*, so a table missing only `readdir` would have incorrectly
+   also rejected `opendir()` and `closedir()`, even though their own
+   fields were present and usable. Fixed the implementation first --
+   `dirent_api_available()` is now three independent per-field checks,
+   `opendir_api_available()`/`readdir_api_available()`/
+   `closedir_api_available()`, matching `cb_vfs_node_ops`'s existing
+   per-operation independence (this also required guarding
+   `cb_libc_opendir`'s own error-path call to `closedir()`, which would
+   otherwise dereference a `NULL` function pointer for a table that
+   provides `opendir` without `closedir`) -- then split the one bundled
+   test into three: `direntopendirnulltableprobe` (only `opendir` `NULL`),
+   `direntreaddirnulltableprobe` (only `readdir` `NULL`, `opendir`/
+   `closedir` must still succeed), and `direntclosedirnulltableprobe`
+   (only `closedir` `NULL`, `opendir`/`readdir` must still succeed).
+
+**Verification that these tests are real, not vacuous**: each of the
+three `dir_close_all` call sites (`api_exit`, `task_finish_exec`,
+`task_destroy`) was temporarily disabled, one at a time, and
+`test_dir_reclaim_contract` was re-run: disabling `api_exit`'s call
+produced `FAIL: api_exit did not release an unclosed directory's node
+retain`; disabling `task_finish_exec`'s call produced `FAIL:
+task_finish_exec did not release a directory held across exec`. (The
+implementation was restored immediately after each check; the third
+call site, `task_destroy`'s, is exercised by the kernel-teardown scenario
+but -- per that scenario's own documented limitation above -- is not
+independently verifiable this way without introducing a genuine
+use-after-free into the test itself, so it was not sabotage-tested; the
+existing pre-teardown "genuinely held" assertion plus a clean run under
+ASan/UBSan remains the honest scope of that one scenario.) All fixes
+re-verified against a full `make LDLIBS=-lucontext test` and the complete
+`make LDLIBS=-lucontext SANITIZE_CC=clang ci` gate.
+
 - Remaining risk or follow-up: `rewinddir`/`seekdir`/`telldir`,
   `scandir`, and `readdir_r` are explicitly not claimed (design doc §9).
   `IO-01` (public descriptor polling) is a separate, concurrently-worked
