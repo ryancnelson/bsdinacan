@@ -29,8 +29,9 @@ I fetched `uniq.c`, `cut.c`, `x_cut.c`, and `tee.c` from the pinned NetBSD repos
   - `asprintf` (missing from `stdio.h` / `stdlib.h`)
 - **Missing Interfaces (Source Inspection):**
   - Writable `fopen` (e.g. `fopen(..., "w")`) which is currently architecturally absent.
+  - The `-c` option uses `fprintf("%4d %s")`, but the current `cb_libc_fprintf` formatter supports only `%s` and `%%`.
 - **State Ownership/Isolation Prerequisites:**
-  - `uniq` uses mutable globals. Since tasks share the host process, these globals will leak across multiple executions. Acceptance requires explicitly documenting state ownership, lifecycle resets, and interleaved-task isolation before importing.
+  - `uniq` uses mutable globals. Since tasks share the host process, these globals will leak across multiple executions. Acceptance requires explicitly documenting state ownership and per-execution isolation across yields before importing.
 
 ### `cut` (NetBSD `usr.bin/cut/cut.c` & `usr.bin/cut/x_cut.c`)
 - **Source Hash (`cut.c`):** `7710a0db344af6cf879cbf5bde89e85a380dee37dda6a9ab08cb6318c36a011f` (3-clause UCB)
@@ -48,7 +49,7 @@ I fetched `uniq.c`, `cut.c`, `x_cut.c`, and `tee.c` from the pinned NetBSD repos
 - **Missing Interfaces in `x_cut.c` (Source Inspection):**
   - Included directly into `cut.c`, requires `wint_t`, `getwc`, `WEOF`, `putwchar`, and the `__unused` macro. (No usage of `iswalnum` exists).
 - **State Ownership/Isolation Prerequisites:**
-  - `cut` relies on mutable globals. Task isolation requires a full lifecycle reset protocol for any globals to ensure repeated or interleaved task acceptance passes safely without traversing dangling pointers.
+  - `cut` relies on mutable globals. Task isolation requires per-execution isolation across yields; reset alone cannot satisfy interleaving for globals to ensure repeated or interleaved task acceptance passes safely without traversing dangling pointers.
 
 ### `tee` (NetBSD `usr.bin/tee/tee.c`)
 - **Source Hash:** `ebcf5dcb07756634ba5876630e2567bb7eb318c489a2a8a6c10fb6919f685a53` (3-clause UCB)
@@ -64,7 +65,7 @@ I fetched `uniq.c`, `cut.c`, `x_cut.c`, and `tee.c` from the pinned NetBSD repos
   - `tee.c` implements raw write loops as `do { if ((wval = write(p->fd, bp, n)) == -1) ... bp += wval; } while (n -= wval);`.
   - If `write` yields `0`, the loop spins infinitely. The underlying adapter must guarantee it never returns a `0` incomplete write.
 - **State Ownership/Isolation Prerequisites (Source Inspection):**
-  - `tee` uses a global `LIST *head` pointer. `add()` dynamically allocates and prepends to it. There is no `reset()` path, and task exit frees the underlying allocations. Repeated calls will traverse dangling pointers, and concurrent tasks will share the global list. Acceptance must mandate isolated task-owned state or a strict lifecycle wipe before importing.
+  - `tee` uses a global `LIST *head` pointer. `add()` dynamically allocates and prepends to it. There is no `reset()` path, and task exit frees the underlying allocations. Repeated calls will traverse dangling pointers, and concurrent tasks will share the global list. Acceptance must mandate per-execution isolation across yields (reset alone cannot satisfy interleaving) before importing.
 
 ## Recommendation
 
@@ -73,3 +74,5 @@ I recommend **`tee`** as the smallest coherent next milestone, with specific pre
 **Proposed Dependency Task IDs:**
 1. **`STAT-01`**: Introduce `libc/include/sys/stat.h` and define `DEFFILEMODE`.
 2. **`SIG-01`**: Introduce `libc/include/signal.h` defining `SIGINT`/`SIG_IGN` and a formal `cb_libc_signal` implementation. **Note:** A harmless no-op stub is insufficient because `tee` explicitly ignores the return value of `signal()`, so a failure or no-op cannot establish the expected `tee -i` semantics. The implementation must establish an honest task-owned disposition contract. Import of `tee` is blocked until this disposition management is chosen and established.
+3. **`TEE-STATE-01-design`**: Design module state management for `tee` to establish a per-execution isolated context for the global `head` list (e.g., using a tee-specific execution wrapper that delegates to native inner execution, saving/restoring the renamed global list pointer across yields) to securely handle interleaved execution, failure, and cleanup without public ABI changes.
+4. **`WRITE-02-design`**: Formulate an adapter progress contract to guarantee `write` never spins infinitely on a `0` incomplete write. (Note: This is already claimed and owned by root at `f734884`).
