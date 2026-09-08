@@ -207,6 +207,7 @@ struct cb_task {
     struct cb_execution *execution;
     const struct cb_program *program;
     char **argv;
+    char **owned_argv; /* private original-string ledger, never exposed */
     const char *startup_name;
     int argc;
     char **environment;
@@ -226,6 +227,7 @@ struct cb_task {
     int wake_timeout;
     const struct cb_program *pending_program;
     char **pending_argv;
+    char **pending_owned_argv;
     int pending_argc;
     char **pending_environment;
     struct cb_task_allocation *allocations;

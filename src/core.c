@@ -140,6 +140,35 @@ static void string_vector_destroy(struct cb_kernel *kernel, char **vector)
     cb_release(kernel, vector);
 }
 
+/* Programs may replace, reorder, or terminate argv entries. Keep the original
+   string ownership ledger private; only the independent vector is exposed. */
+static char **argument_vector_copy(struct cb_kernel *kernel,
+                                   char *const vector[], char ***owned_out)
+{
+    char **owned = string_vector_copy(kernel, vector);
+    char **values;
+    size_t count;
+    *owned_out = NULL;
+    if (owned == NULL)
+        return NULL;
+    count = string_vector_count(owned);
+    values = cb_allocate(kernel, (count + 1) * sizeof(*values));
+    if (values == NULL) {
+        string_vector_destroy(kernel, owned);
+        return NULL;
+    }
+    memcpy(values, owned, (count + 1) * sizeof(*values));
+    *owned_out = owned;
+    return values;
+}
+
+static void argument_vector_destroy(struct cb_kernel *kernel, char **values,
+                                    char **owned)
+{
+    cb_release(kernel, values);
+    string_vector_destroy(kernel, owned);
+}
+
 struct cb_open_file *cb_open_file_create(struct cb_kernel *kernel,
                                           const struct cb_file_ops *ops,
                                           int flags)
@@ -515,9 +544,9 @@ static void task_destroy(struct cb_task *task)
         cb_vfs_node_release(task->executable_node);
     if (task->pending_executable_node != NULL)
         cb_vfs_node_release(task->pending_executable_node);
-    string_vector_destroy(kernel, task->argv);
+    argument_vector_destroy(kernel, task->argv, task->owned_argv);
     string_vector_destroy(kernel, task->environment);
-    string_vector_destroy(kernel, task->pending_argv);
+    argument_vector_destroy(kernel, task->pending_argv, task->pending_owned_argv);
     string_vector_destroy(kernel, task->pending_environment);
     cb_vfs_node_release(task->cwd);
     cb_vfs_node_release(task->root);
@@ -587,7 +616,7 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
     task->stdio_state.struct_size = sizeof(struct cb_stdio_state_v1);
 
     task->program = program;
-    task->argv = string_vector_copy(kernel, argv);
+    task->argv = argument_vector_copy(kernel, argv, &task->owned_argv);
     task->argc = (int)argument_count;
     task->environment = string_vector_copy(kernel,
         envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
@@ -622,7 +651,7 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
 
 fail:
     fd_close_all(task);
-    string_vector_destroy(kernel, task->argv);
+    argument_vector_destroy(kernel, task->argv, task->owned_argv);
     string_vector_destroy(kernel, task->environment);
     cb_vfs_node_release(task->cwd);
     cb_vfs_node_release(task->root);
@@ -659,10 +688,11 @@ static void task_finish_exec(struct cb_task *task)
     /* Directory descriptors have no close-on-exec flag: every open
        directory closes unconditionally across a successful exec. */
     dir_close_all(task);
-    string_vector_destroy(kernel, task->argv);
+    argument_vector_destroy(kernel, task->argv, task->owned_argv);
     string_vector_destroy(kernel, task->environment);
     task->program = task->pending_program;
     task->argv = task->pending_argv;
+    task->owned_argv = task->pending_owned_argv;
     task->startup_name = task->argv[0];
     task->argc = task->pending_argc;
     task->environment = task->pending_environment;
@@ -674,6 +704,7 @@ static void task_finish_exec(struct cb_task *task)
     task->stdio_state.stderr_error = 0;
     task->pending_program = NULL;
     task->pending_argv = NULL;
+    task->pending_owned_argv = NULL;
     task->pending_environment = NULL;
     task->pending_argc = 0;
     *task->error_cell = 0;
@@ -850,6 +881,7 @@ static int api_exec(const char *program_name, char *const argv[],
     struct cb_task *task = active_kernel->current;
     struct cb_vfs_node *node;
     char **new_argv;
+    char **new_owned_argv;
     char **new_environment;
     size_t argument_count;
     int result;
@@ -871,11 +903,11 @@ static int api_exec(const char *program_name, char *const argv[],
 
     cb_vfs_node_retain(node);
 
-    new_argv = string_vector_copy(task->kernel, argv);
+    new_argv = argument_vector_copy(task->kernel, argv, &new_owned_argv);
     new_environment = string_vector_copy(task->kernel,
         envp != NULL ? envp : task->environment);
     if (new_argv == NULL || new_environment == NULL) {
-        string_vector_destroy(task->kernel, new_argv);
+        argument_vector_destroy(task->kernel, new_argv, new_owned_argv);
         string_vector_destroy(task->kernel, new_environment);
         cb_vfs_node_release(node);
         cb_task_set_error(task, CB_ENOMEM);
@@ -885,6 +917,7 @@ static int api_exec(const char *program_name, char *const argv[],
     task->pending_executable_node = node;
     task->pending_program = node->executable;
     task->pending_argv = new_argv;
+    task->pending_owned_argv = new_owned_argv;
     task->pending_argc = (int)argument_count;
     task->pending_environment = new_environment;
     cb_task_yield_as(task, CB_TASK_EXEC_PENDING);
