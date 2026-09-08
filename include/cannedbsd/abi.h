@@ -32,6 +32,7 @@ enum cb_error {
     CB_ESPIPE = 29,
     CB_EPIPE = 32,
     CB_ENAMETOOLONG = 63,
+    CB_ENOEXEC = 8,
     CB_ENOSYS = 78,
     CB_ENOTEMPTY = 66,
     CB_EFAULT = 14
@@ -57,7 +58,8 @@ enum cb_node_type {
     CB_NODE_REGULAR = 1,
     CB_NODE_DIRECTORY = 2,
     CB_NODE_TERMINAL = 3,
-    CB_NODE_PIPE = 4
+    CB_NODE_PIPE = 4,
+    CB_NODE_EXECUTABLE = 5
 };
 
 struct cb_stat_v1 {
@@ -197,6 +199,7 @@ struct cb_api_v1 {
     int (*readdir)(int descriptor, char *name_out, size_t name_size,
                    uint64_t *inode_out, uint32_t *type_out);
     int (*closedir)(int descriptor);
+    char *(*basename_buffer_location)(void);
 };
 
 struct cb_program_v1 {

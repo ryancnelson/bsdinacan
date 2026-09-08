@@ -334,4 +334,51 @@ if ! nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_dirname$
     exit 1
 fi
 
+progname_source=tests/libc_progname_probe.c
+progname_object=$build_path/prognameprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$progname_source"; then
+    echo 'FAIL: program-name source probe uses private names' >&2
+    exit 1
+fi
+for symbol in getprogname setprogname; do
+    if ! matches "\\b${symbol}[[:space:]]*\\(" "$progname_source" ||
+            nm -u "$progname_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$progname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary program-name probe does not use private %s\n' "$symbol" >&2
+        exit 1
+    fi
+done
+
+exec_errno_source=tests/libc_exec_errno_probe.c
+exec_errno_object=$build_path/libc_exec_errno_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$exec_errno_source" ||
+        nm -u "$exec_errno_object" | matches '[[:space:]]U[[:space:]]+(strerror|strcmp|__errno_location|__error)$'; then
+    echo 'FAIL: ordinary executable errno probe crosses the private veneer' >&2
+    exit 1
+fi
+for symbol in strerror strcmp errno_location; do
+    if ! nm -u "$exec_errno_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: ordinary executable errno probe lacks private $symbol" >&2
+        exit 1
+    fi
+done
+basename_source=tests/libc_basename_probe.c
+basename_object=$build_path/basenameprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$basename_source"; then
+    echo 'FAIL: basename source probe uses private names' >&2
+    exit 1
+fi
+if ! matches '\bbasename[[:space:]]*\(' "$basename_source"; then
+    echo 'FAIL: basename source probe does not call basename()' >&2
+    exit 1
+fi
+if nm -u "$basename_object" | matches "[[:space:]]U[[:space:]]+basename$"; then
+    echo 'FAIL: basename probe imports host-facing basename' >&2
+    exit 1
+fi
+if ! nm -u "$basename_object" | matches "[[:space:]]U[[:space:]]+cb_libc_basename$"; then
+    echo 'FAIL: basename probe does not use the private veneer cb_libc_basename' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

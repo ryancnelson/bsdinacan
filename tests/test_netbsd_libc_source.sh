@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Drain producer output: early exit from rg -q can SIGPIPE nm/ar under
+# pipefail even after finding a valid symbol. Preserve actual producer errors.
+matches() {
+    rg "$@" >/dev/null
+}
+
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 build_path=${BUILD_PATH:-build}
@@ -30,6 +36,9 @@ strchr_hash=ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9
 dirname_source=upstream/netbsd/lib/libc/gen/dirname.c
 dirname_object=$build_path/netbsd_dirname.o
 dirname_hash=05ad1f66a7a5a4ceee33fe767a3410c60aa76e4ed670b5d57ab9198a0a2a892b
+basename_source=upstream/netbsd/lib/libc/gen/basename.c
+basename_object=$build_path/netbsd_basename.o
+basename_hash=f6202a8d1a89118f4743a2aa5880bc985ed8a6ca01b1c4ca654d789ff14adb87
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -42,31 +51,31 @@ if [[ $actual_hash != "$expected_hash" ]]; then
     exit 1
 fi
 if [[ ! -f $provenance_file ]] ||
-        ! rg -q "$expected_revision" "$provenance_file" ||
-        ! rg -q "$expected_hash" "$provenance_file"; then
+        ! matches "$expected_revision" "$provenance_file" ||
+        ! matches "$expected_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD strlen provenance is absent or does not match the pin' >&2
     exit 1
 fi
-if rg -q '\bassert[[:space:]]*\(' "$source_file"; then
+if matches '\bassert[[:space:]]*\(' "$source_file"; then
     echo 'FAIL: the import-only assert shim is unsafe for this source' >&2
     exit 1
 fi
 if [[ ! -f $object_file ]] ||
-        ! nm "$object_file" | rg -q '[[:space:]]T[[:space:]]+cb_libc_strlen$'; then
+        ! nm "$object_file" | matches '[[:space:]]T[[:space:]]+cb_libc_strlen$'; then
     echo 'FAIL: NetBSD strlen was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$object_file" | rg -q '[[:space:]]U[[:space:]]+strlen$'; then
+if nm -u "$object_file" | matches '[[:space:]]U[[:space:]]+strlen$'; then
     echo 'FAIL: NetBSD strlen object imports host strlen' >&2
     exit 1
 fi
 if [[ ! -f $archive_file ]] ||
-        ! ar t "$archive_file" | rg -q '^netbsd_strlen\.o$'; then
+        ! ar t "$archive_file" | matches '^netbsd_strlen\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strlen' >&2
     exit 1
 fi
 if ! nm -u "$build_path/cb_libc.o" |
-        rg -q '[[:space:]]U[[:space:]]+cb_libc_strlen$'; then
+        matches '[[:space:]]U[[:space:]]+cb_libc_strlen$'; then
     echo 'FAIL: cannedBSD puts does not use NetBSD strlen' >&2
     exit 1
 fi
@@ -80,25 +89,25 @@ if [[ $actual_strcmp_hash != "$strcmp_hash" ]]; then
         "$strcmp_hash" "$actual_strcmp_hash" >&2
     exit 1
 fi
-if ! rg -q "$strcmp_hash" "$provenance_file"; then
+if ! matches "$strcmp_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD strcmp provenance does not match the pin' >&2
     exit 1
 fi
-if rg -q '\bassert[[:space:]]*\(' "$strcmp_source"; then
+if matches '\bassert[[:space:]]*\(' "$strcmp_source"; then
     echo 'FAIL: the import-only assert shim is unsafe for strcmp' >&2
     exit 1
 fi
 if [[ ! -f $strcmp_object ]] ||
         ! nm "$strcmp_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_strcmp$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_strcmp$'; then
     echo 'FAIL: NetBSD strcmp was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$strcmp_object" | rg -q '[[:space:]]U[[:space:]]+strcmp$'; then
+if nm -u "$strcmp_object" | matches '[[:space:]]U[[:space:]]+strcmp$'; then
     echo 'FAIL: NetBSD strcmp object imports host strcmp' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_strcmp\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_strcmp\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strcmp' >&2
     exit 1
 fi
@@ -113,22 +122,22 @@ if [[ $actual_memcpy_hash != "$memcpy_hash" ||
     echo 'FAIL: NetBSD memcpy source set changed' >&2
     exit 1
 fi
-if ! rg -q "$memcpy_hash" "$provenance_file" ||
-        ! rg -q "$bcopy_hash" "$provenance_file"; then
+if ! matches "$memcpy_hash" "$provenance_file" ||
+        ! matches "$bcopy_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD memcpy provenance does not match the source set' >&2
     exit 1
 fi
 if [[ ! -f $memcpy_object ]] ||
         ! nm "$memcpy_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_memcpy$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_memcpy$'; then
     echo 'FAIL: NetBSD memcpy was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$memcpy_object" | rg -q '[[:space:]]U[[:space:]]+memcpy$'; then
+if nm -u "$memcpy_object" | matches '[[:space:]]U[[:space:]]+memcpy$'; then
     echo 'FAIL: NetBSD memcpy object imports host memcpy' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_memcpy\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_memcpy\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memcpy' >&2
     exit 1
 fi
@@ -141,21 +150,21 @@ if [[ $actual_memmove_hash != "$memmove_hash" ]]; then
     echo 'FAIL: NetBSD memmove source changed' >&2
     exit 1
 fi
-if ! rg -q "$memmove_hash" "$provenance_file"; then
+if ! matches "$memmove_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD memmove provenance does not match the pin' >&2
     exit 1
 fi
 if [[ ! -f $memmove_object ]] ||
         ! nm "$memmove_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_memmove$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_memmove$'; then
     echo 'FAIL: NetBSD memmove was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$memmove_object" | rg -q '[[:space:]]U[[:space:]]+memmove$'; then
+if nm -u "$memmove_object" | matches '[[:space:]]U[[:space:]]+memmove$'; then
     echo 'FAIL: NetBSD memmove object imports host memmove' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_memmove\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_memmove\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memmove' >&2
     exit 1
 fi
@@ -164,25 +173,25 @@ if [[ ! -f $memcmp_source ]] ||
     echo 'FAIL: pinned NetBSD memcmp source is missing or changed' >&2
     exit 1
 fi
-if ! rg -q "$memcmp_hash" "$provenance_file"; then
+if ! matches "$memcmp_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD memcmp provenance does not match the pin' >&2
     exit 1
 fi
-if rg -q '\bassert[[:space:]]*\(' "$memcmp_source"; then
+if matches '\bassert[[:space:]]*\(' "$memcmp_source"; then
     echo 'FAIL: the import-only assert shim is unsafe for memcmp' >&2
     exit 1
 fi
 if [[ ! -f $memcmp_object ]] ||
         ! nm "$memcmp_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_memcmp$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_memcmp$'; then
     echo 'FAIL: NetBSD memcmp was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$memcmp_object" | rg -q '[[:space:]]U[[:space:]]+memcmp$'; then
+if nm -u "$memcmp_object" | matches '[[:space:]]U[[:space:]]+memcmp$'; then
     echo 'FAIL: NetBSD memcmp object imports host memcmp' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_memcmp\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_memcmp\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD memcmp' >&2
     exit 1
 fi
@@ -191,25 +200,25 @@ if [[ ! -f $strchr_source ]] ||
     echo 'FAIL: pinned NetBSD strchr source is missing or changed' >&2
     exit 1
 fi
-if ! rg -q "$strchr_hash" "$provenance_file"; then
+if ! matches "$strchr_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD strchr provenance does not match the pin' >&2
     exit 1
 fi
-if rg -q '\bassert[[:space:]]*\(' "$strchr_source"; then
+if matches '\bassert[[:space:]]*\(' "$strchr_source"; then
     echo 'FAIL: the import-only assert shim is unsafe for strchr' >&2
     exit 1
 fi
 if [[ ! -f $strchr_object ]] ||
         ! nm "$strchr_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_strchr$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_strchr$'; then
     echo 'FAIL: NetBSD strchr was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$strchr_object" | rg -q '[[:space:]]U[[:space:]]+strchr$'; then
+if nm -u "$strchr_object" | matches '[[:space:]]U[[:space:]]+strchr$'; then
     echo 'FAIL: NetBSD strchr object imports host strchr' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_strchr\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_strchr\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strchr' >&2
     exit 1
 fi
@@ -218,27 +227,55 @@ if [[ ! -f $dirname_source ]] ||
     echo 'FAIL: pinned NetBSD dirname source is missing or changed' >&2
     exit 1
 fi
-if ! rg -q "$dirname_hash" "$provenance_file"; then
+if ! matches "$dirname_hash" "$provenance_file"; then
     echo 'FAIL: NetBSD dirname provenance does not match the pin' >&2
     exit 1
 fi
 if [[ ! -f $dirname_object ]] ||
         ! nm "$dirname_object" |
-            rg -q '[[:space:]]T[[:space:]]+cb_libc_dirname_upstream$'; then
+            matches '[[:space:]]T[[:space:]]+cb_libc_dirname_upstream$'; then
     echo 'FAIL: NetBSD dirname was not compiled under its private link name' >&2
     exit 1
 fi
-if nm -u "$dirname_object" | rg -q '[[:space:]]U[[:space:]]+dirname$'; then
+if nm -u "$dirname_object" | matches '[[:space:]]U[[:space:]]+dirname$'; then
     echo 'FAIL: NetBSD dirname object imports host dirname' >&2
     exit 1
 fi
-if ! ar t "$archive_file" | rg -q '^netbsd_dirname\.o$'; then
+if ! ar t "$archive_file" | matches '^netbsd_dirname\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD dirname' >&2
     exit 1
 fi
 if ! nm -u "$build_path/cb_libc.o" |
-        rg -q '[[:space:]]U[[:space:]]+cb_libc_dirname_upstream$'; then
+        matches '[[:space:]]U[[:space:]]+cb_libc_dirname_upstream$'; then
     echo 'FAIL: cannedBSD dirname veneer does not use the imported dirname' >&2
+    exit 1
+fi
+if [[ ! -f $basename_source ]] ||
+        [[ $(sha256sum "$basename_source" | awk '{print $1}') != "$basename_hash" ]]; then
+    echo 'FAIL: pinned NetBSD basename source is missing or changed' >&2
+    exit 1
+fi
+if ! matches "$basename_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD basename provenance does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $basename_object ]] ||
+        ! nm "$basename_object" |
+            matches '[[:space:]]T[[:space:]]+cb_libc_basename_upstream$'; then
+    echo 'FAIL: NetBSD basename was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$basename_object" | matches '[[:space:]]U[[:space:]]+basename$'; then
+    echo 'FAIL: NetBSD basename object imports host basename' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | matches '^netbsd_basename\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD basename' >&2
+    exit 1
+fi
+if ! nm -u "$build_path/cb_libc.o" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_basename_upstream$'; then
+    echo 'FAIL: cannedBSD basename veneer does not use the imported basename' >&2
     exit 1
 fi
 

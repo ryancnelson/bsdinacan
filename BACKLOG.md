@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns BASENAME-01. Antigravity owns VFS-02
-regression corrections. Codex owns serialized guest acceptance and the measured
-utility roadmap. VFS-03 is accepted at `6e83f00`: all three Woodpecker workflows
-(#182) and twenty-nine fresh Mac checks passed. The next measured utility
-milestone is unchanged NetBSD basename; the reviewed echo prerequisites are ready in parallel.
+**Current assignments:** Claude prepares ECHO-01; Antigravity owns STDOUT-01
+in its isolated worktree. Codex owns MAC-12 calibration next, integration and
+serialized guest acceptance. PROGNAME-01 and BASENAME-01 are merged and accepted
+at `a7acb54` (31 Mac records) and `5906b9c` (38 Mac records), respectively.
+VFS-02 remains accepted at `56e79e1` with its executable-node lifetime tests.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -227,7 +227,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### VFS-02 — runtime-visible executable nodes
 
-- **Status:** Design claimed by Antigravity on `work/VFS-02-design`
+- **Status:** Done at `56e79e1`; thirty actual Mac checks accepted
 - **Base:** main
 - **Hypothesis:** registered programs can appear as executable VFS objects and
   shell lookup can resolve those objects instead of a hidden path registry.
@@ -818,6 +818,32 @@ with an ID, dependencies, red test, and acceptance boundary above.
   cases; exact Woodpecker gates; fresh unlocked guest regression when available.
   Keep the existing locked-host run and its disk ownership undisturbed.
 
+### MAC-12 — optional pre-match window and cursor calibration
+
+- **Status:** Ready; reserved for the Codex coordinator next
+- **Base:** main after accepted BASENAME-01 `5906b9c`
+- **Depends on:** MAC-06, MAC-09, MAC-11 (Done)
+- **Hypothesis:** optional placement of the verified emulator window and parking
+  the host cursor before image matching prevents the measured overlay/focus and
+  cursor-over-template misses without relaxing any existing safety checks.
+- **Evidence:** PROGNAME-01 `run-3h5wky79` had multiple prelaunch focus/mouse
+  interruptions with empty output evidence; BASENAME-01 `run-rt_33o6i` had a
+  focus interruption before output. Both subsequently completed as resumed runs.
+- **Scope:** bounded, explicitly configured window positioning and cursor parking
+  in the existing driver before matching. Preserve target PID/window validation,
+  locked-session and foreground/focus checks, image-confidence rejection, staged
+  evidence freshness, normal shutdown and slot ownership. Do not automatically
+  dismiss dialogs, accept ambiguous matches, or claim focus from window position.
+- **Red:** deterministic driver fixtures must expose a configured calibration
+  that is omitted or occurs after matching; cover wrong/missing target, failed
+  positioning, focus loss, and disabled configuration in mocks without driving
+  the shared guest.
+- **Accept:** prove calibration precedes matching only for the verified target;
+  preserve default behavior when disabled and fail safely on calibration errors.
+  Run exact CI and a coordinator-owned guest regression with reviewed screenshot,
+  full fresh transcript, normal shutdown and slot release. Record interruptions
+  and distinguish resumed elapsed time from a cold-boot measurement.
+
 ### LIBGEN-01 — task-local dirname
 
 - **Status:** Done at `96d5936`; included in twenty-eight accepted Mac checks
@@ -896,13 +922,14 @@ separate IDs before assigning implementation.
   empty input, argument-count/option failures, dash-leading path, repeated
   invocation and pipeline; exact Woodpecker artifact runs in Basilisk II.
 
-The next visible project milestone is the real `basename` command. Defer broader
-terminal and filesystem feature expansion unless needed to finish an active
+The next visible project milestone is unchanged NetBSD `echo`, after STDOUT-01.
+Defer broader terminal and filesystem feature expansion unless needed to finish an active
 review or to satisfy this measured command's dependencies.
 
 ### BASENAME-01 — unchanged NetBSD basename utility and libc prerequisite
 
-- **Status:** Claimed by Claude on `work/BASENAME-01`
+- **Status:** Done at `5906b9c`; exact Woodpecker #219 all three checks and
+  guest `run-rt_33o6i` with 38 PASS records accepted
 - **Base:** main after accepted dirname milestone `96d5936`
 - **Depends on:** DIRNAME-01, LOCALE-01 (accepted in main)
 - **Scope:** pinned unchanged libc basename plus command, separate writable
@@ -916,7 +943,8 @@ review or to satisfy this measured command's dependencies.
 
 ### ECHO-01 — unchanged NetBSD echo after measured prerequisites
 
-- **Status:** Blocked on PROGNAME-01 and STDOUT-01
+- **Status:** Preparation by Claude; runtime acceptance blocked on STDOUT-01
+  (PROGNAME-01 is accepted)
 - **Base:** integrated dependencies
 - **Depends on:** PROGNAME-01, STDOUT-01
 - **Hypothesis:** unchanged pinned bin/echo/echo.c will correctly report output
@@ -947,7 +975,8 @@ review or to satisfy this measured command's dependencies.
 
 ### PROGNAME-01 — startup-initialized public program identity
 
-- **Status:** Ready; reserved for Codex
+- **Status:** Done at `a7acb54`; exact Woodpecker #213 all three checks and
+  guest `run-3h5wky79` with 31 PASS records accepted
 - **Base:** main
 - **Depends on:** ECHO-01-design (Done)
 - **Scope:** implement the reviewed program-identity section of
@@ -961,7 +990,7 @@ review or to satisfy this measured command's dependencies.
 
 ### STDOUT-01 — task-owned standard-stream errors
 
-- **Status:** Ready; coordinator assignment required
+- **Status:** Claimed by Antigravity on `work/STDOUT-01`
 - **Base:** main
 - **Depends on:** ECHO-01-design (Done)
 - **Scope:** implement reviewed optional versioned stream-state accessor and
