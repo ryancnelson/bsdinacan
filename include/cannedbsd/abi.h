@@ -31,11 +31,13 @@ enum cb_error {
     CB_ENOSPC = 28,
     CB_ESPIPE = 29,
     CB_EPIPE = 32,
+    CB_ERANGE = 34,
     CB_ENAMETOOLONG = 63,
     CB_ENOEXEC = 8,
     CB_ENOSYS = 78,
     CB_ENOTEMPTY = 66,
-    CB_EFAULT = 14
+    CB_EFAULT = 14,
+    CB_EOVERFLOW = 84
 };
 
 enum cb_open_flag {

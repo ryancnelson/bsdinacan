@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern const struct cb_program_v1 cb_fread_probe_program, cb_fread_compat_program;
 extern const struct cb_program_v1 cb_file_probe_program, cb_file_compat_program;
 extern const struct cb_program_v1 cb_stdin_probe_program, cb_stdin_compat_program;
 extern const struct cb_program_v1 cb_stdio_state_probe_program;
@@ -25,6 +26,7 @@ extern const struct cb_program_v1 cb_dirname_probe_program;
 extern int cb_dirname_probe_main(int argc, char *argv[]);
 extern int cb_dirname_oldtable_main(int argc, char *argv[]);
 extern const struct cb_program_v1 cb_basename_probe_program;
+extern const struct cb_program_v1 cb_strtoimax_probe_program;
 extern int cb_basename_probe_main(int argc, char *argv[]);
 extern int cb_basename_oldtable_main(int argc, char *argv[]);
 
@@ -4154,7 +4156,8 @@ enum test_fixture {
     FIXTURE_DIRENT = 4,
     FIXTURE_BASENAME = 5,
     FIXTURE_YES = 6,
-    FIXTURE_ERR = 7
+    FIXTURE_ERR = 7,
+    FIXTURE_CONV = 8
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -4163,6 +4166,8 @@ static int register_mac_probes(struct cb_kernel *kernel)
 {
     return cb_kernel_register(kernel, &cb_getopt_arg_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_fread_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_fread_compat_program) == 0 &&
            cb_kernel_register(kernel, &cb_file_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_file_compat_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdin_probe_program) == 0 &&
@@ -4183,7 +4188,8 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_vfs_executable_probe_program) == 0 &&
-           cb_kernel_register(kernel, &cb_basename_probe_program) == 0 ?
+           cb_kernel_register(kernel, &cb_basename_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_strtoimax_probe_program) == 0 ?
            0 : -1;
 }
 
@@ -4209,6 +4215,12 @@ static int register_basename_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &basenamenulltableprobe_program) == 0 &&
            cb_kernel_register(kernel, &basenameisolationpeer_program) == 0 &&
            cb_kernel_register(kernel, &basenameisolationprobe_program) == 0 ?
+           0 : -1;
+}
+
+static int register_conv_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &cb_strtoimax_probe_program) == 0 ?
            0 : -1;
 }
 
@@ -4470,6 +4482,9 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_YES) {
         if (register_yes_probes(kernel) != 0)
             fail("yes probe registration");
+    } else if (fixture == FIXTURE_CONV) {
+        if (register_conv_probes(kernel) != 0)
+            fail("strtoimax probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -4977,6 +4992,7 @@ static void test_poll_runnable_timeout(void)
     printf("runnable timeout test passed\n");
 }
 
+void cb_test_fread(void);
 void cb_test_file(void);
 void cb_test_stdin(void);
 void cb_test_stdio_state(void);
@@ -5029,6 +5045,10 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--fread") == 0) {
+        cb_test_fread();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--file") == 0) {
         cb_test_file();
         return 0;
@@ -5101,6 +5121,7 @@ int main(int argc, char **argv)
         fail("unknown test selection");
     cb_test_getopt_arg();
     cb_test_argv();
+    cb_test_fread();
     cb_test_file();
     cb_test_stdin();
     cb_test_stdio_state();
@@ -5257,6 +5278,7 @@ int main(int argc, char **argv)
     run_case("basenameoldtableprobe", "", 0, FIXTURE_BASENAME);
     run_case("basenamenulltableprobe", "", 0, FIXTURE_BASENAME);
     run_case("basenameisolationprobe", "", 0, FIXTURE_BASENAME);
+    run_case("libcstrtoimaxprobe", "", 0, FIXTURE_CONV);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
     run_case("execearlyretain", "", 0, 1);

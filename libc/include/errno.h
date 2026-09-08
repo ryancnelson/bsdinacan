@@ -22,10 +22,12 @@
 #define ENOSPC CB_ENOSPC
 #define ESPIPE CB_ESPIPE
 #define EPIPE CB_EPIPE
+#define ERANGE CB_ERANGE
 #define ENAMETOOLONG CB_ENAMETOOLONG
 #define ENOTEMPTY CB_ENOTEMPTY
 #define ENOSYS CB_ENOSYS
 #define EFAULT CB_EFAULT
+#define EOVERFLOW CB_EOVERFLOW
 
 #define errno (*cb_libc_errno_location())
 

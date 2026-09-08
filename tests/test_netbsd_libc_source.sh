@@ -314,4 +314,52 @@ if ! nm -u "$build_path/cb_libc.o" |
     exit 1
 fi
 
+strtoimax_source=upstream/netbsd/common/lib/libc/stdlib/strtoimax.c
+strtoimax_object=$build_path/netbsd_strtoimax.o
+strtoimax_hash=c2476abb39e6ab8dd1fe2d745aeef66309d6cc90adb10f4beee64ae38c1f1ae5
+strtol_h_source=upstream/netbsd/common/lib/libc/stdlib/_strtol.h
+strtol_h_hash=f6ad43531aab239f6bb1c669e01b9df9ebc0c3e0a035cc27a89b74d404dbb74c
+
+if [[ ! -f $strtoimax_source ]] ||
+        [[ $(sha256sum "$strtoimax_source" | awk '{print $1}') != "$strtoimax_hash" ]]; then
+    echo 'FAIL: pinned NetBSD strtoimax source is missing or changed' >&2
+    exit 1
+fi
+if [[ ! -f $strtol_h_source ]] ||
+        [[ $(sha256sum "$strtol_h_source" | awk '{print $1}') != "$strtol_h_hash" ]]; then
+    echo 'FAIL: pinned NetBSD _strtol.h source is missing or changed' >&2
+    exit 1
+fi
+if ! matches "$strtoimax_hash" "$provenance_file" ||
+        ! matches "$strtol_h_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD strtoimax/_strtol.h provenance does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $strtoimax_object ]] ||
+        ! nm "$strtoimax_object" |
+            matches '[[:space:]]T[[:space:]]+cb_libc_strtoimax$'; then
+    echo 'FAIL: NetBSD strtoimax was not compiled under its private link name' >&2
+    exit 1
+fi
+for host_symbol in strtoimax isspace isdigit; do
+    if nm -u "$strtoimax_object" |
+            matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
+        printf 'FAIL: NetBSD strtoimax object imports host-facing %s\n' \
+            "$host_symbol" >&2
+        exit 1
+    fi
+done
+for private_symbol in cb_libc_isspace cb_libc_errno_location; do
+    if ! nm -u "$strtoimax_object" |
+            matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
+        printf 'FAIL: NetBSD strtoimax object does not import %s\n' \
+            "$private_symbol" >&2
+        exit 1
+    fi
+done
+if ! ar t "$archive_file" | matches '^netbsd_strtoimax\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD strtoimax' >&2
+    exit 1
+fi
+
 echo 'pinned unmodified NetBSD libc source boundary passed'
