@@ -88,3 +88,15 @@ the affected full native `make LDLIBS=-lucontext test` and Clang sanitizer gate
 were rerun before handoff.
 Exact feature Woodpecker and exact-artifact guest evidence: pending; the
 coordinator owns guest staging and acceptance. No guest execution is claimed.
+
+## Coordinator acceptance
+
+Reviewed runtime `935fc83bcf9546a0b34137081ff37ba7f4ff5125` is byte-identical
+to integration `27bb7be462f500c99c2fa05fb42c90838da65cab`; remaining differences
+are reviewed project/design documentation. All three exact #277 CI checks
+passed. Fresh guest `run-q732x7z0` passed all 56 records, preserving the prior
+54. Its archive SHA256 is
+`4c7a00a082297ab857af2d4133f100cfd6992940f6d7d202a884da5aff4dc453`.
+Screenshot and bound receipt were inspected; normal shutdown, closed disks and
+slot release completed in a 24.94-second cold automated cycle. Integration is
+merged to main. Read-only file wrappers remain a separate next task.

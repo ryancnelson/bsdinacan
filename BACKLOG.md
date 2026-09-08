@@ -14,7 +14,7 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude implements CONV-01. Antigravity implements
-STRCPY-01; the coordinator worker implements STDIN-01. Codex owns review,
+STRCPY-01; the coordinator worker implements STDIN-02. Codex owns review,
 integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
 with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
 
@@ -1087,7 +1087,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-01 — task-owned stdin and input indicators
 
-- **Status:** Claimed by coordinator worker on `work/STDIN-01`
+- **Status:** Done at `27bb7be`; exact #277 CI and 56-record Mac acceptance
 - **Base:** coordinator integration branch `work/warn-stdin-integration`
 - **Depends on:** reviewed STDIN-01-design `5fcc687`
 - **Scope:** stage 1 of the reviewed design: separate optional input-state
@@ -1117,7 +1117,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-02 — read-only fopen and fclose ownership
 
-- **Status:** Blocked on accepted STDIN-01
+- **Status:** Claimed by coordinator worker on `work/STDIN-02`
 - **Base:** main after dependency acceptance
 - **Depends on:** STDIN-01, reviewed STDIN-01-design
 - **Scope:** stage 2 of the reviewed design, read-only r/rb wrappers and

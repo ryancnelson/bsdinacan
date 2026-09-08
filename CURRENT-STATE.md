@@ -24,6 +24,21 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted input prerequisite, 2026-09-08
+
+Stdin byte reads and independent EOF/error queries are accepted at
+`27bb7be462f500c99c2fa05fb42c90838da65cab`, after clean independent review and
+all three exact Woodpecker #277 checks. Fresh guest `run-q732x7z0` passed 56
+records in 24.94 seconds from cold launch through screenshot, normal shutdown
+and verified slot release. Screenshot and exact receipt were inspected.
+Archive SHA256:
+`4c7a00a082297ab857af2d4133f100cfd6992940f6d7d202a884da5aff4dc453`.
+
+The original output state remains compatible with older runtimes. Input flags
+are task-owned, preserve failed exec/rebind state, and reset on successful exec.
+Read-only fopen/fclose wrappers are next (STDIN-02). Claude implements numeric
+conversion; strcpy is in coordinator integration testing, not yet accepted.
+
 ## Latest accepted head prerequisite, 2026-09-08
 
 Returning `warn` is accepted at `6f860c426e8842119615efd289f6bee2bcf6b678`.
