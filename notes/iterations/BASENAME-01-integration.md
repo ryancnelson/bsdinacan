@@ -1,6 +1,6 @@
 # BASENAME-01 integration
 
-Candidate based on accepted main `a7acb54bd569ef66d93884f9808cce66561e01d6`,
+Integration based on accepted main `a7acb54bd569ef66d93884f9808cce66561e01d6`,
 merging Claude's reviewed feature `234f395`. Worktree and branch:
 `bsdinacan-BASENAME-01-integration`, `work/BASENAME-01-integration`.
 
@@ -30,8 +30,8 @@ probe wrongly returned success (child exit 0). The corrected probe attempted
 the required write and the child received signal 10, so the harness correctly
 rejected the read-only result. This is a regression demonstration, not a claim
 that the initial implementation followed test-first development. The production
-implementation must still pass the corrected ordinary probe in full CI and Mac
-acceptance with its real writable per-task buffer.
+implementation subsequently passed the corrected ordinary probe in full CI and
+Mac acceptance with its real writable per-task buffer.
 
 ## Verification and acceptance status
 
@@ -40,7 +40,21 @@ acceptance with its real writable per-task buffer.
 - Shell syntax checks passed for the modified boundary/behavior scripts.
 - Both imported basename files retain their recorded exact upstream hashes.
 - `git diff --check`: passed.
-- Full Linux CI and exact Woodpecker checks are pending for this candidate.
-- Fresh Basilisk II acceptance is coordinator-owned and pending. The imported
-  feature note's historical "done" wording does not constitute guest acceptance
-  of this combined candidate. No emulator/UI operation was performed here.
+- Full Linux `make LDLIBS=-lucontext SANITIZE_CC=clang ci` on the exact archived
+  commit passed, including normal, sanitizer, build-mode and analyzer checks.
+- Exact Woodpecker #219 passed ci, mac68k and mac-automation on merged runtime
+  `5906b9c69551c6b7e3fd8fa14e777c204b5e1610`.
+
+## Coordinator-owned Mac acceptance, 2026-09-08
+
+Exact archive SHA256:
+`51456b9d06aa1a7995abc0fbb03cf836f190e25d76ac43a87560fc944459f04b`.
+Guest run `run-rt_33o6i` produced all 38 fresh PASS records. The coordinator
+reviewed the screenshot and acceptance receipt, verified app closure and normal
+guest shutdown with mounted disks closed, and released the serialized slot.
+
+The first focus interruption occurred before output evidence was written. The
+existing staged run was then resumed successfully in 12.92 seconds. This measures
+the successful resumed portion, not a cold boot or an uninterrupted first attempt.
+The imported worker note remains the historical feature report; this integration
+record supplies the completed exact combined runtime and guest evidence.

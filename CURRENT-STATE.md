@@ -26,19 +26,41 @@ it is not done.
 
 ## Latest accepted utility milestone, 2026-09-08
 
-Runtime commit `96d5936d8d5a6327724aead8af33c9bd998ec852` includes unchanged
-NetBSD dirname, its task-owned libc result, and C/POSIX locale support.
-Woodpecker #174 passed ci, mac68k, and mac-automation. Its exact archive SHA256
-is `4c391d5d6a280ba89b755d5eb79010a185c9c49e68d4e03485ca061fbf05001b`.
-Fresh Basilisk II acceptance `run-u4ko4rto` produced twenty-eight PASS records,
-including six dirname command cases, a reviewed screenshot, and verified normal
-shutdown with the guest slot released. The automated cycle took 15.48 seconds.
+Unchanged NetBSD basename and its separate writable task-owned libc result are
+accepted and merged at `5906b9c69551c6b7e3fd8fa14e777c204b5e1610`.
+Woodpecker #219 passed ci, mac68k and mac-automation; a separate full Linux
+`make ci` also passed. Exact archive SHA256:
+`51456b9d06aa1a7995abc0fbb03cf836f190e25d76ac43a87560fc944459f04b`.
+Guest run `run-rt_33o6i` produced all thirty-eight fresh PASS records, including
+seven basename cases and the previously accepted program-name and VFS probes.
+The coordinator reviewed the screenshot and acceptance receipt, verified app
+closure and normal guest shutdown with mounted disks closed, and released the
+slot. A focus interruption occurred before outputs; the successful resumed
+portion took 12.92 seconds. This is not a cold-boot measurement.
 
-BASENAME-01 feature `234f395` is integrated for validation on
-`work/BASENAME-01-integration`, based on accepted PROGNAME-01 `a7acb54`.
-The combined suite has thirty-eight Mac records; exact CI and guest acceptance
-remain pending. Claude is preparing ECHO-01 next.
-Antigravity owns STDOUT-01; Codex owns PROGNAME-01. VFS-02 is now accepted at
+PROGNAME-01 was separately accepted and merged at
+`a7acb54bd569ef66d93884f9808cce66561e01d6`: Woodpecker #213 passed all three
+workflows. Exact archive SHA256:
+`4332ea8f1b4abfb52dd31146d767234d007ce049523704ef6b33b34c11d0c87f`.
+Guest run `run-3h5wky79` produced thirty-one fresh PASS records. Multiple
+prelaunch focus/mouse interruptions left output evidence empty; the successful
+resumed portion took 12.42 seconds, not a cold-boot measurement. The coordinator
+reviewed the screenshot and receipt and verified app closure, normal guest
+shutdown, closed mounted disks and slot release.
+
+Claude prepares ECHO-01, whose runtime acceptance awaits Antigravity's STDOUT-01.
+Codex owns the bounded MAC-12 calibration task next: optional verified window
+positioning and cursor parking before matching, preserving all focus checks and
+never automatically dismissing dialogs. See BACKLOG.md for its acceptance scope.
+
+The earlier unchanged dirname/locale milestone remains accepted at `96d5936`:
+Woodpecker #174 all three checks, twenty-eight PASS records in `run-u4ko4rto`,
+and archive SHA256
+`4c391d5d6a280ba89b755d5eb79010a185c9c49e68d4e03485ca061fbf05001b`.
+That run's coordinator-reviewed screenshot and normal shutdown released the slot;
+its automated cycle took 15.48 seconds.
+
+VFS-02 is now accepted at
 `56e79e1dc1f26ef0e2ed6ecd581f8ffe419e6655`: Woodpecker #203 passed all three
 workflows, and fresh guest run `run-0t8ymt4d` passed thirty records in a
 18.96-second cold cycle. The screenshot was reviewed; app and guest disks
