@@ -62,9 +62,10 @@ its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude is running HEAD-02, tests-only characterization
 of unchanged head input/output failures and repeated recovery, extending the
-existing helper while preserving 65 top-level records. Antigravity is correcting
-the NEXT-UTIL-02 dependency audit for uniq/cut/tee. Codex owns review, integration,
-backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
+existing helper while preserving all current records. Antigravity is correcting
+the TEE-STATE-01-design proposal after the reviewed uniq/cut/tee audit. Codex
+owns WRITE-02-linux and coordinates the portable write worker, reviews,
+integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
 implementation assignments. New signals, upstream head patches and general
 stdio expansion are outside these tasks. The existing zero-exit behavior after

@@ -14,8 +14,9 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude is running HEAD-02 fault-characterization tests.
-Antigravity is correcting the NEXT-UTIL-02 measured dependency audit. Codex owns
-review, integration, backlog updates and serialized guest acceptance. HEAD-01
+Antigravity is correcting TEE-STATE-01-design after the reviewed utility audit.
+Codex owns WRITE-02-linux and coordinates the portable write worker, reviews,
+integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
 FWRITE-01 was accepted at `885d83c` with 64 records.
 
@@ -1254,7 +1255,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### NEXT-UTIL-02 — select the utility after head from measured dependencies
 
-- **Status:** Reviewed audit integrated; tee import blocked on state, signal and write-progress contracts; audit corrections in progress
+- **Status:** Reviewed audit integrated; tee import blocked on state, signal and write-progress contracts
 - **Base:** main
 - **Depends on:** accepted libc inventory and HEAD-01 (Done)
 - **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
