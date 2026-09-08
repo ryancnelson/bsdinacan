@@ -335,3 +335,69 @@ All three fixes above were re-verified on the pinned Linux CI toolchain
 (`make test` unchanged) and the pinned Retro68 Mac68k build (still
 succeeds) before being committed, exactly as with every other change in
 this branch.
+
+## Two further guest-found fixes, then a genuine, fresh PASS
+
+Continuing past the point above surfaced two more real GCC 3.4.6
+issues, both in `tests/test_core.c`, fixed and re-verified the same way
+(guest diagnostic first, fix committed after Linux/Mac68k
+re-verification, then re-tested on the guest):
+
+- `yesprobe_main`/`stdioepipeprobe_main` zero-initialize
+  `struct cb_spawn_action_v1` arrays. Neither `= {{0}}` ("missing
+  initializer" for the nested struct's fields) nor `= {0}` ("missing
+  braces around initializer") satisfies GCC 3.4.6's `-Wextra` for this
+  pattern -- confirmed by trying both on the real guest. Replaced with
+  plain declarations plus `memset(..., 0, sizeof(...))`, unambiguous on
+  every pinned toolchain.
+- `truncateprobe_main` already split ILP32 vs. LP64 behavior with a
+  *runtime* `if (sizeof(size_t) < sizeof(cb_off_t))`, but a runtime
+  `if`/`else` still requires the compiler to fully type-check both
+  branches regardless of which is reachable: the LP64-only branch's
+  `(uint64_t)resize_request_size >= (uint64_t)INT64_MAX` is still a
+  compile-time tautology GCC 3.4.6 warns on for a 32-bit `size_t`
+  variable, cast or not. Converted to a preprocessor
+  `#if SIZE_MAX > INT64_MAX`/`#else`, which actually excludes the
+  unreachable branch from compilation, matching the pattern already
+  used in `src/core.c`/`libc/cb_libc.c`.
+
+With those fixed (commit `9aff546`), a complete, uninterrupted guest
+run produced this exact, fresh output (not historical, captured
+directly from `/var/tmp/sol01fix7.log` on the guest immediately after
+the run):
+
+```
+make: warning:  Clock skew detected.  Your build may be incomplete.
+Orequired getopt tests passed
+argv ownership tests passed
+fread tests passed
+file ownership tests passed
+stdin tests passed
+clockloss test passed
+runnable timeout test passed
+all core tests passed
+launcher test passed
+build/bsdinacan:        ELF 32-bit MSB executable SPARC Version 1, dynamically linked, not stripped
+SOLARIS9_CANNEDBSD_TEST=PASS
+```
+
+`build/test_core` exists on the guest (`930336` bytes, real ELF, dated
+by the guest's own clock). The three acceptance-output assertions in
+`tools/solaris9-build.sh` (`HELLO` pipe, exit-status `1`, `wc -c` = `5`)
+are each gated by `set -eu` plus an explicit `test ... || exit 1`; since
+the script ran all the way to its own final `SOLARIS9_CANNEDBSD_TEST=PASS`
+print, all three passed silently (a failure there would have stopped
+the script before that line). The guest's own clock reads `2026-09-05`
+(behind real time; this is the same clock skew the build already warns
+about, and it does not affect source identity, only the displayed
+timestamp) -- the commit actually tested is `9aff546`, confirmed by
+this being the exact content staged onto the guest in this run.
+
+**This is real, fresh, exact-commit guest evidence -- not a promoted
+historical result.** It is still not yet "final Solaris qualification"
+by the coordinator's own stated bar: `origin/main` has advanced past
+this branch's base (now including `STAT-01` and the corrected
+`HEAD-02`, with its full `31`-case/read-count/`memset`-storage/behavioral-probe
+suite), and the coordinator explicitly authorized merging fresh
+`origin/main` into this branch before that qualification is asserted.
+That merge and re-test follow next, recorded separately below.
