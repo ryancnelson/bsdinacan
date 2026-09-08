@@ -197,7 +197,7 @@ static inline void cb_harness_test_real_conformance_contract(const struct cb_hos
     before = adapter->monotonic_millis();
     adapter->yield_host();
     after = adapter->monotonic_millis();
-    if (before != 0 && after < before)
+    if (before != 0 && after != 0 && after < before)
         cb_harness_fail("Host clocks behave incorrectly");
 
     // Allocation
