@@ -507,5 +507,24 @@ if nm -u "$file_object" | matches '[[:space:]]U[[:space:]]+(stdin|stdout|stderr)
     exit 1
 fi
 
+fread_source=tests/libc_fread_probe.c
+fread_object=$build_path/libc_fread_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$fread_source"; then
+    echo 'FAIL: fread source uses private names' >&2
+    exit 1
+fi
+for symbol in fread getc feof ferror strerror errno_location memcpy; do
+    if nm -u "$fread_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$fread_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: fread probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+
+if rg -n '\bmemset[[:space:]]*\(' "$fread_source" ||
+   nm -u "$fread_object" | matches '[[:space:]]U[[:space:]]+memset$'; then
+    echo 'FAIL: fread probe uses unsupported host memset' >&2
+    exit 1
+fi
 
 echo 'external libc source boundary passed'

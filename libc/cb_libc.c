@@ -439,30 +439,68 @@ int cb_libc_fclose(struct cb_libc_file *stream)
     return result < 0 ? EOF : 0;
 }
 
+/* The caller has resolved a live stream and supplied a positive bounded count. */
+static cb_ssize_t read_input(struct input_reference *ref, void *buffer, size_t count)
+{
+    cb_ssize_t result;
+    int saved_errno = bound_api->get_errno();
+    if (*ref->eof)
+        return 0;
+    result = bound_api->read(ref->descriptor, buffer, count);
+    if (result < 0) {
+        *ref->error = 1;
+        return result;
+    }
+    /* Compare before narrowing a 64-bit callback result on the 32-bit target. */
+    if ((uint64_t)result > (uint64_t)count) {
+        *ref->error = 1;
+        bound_api->set_errno(CB_EIO);
+        return -1;
+    }
+    if (result == 0)
+        *ref->eof = 1;
+    bound_api->set_errno(saved_errno);
+    return result;
+}
+
 int cb_libc_getc(struct cb_libc_file *stream)
 {
     struct input_reference ref;
     unsigned char byte;
-    cb_ssize_t result;
-    int saved_errno = bound_api->get_errno();
     if (resolve_input(stream, &ref) < 0)
         return EOF;
-    if (*ref.eof)
-        return EOF;
-    result = bound_api->read(ref.descriptor, &byte, 1);
-    if (result < 0) {
-        *ref.error = 1;
-        return EOF;
+    return read_input(&ref, &byte, 1) <= 0 ? EOF : (int)byte;
+}
+
+size_t cb_libc_fread(void *buffer, size_t size, size_t count,
+                     struct cb_libc_file *stream)
+{
+    struct input_reference ref;
+    size_t total, done = 0;
+    if (size == 0 || count == 0)
+        return 0;
+    if (resolve_input(stream, &ref) < 0)
+        return 0;
+    if (size > SIZE_MAX / count) {
+        bound_api->set_errno(CB_EOVERFLOW);
+        return 0;
     }
-    if (result > 1) {
-        *ref.error = 1;
-        bound_api->set_errno(CB_EIO);
-        return EOF;
+    if (buffer == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return 0;
     }
-    if (result == 0)
-        *ref.eof = 1;
-    bound_api->set_errno(saved_errno);
-    return result == 0 ? EOF : (int)byte;
+    total = size * count;
+    while (done < total) {
+        size_t request = total - done;
+        cb_ssize_t result;
+        if ((uint64_t)request > (uint64_t)INT64_MAX)
+            request = (size_t)INT64_MAX;
+        result = read_input(&ref, (unsigned char *)buffer + done, request);
+        if (result <= 0)
+            break;
+        done += (size_t)result;
+    }
+    return done / size;
 }
 
 int cb_libc_feof(struct cb_libc_file *stream)

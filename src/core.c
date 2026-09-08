@@ -1517,6 +1517,7 @@ static const char *api_strerror(int error)
     case CB_ENOSYS: return "function not implemented";
     case CB_ENOTEMPTY: return "directory not empty";
     case CB_ERANGE: return "result too large";
+    case CB_EOVERFLOW: return "value too large to be stored in data type";
     default: return "unknown error";
     }
 }
