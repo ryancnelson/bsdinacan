@@ -1114,3 +1114,48 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** canaries stay intact, input stays unchanged, no host strcpy or
   compiler substitution leakage, strict source fence and both build systems,
   exact CI and coordinator-owned Mac acceptance. Preserve all existing cases.
+
+### STDIN-02 — read-only fopen and fclose ownership
+
+- **Status:** Blocked on accepted STDIN-01
+- **Base:** main after dependency acceptance
+- **Depends on:** STDIN-01, reviewed STDIN-01-design
+- **Scope:** stage 2 of the reviewed design, read-only r/rb wrappers and
+  task-owned list validation, acquisition rollback and close consumption.
+- **Accept:** descriptor/allocation failure cleanup observed immediately;
+  foreign-pointer rejection without dereference; exec success/failure,
+  raw non-CLOEXEC descriptor retention, exit and early destruction. Preserve
+  prior stdin/output state contracts, all tests, exact CI and Mac acceptance.
+
+### STDIN-03 — fread complete-element counts and overflow
+
+- **Status:** Blocked on accepted STDIN-02
+- **Base:** main after dependency acceptance
+- **Depends on:** STDIN-02, reviewed STDIN-01-design
+- **Scope:** stage 3 of the reviewed design: bounded read accumulation,
+  complete-element counts, zero-size no-op and private EOVERFLOW mapping.
+- **Accept:** positive partial transfers, final partial elements at EOF/error,
+  exact byte prefixes/canaries, actual target-size overflow, errno/flags,
+  old-capability guards, exact CI and fresh Mac acceptance.
+
+### FWRITE-01-design — bounded output elements for head
+
+- **Status:** Coordinator design recorded in `notes/iterations/FWRITE-01-design.md`; review pending
+- **Base:** accepted runtime `6f860c4`
+- **Depends on:** reviewed HEAD-01 plan and STDOUT-01 (Done)
+- **Scope:** define stdout/stderr-only fwrite, completed-element/error semantics,
+  zero/overflow guards, old output-state compatibility and tests. No code.
+- **Accept:** source-backed head requirement and concrete implementation task
+  boundary; preserve existing output behavior and require actual Mac acceptance
+  for subsequent implementation. No host or buffered I/O expansion.
+
+### FWRITE-01 — unbuffered standard-stream fwrite
+
+- **Status:** Blocked on FWRITE-01-design review and accepted STDIN-03
+- **Base:** main after dependency acceptance
+- **Depends on:** FWRITE-01-design, STDIN-03 (shared EOVERFLOW mapping)
+- **Scope:** implement the reviewed output-element design with existing output
+  state; no new ABI field, writable fopen or generic buffered streams.
+- **Accept:** exact bytes/element counts and sticky flags with partial/zero/error
+  injection, binary ordinary probe, old-table rejection before I/O, full exact
+  CI and fresh coordinator-owned Mac artifact acceptance.
