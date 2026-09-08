@@ -199,30 +199,23 @@ struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void)
     return bound_api->getopt_state_location();
 }
 
-static void getopt_diagnostic(const char *program, int character)
+static void getopt_diagnostic(const char *program, int character,
+                              const char *message)
 {
-    static const char middle[] = ": illegal option -- ";
     char letter = (char)character;
     bound_api->write(2, program, cb_libc_strlen(program));
-    bound_api->write(2, middle, sizeof(middle) - 1);
+    bound_api->write(2, message, cb_libc_strlen(message));
     bound_api->write(2, &letter, 1);
     bound_api->write(2, "\n", 1);
 }
 
-/*
- * Supports flag-only optstrings (any set of single-character flags with no
- * argument), which is everything the commissioned empty-optstring use case
- * (pinned printenv) needs. Deliberately does NOT implement the ':'
- * required-argument convention: that branch had no consumer and no test
- * coverage, so per AGENTS.md's "no speculative surface" rule it does not
- * belong here. A future caller that needs required-argument options is a
- * separate, independently red/green-tested extension, not a silent
- * broadening of this one.
- */
+/* Flags and single-colon required arguments, with no operand permutation or
+   optional-argument extension. The existing task state owns the scan cursor. */
 int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
 {
     struct cb_getopt_state_v1 *state = bound_api->getopt_state_location();
-
+    const char *option;
+    state->optarg = NULL;
     if (*state->place == '\0') {
         if (state->optind >= argc || argv[state->optind][0] != '-' ||
             argv[state->optind][1] == '\0')
@@ -237,12 +230,27 @@ int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
     state->optopt = (int)*state->place++;
     if (*state->place == '\0')
         ++state->optind;
-    if (cb_libc_strchr(optstring, state->optopt) == NULL) {
-        if (state->opterr)
-            getopt_diagnostic(argv[0], state->optopt);
+    option = cb_libc_strchr(optstring, state->optopt);
+    if (state->optopt == ':' || option == NULL) {
+        if (state->opterr && optstring[0] != ':')
+            getopt_diagnostic(argv[0], state->optopt, ": illegal option -- ");
         return (int)'?';
     }
-    state->optarg = NULL;
+    if (option[1] == ':') {
+        if (*state->place != '\0') {
+            state->optarg = state->place;
+            ++state->optind;
+        } else if (state->optind < argc) {
+            /* Even '-' and '--' are values when an argument is required. */
+            state->optarg = argv[state->optind++];
+        } else {
+            if (state->opterr && optstring[0] != ':')
+                getopt_diagnostic(argv[0], state->optopt,
+                                  ": option requires an argument -- ");
+            return optstring[0] == ':' ? (int)':' : (int)'?';
+        }
+        state->place = (char *)"";
+    }
     return state->optopt;
 }
 
