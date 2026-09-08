@@ -33,13 +33,16 @@ terminal fault or complete nonblocking/signal support is claimed.
 
 ## Active work after head acceptance
 
-Claude implements HEAD-02 failure characterization. Antigravity implements the
+HEAD-02 669890d passed code review; combined CI and fresh Mac acceptance
+are pending. Claude implements SOLARIS-01. Antigravity implements the
 reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
 acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
 The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
 the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
-after resolving HEAD-02 review findings; rig access/ownership is still unresolved. Solaris qualification is pending under notes/CI.md.
+after resolving HEAD-02 review findings. Rig access is verified and the
+coordinator assigned the exclusive Solaris validation slot to Claude; current
+source qualification is still pending. Solaris qualification is pending under notes/CI.md.
 
 ## What this is
 

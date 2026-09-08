@@ -285,18 +285,13 @@ deliberately-broken control:
   41). This confirms the storage fix did not weaken the control; the
   detection is now a defined outcome of well-defined memory, not a
   previously-happenstance read of a freed stack frame. Restored; reran;
-  green. Separately, to check the stderr/cap fix rather than just read
-  the diff: temporarily set `HEAD_FAULT_CALL_LIMIT` to `1`, rebuilt,
-  reran -- `./build/test_core` failed immediately at the first
-  fault-mode case (status 41, `fault_write_total_calls` exceeding the
-  now-tiny cap), confirming the cap is actually enforced end to end.
-  Restored `HEAD_FAULT_CALL_LIMIT` to `64`; reran; green again. This
-  smoke check confirms the cap fires; it does not by itself isolate
-  stderr specifically from stdout (the failing case's own stdout writes
-  alone already exceed a cap of 1) -- the stderr-inclusiveness itself is
-  a direct, small code change (moving the fd-dispatch after the counter
-  increment) verified by reading the corrected code, not by a dedicated
-  stderr-only reproduction.
+  green. Separately, a budget-exit smoke check temporarily set
+  `HEAD_FAULT_CALL_LIMIT` to `1`, rebuilt and failed the first fault-mode
+  case (status 41). The second read reaches its budget before the second
+  write, so this proves bounded exit, not the write/stderr counter.
+  Restoring the limit to `64` restored green. Inclusion of all write
+  descriptors in the terminating budget is established by inspection of
+  the counter before fd dispatch, not a dedicated stderr-only control.
 
 ## Verified end to end, real execution
 

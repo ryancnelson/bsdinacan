@@ -1310,7 +1310,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### NEXT-UTIL-02 — select the utility after head from measured dependencies
 
-- **Status:** Reviewed audit integrated; tee import blocked on state, signal and write-progress contracts
+- **Status:** Reviewed audit integrated; tee import blocked on state and signal contracts; WRITE-02 accepted
 - **Base:** main
 - **Depends on:** accepted libc inventory and HEAD-01 (Done)
 - **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
@@ -1459,3 +1459,49 @@ accepted. Future stream or integer extensions still require explicit design.
   Define bounded Linux/Mac tests for ignored versus default delivery, peer-task
   isolation and failed/successful exec. Do not advertise host keyboard wiring,
   arbitrary handlers, full POSIX signals or tee acceptance without proof.
+
+### SIG-01 — cooperative task interrupt disposition and delivery
+
+- **Status:** Blocked on SOLARIS-01 integration; unassigned
+- **Base:** freshly fetched main
+- **Depends on:** accepted SIG-01-design, SOLARIS-01
+- **Scope:** implement the reviewed narrow SIGINT default/ignore contract in
+  notes/iterations/SIG-01-design.md, including genuine queued delivery at safe
+  native task boundaries. No no-op signal stub, arbitrary handlers, host keyboard
+  integration, asynchronous host callbacks or preemption.
+- **Red:** deterministic request to a blocked task must distinguish ignored
+  continuation from default termination; preserve a runnable peer and observe
+  task resources before teardown. A missing declaration alone is not behavior red.
+- **Accept:** supported/unsupported requests, old-size API/executor tables,
+  previous disposition, inherited ignore, pending state, failed and successful
+  exec, blocked pipe/console/wait/poll wakeup, default status 130 and cleanup.
+  Test both phases of EXEC_PENDING, including pending_program already cleared
+  during new execution allocation. Keep unknown executors usable for ordinary
+  tasks and reject unsupported interrupt delivery without mutation.
+  Require independent review, exact CI and Linux/Mac/Solaris acceptance under
+  the current policy. Preserve the fixed program capacity and all prior tests.
+  The unchanged tee -i proof is downstream TEE-01 acceptance; synthetic
+  real-request behavior establishes this prerequisite without importing tee.
+
+### TEE-01 — import unchanged NetBSD tee with isolated execution state
+
+- **Status:** Blocked; unassigned
+- **Base:** freshly fetched main
+- **Depends on:** STAT-01, WRITE-02-linux, WRITE-02-portable, TEE-STATE-01,
+  SIG-01, SOLARIS-01
+- **Scope:** import pinned tee byte-for-byte, retaining license and hash; connect
+  the reviewed executor state wrapper and real interrupt disposition. Keep all
+  adaptation outside upstream source. No unrelated libc expansion.
+- **Red:** use source-feasibility diagnostics to confirm dependencies separately
+  from failing command behavior. Add observable stdout/file/status cases before
+  adapting the import.
+- **Accept:** empty and binary stdin, data larger than tee's read buffer,
+  simultaneous stdout and multiple files, default truncation and -a append,
+  missing parent or directory destination with continuation to valid outputs, -i versus
+  default interrupt behavior, output failures and bounded write progress.
+  Check repeated and interleaved invocations, exact bytes/status/diagnostics,
+  closed descriptors and allocation ownership before teardown. A missing leaf
+  is a successful create case; permissions enforcement remains deferred. Inject
+  zero progress through the real console callback boundary, where WRITE-02
+  converts it to EIO, not a fake raw write that bypasses that contract. Preserve prior
+  guest coverage/capacity and require exact applicable platform gates.
