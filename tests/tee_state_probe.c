@@ -28,16 +28,16 @@ static int tee_wrapper_prepare(struct cb_kernel *kernel,
 }
 
 static struct cb_execution *tee_wrapper_instance_create(
-    struct cb_task *task, struct cb_program *program)
+    struct cb_task *task, const struct cb_program *program)
 {
     struct cb_tee_execution *wrapper;
     
-    wrapper = cb_allocate(cb_task_kernel(task), sizeof(*wrapper));
+    wrapper = cb_allocate(task->kernel, sizeof(*wrapper));
     if (wrapper == NULL) return NULL;
     
     wrapper->inner_execution = cb_native_executor()->instance_create(task, program);
     if (wrapper->inner_execution == NULL) {
-        cb_release(cb_task_kernel(task), wrapper);
+        cb_release(task->kernel, wrapper);
         return NULL;
     }
     
@@ -56,8 +56,8 @@ static void tee_wrapper_start_or_resume(struct cb_execution *execution)
     
     cb_native_executor()->start_or_resume(wrapper->inner_execution);
     
-    if (cb_task_state(wrapper->common.task) != CB_TASK_ZOMBIE &&
-        cb_task_state(wrapper->common.task) != CB_TASK_DEAD) {
+    if (wrapper->common.task->state != CB_TASK_ZOMBIE &&
+        wrapper->common.task->state != CB_TASK_DEAD) {
         wrapper->task_head = cb_tee_head;
     }
     
@@ -79,7 +79,7 @@ static void tee_wrapper_request_termination(struct cb_execution *execution)
 static void tee_wrapper_instance_destroy(struct cb_execution *execution)
 {
     struct cb_tee_execution *wrapper = (struct cb_tee_execution *)execution;
-    struct cb_kernel *kernel = cb_task_kernel(wrapper->common.task);
+    struct cb_kernel *kernel = wrapper->common.task->kernel;
     
     cb_native_executor()->instance_destroy(wrapper->inner_execution);
     cb_release(kernel, wrapper);
@@ -92,6 +92,8 @@ static void tee_wrapper_program_destroy(struct cb_kernel *kernel,
 }
 
 static const struct cb_executor_ops tee_wrapper_ops = {
+    CB_ABI_VERSION_V1,
+    sizeof(struct cb_executor_ops),
     tee_wrapper_prepare,
     tee_wrapper_instance_create,
     tee_wrapper_start_or_resume,
