@@ -13,16 +13,18 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude is running HEAD-02 fault-characterization tests.
-Antigravity is correcting TEE-STATE-01-design after the reviewed utility audit.
-Codex owns WRITE-02-linux and coordinates the portable write worker, reviews,
+**Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
+TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements isolated TERM-03
+from the accepted terminal design; Antigravity audits imported-source provenance.
+Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
 FWRITE-01 was accepted at `885d83c` with 64 records.
 
 Solaris testing is now required for shared behavior changes under the transition
 policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
-coordinate Solaris validation; SOLARIS-01 is the next unassigned worker task.
+coordinate Solaris validation; Claude has claimed SOLARIS-01 for source work
+after the completed HEAD-02 review corrections.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -31,7 +33,8 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
-- **Status:** Ready; highest-priority unassigned implementation task by user direction (2026-09-08)
+- **Status:** Claimed by Claude on `work/SOLARIS-01`; source work follows
+  HEAD-02 review corrections; shared rig ownership/acceptance pending
 - **Base:** freshly fetched main
 - **Depends on:** none; existing Linux and Mac gates remain mandatory
 - **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
@@ -333,7 +336,8 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### NET-01 — mock connect-only byte stream
 
-- **Status:** Blocked on IO-01
+- **Status:** Deferred behind current portability and utility milestones;
+  IO-01 is accepted, so polling is no longer a dependency blocker
 - **Base:** integrated dependency
 - **Hypothesis:** a socket-like descriptor over a mock transport can establish
   portable stream semantics before any real host network adapter exists.
@@ -741,7 +745,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### IO-01-design — polling and deadline contract
 
-- **Status:** Claimed by Antigravity; review corrections in progress
+- **Status:** Superseded historical proposal; accepted IO-01 at 819a964
+  supplies the polling contract. The unmerged old design is not itself accepted.
 - **Base:** main
 - **Hypothesis:** explicit readiness and unavailable-clock behavior can unblock
   deterministic descriptor polling without host descriptors or busy waiting.
@@ -925,7 +930,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-03 — isolated canonical engine
 
-- **Status:** Blocked on TERM-02
+- **Status:** Claimed by Codex on `work/TERM-03`; TERM-02 is accepted.
+  Isolated engine only; current host routing remains unchanged.
 - **Base:** integrated dependency
 - **Scope:** deterministic queue/record/erase/EOF transitions without live host
   routing, following the accepted terminal design's fixed storage bounds.
@@ -943,7 +949,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-05-design — bounded host output service
 
-- **Status:** Ready for design only
+- **Status:** Design review complete at a283eef; exact #380 all three checks
+  passed. See TERM-05-design-review note; implementation remains separately gated.
 - **Base:** main
 - **Scope:** resolve the explicitly open output progress, completion and
   cancellation contract before scheduler or raw-adapter implementation.
@@ -1308,7 +1315,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### NEXT-UTIL-02 — select the utility after head from measured dependencies
 
-- **Status:** Reviewed audit integrated; tee import blocked on state, signal and write-progress contracts
+- **Status:** Reviewed audit integrated; tee import blocked on state and signal contracts; WRITE-02 accepted
 - **Base:** main
 - **Depends on:** accepted libc inventory and HEAD-01 (Done)
 - **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
@@ -1327,7 +1334,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### HEAD-02 — characterize unchanged head input and output failures
 
-- **Status:** Ready and assigned to Claude; implementation running on `work/HEAD-02`
+- **Status:** Done on Linux/Mac; reviewed integration 70bedbb, exact #366 all
+  three checks and fresh run-5q4jh90b with 66 records/31 head cases;
+  Solaris qualification pending
 - **Base:** freshly fetched main with accepted HEAD-01 `e65e36f`
 - **Depends on:** HEAD-01, accepted read/write stream and diagnostic contracts
 - **Scope:** Tests only, expanding the existing portable head helper while
@@ -1365,7 +1374,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-linux — finite Linux console writes
 
-- **Status:** Claimed by Codex on `work/WRITE-02-linux`; reviewed `df7b298`, exact #332 all three checks passed; integration pending
+- **Status:** Done in `e290168`; exact #340 all three checks and fresh 66-record Mac acceptance
 - **Base:** main at `e65e36f`
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** zero progress must terminate and a failed continuation must
@@ -1377,7 +1386,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-portable — validate console callback counts
 
-- **Status:** Implemented by Codex worker at `5f03a94`; review, exact CI and guest integration pending
+- **Status:** Done in `e290168`; exact #340 all three checks and fresh 66-record Mac acceptance
 - **Base:** main
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** a real task must receive EIO for nonempty zero progress or
@@ -1391,7 +1400,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-STATE-01-design — isolate tee's output list per execution
 
-- **Status:** Claimed by Antigravity on `work/TEE-STATE-01-design`; review corrections required
+- **Status:** Done; reviewed `bda5c6c`, exact #341 all three checks passed
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 audit
 - **Scope:** documentation-only design using existing executor delegation and
@@ -1401,5 +1410,129 @@ accepted. Future stream or integer extensions still require explicit design.
 - **Accept:** exact actual lifecycle references, no duplicate list freeing or
   dangling-pointer inspection, safe inner-context delegation, failed/successful
   exec and allocation rollback, deterministic pre-teardown ownership assertions.
-  No tee import or implementation authorized by this design task. Signal and
-  raw-write progress remain separate prerequisites.
+  No tee import or implementation authorized by this design task. Signal remains
+  a separate prerequisite; WRITE-02 now supplies accepted raw-write progress.
+
+### STAT-01 — private default file-creation mode for tee
+
+- **Status:** Done on Linux/Mac; reviewed integration f1a769a, exact #356 all
+  three checks, fresh run-nszacm8k 66 records; Solaris qualification pending
+- **Base:** main
+- **Depends on:** reviewed NEXT-UTIL-02 source audit
+- **Scope:** private sys/stat.h exposes only the DEFFILEMODE integer constant
+  0666 required by pinned tee. Do not advertise struct stat, stat/fstat,
+  chmod, umask or a permissions system that does not exist.
+- **Red:** missing private header is compile feasibility evidence. A deliberately
+  incorrect constant must fail the actual mode assertion as a labeled
+  after-implementation regression control.
+- **Accept:** ordinary private-header open with DEFFILEMODE; runtime-side stat
+  and fstat observe stored mode 0666, close/unlink cleanup is checked, and source
+  fences reject host header/open fallback. Preserve existing records/capacity;
+  independent review, all three exact CI checks and fresh Mac acceptance.
+
+### TEE-STATE-01 — synthetic proof of isolated module state
+
+- **Status:** Done on Linux/Mac; reviewed replacement integrated as 1f906a8,
+  exact #376 all three checks and fresh run-on2elfqu 67-record acceptance.
+  Solaris qualification pending; original faulty worker branch preserved.
+- **Base:** main
+- **Depends on:** TEE-STATE-01-design
+- **Scope:** implement only the reviewed executor wrapper with a synthetic
+  pointer-global program; no actual tee import or signal implementation.
+- **Red:** repeated and interleaved execution with a shared list must demonstrate
+  cross-task state failure before the adapter.
+- **Accept:** typed saved state, native delegate with inner execution, all
+  lifecycle methods, no list traversal during teardown, and exact ownership
+  observations. Separately inject sidecar allocation, native execution allocation
+  and host context creation failures. Preserve another active task's state;
+  prove failed/successful exec and blocked teardown. Review, exact CI and actual
+  shared Mac tests required before runtime integration.
+
+### SIG-01-design — define honest interrupt behavior before tee -i
+
+- **Status:** Done; reviewed b2425a2, integrated f1a769a with exact #356 all
+  three checks; design only, no signal implementation
+- **Base:** main
+- **Depends on:** reviewed NEXT-UTIL-02 audit
+- **Scope:** define a bounded task-owned interrupt/disposition contract and real
+  deterministic delivery path before exposing signal(SIGINT, SIG_IGN). A stub
+  returning failure or success does not establish tee -i because tee ignores
+  the return value. No implementation or new API is authorized by this task.
+- **Red:** current core exposes no task signal/disposition API; identify exact
+  task lifecycle and scheduling boundaries rather than treating missing headers
+  as the only requirement.
+- **Accept:** specify supported signal/dispositions, unsupported requests,
+  previous-disposition return, ownership, spawn inheritance, exec reset/preserve
+  behavior, blocked/running task delivery and cleanup. Distinguish proposed API
+  from existing declarations and cooperative delivery from host preemption.
+  Define bounded Linux/Mac tests for ignored versus default delivery, peer-task
+  isolation and failed/successful exec. Do not advertise host keyboard wiring,
+  arbitrary handlers, full POSIX signals or tee acceptance without proof.
+
+### SIG-01 — cooperative task interrupt disposition and delivery
+
+- **Status:** Blocked on SOLARIS-01 integration; unassigned
+- **Base:** freshly fetched main
+- **Depends on:** accepted SIG-01-design, SOLARIS-01
+- **Scope:** implement the reviewed narrow SIGINT default/ignore contract in
+  notes/iterations/SIG-01-design.md, including genuine queued delivery at safe
+  native task boundaries. No no-op signal stub, arbitrary handlers, host keyboard
+  integration, asynchronous host callbacks or preemption.
+- **Red:** deterministic request to a blocked task must distinguish ignored
+  continuation from default termination; preserve a runnable peer and observe
+  task resources before teardown. A missing declaration alone is not behavior red.
+- **Accept:** supported/unsupported requests, old-size API/executor tables,
+  previous disposition, inherited ignore, pending state, failed and successful
+  exec, blocked pipe/console/wait/poll wakeup, default status 130 and cleanup.
+  Test both phases of EXEC_PENDING, including pending_program already cleared
+  during new execution allocation. Keep unknown executors usable for ordinary
+  tasks and reject unsupported interrupt delivery without mutation.
+  Require independent review, exact CI and Linux/Mac/Solaris acceptance under
+  the current policy. Preserve the fixed program capacity and all prior tests.
+  The unchanged tee -i proof is downstream TEE-01 acceptance; synthetic
+  real-request behavior establishes this prerequisite without importing tee.
+
+### TEE-01 — import unchanged NetBSD tee with isolated execution state
+
+- **Status:** Blocked; unassigned
+- **Base:** freshly fetched main
+- **Depends on:** STAT-01, WRITE-02-linux, WRITE-02-portable, TEE-STATE-01,
+  SIG-01, SOLARIS-01
+- **Scope:** import pinned tee byte-for-byte, retaining license and hash; connect
+  the reviewed executor state wrapper and real interrupt disposition. Keep all
+  adaptation outside upstream source. No unrelated libc expansion.
+- **Red:** use source-feasibility diagnostics to confirm dependencies separately
+  from failing command behavior. Add observable stdout/file/status cases before
+  adapting the import.
+- **Accept:** empty and binary stdin, data larger than tee's read buffer,
+  simultaneous stdout and multiple files, default truncation and -a append,
+  missing parent or directory destination with continuation to valid outputs, -i versus
+  default interrupt behavior, output failures and bounded write progress.
+  Check repeated and interleaved invocations, exact bytes/status/diagnostics,
+  closed descriptors and allocation ownership before teardown. A missing leaf
+  is a successful create case; permissions enforcement remains deferred. Inject
+  zero progress through the real console callback boundary, where WRITE-02
+  converts it to EIO, not a fake raw write that bypasses that contract. Preserve prior
+  guest coverage/capacity and require exact applicable platform gates.
+
+### TEE-01-matrix — concrete upstream command acceptance cases
+
+- **Status:** Reviewed source-derived matrix integrated; no command execution claimed
+- **Base:** main; documentation only
+- **Scope:** exact inputs, output/status/diagnostics and ownership requirements
+  for pinned tee, with runtime prerequisites and source analysis distinguished.
+- **Accept:** raw binary and block boundaries, truncation/append, continued valid
+  outputs after bad paths, bounded read/write/close failures, and real default
+  versus ignored interrupts. Actual tee execution remains blocked on TEE-01.
+
+### UPSTREAM-AUDIT-01 — verify imported-source provenance and wiring
+
+- **Status:** Reviewed audit integrated; 18 declared NetBSD source hashes
+  independently verified, no source mismatch found; documentation only
+- **Base:** freshly fetched main
+- **Scope:** inventory actual imported files versus cannedBSD-owned commands,
+  local hashes and pinned revisions, retained license notices, symbol renaming,
+  build wiring and existing source-fence coverage. No source replacement.
+- **Accept:** report only verified mismatches and distinguish executed checks
+  from inspection. Propose a separate bounded fix for a discovered defect;
+  no runtime or guest changes in the audit note.

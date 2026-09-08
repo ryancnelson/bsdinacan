@@ -4,14 +4,72 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted synthetic tee-state proof, 2026-09-08
+
+Integration `1f906a876998567cbe686eeadc454eb31e24c3e9` passed independent review
+and exact Woodpecker #376 ci, mac68k and mac-automation. Fresh Basilisk II
+`run-on2elfqu` passed all 67 records, retaining the prior 66. The full transcript
+and screenshot were inspected; normal application/guest shutdown and slot
+release completed in 25.87 seconds. Archive SHA256:
+`a6ec2bca4d2e53d5bb2bb78c0d75cf361c32dde222aeff2cd3cc08cf0a740745`.
+The synthetic fixture verifies execution-local list state, exact creation
+failure cleanup, immediate exit cleanup, exec and live-task teardown. It does
+not import tee or implement signals. Solaris qualification remains pending.
+
+## Accepted head fault characterization, 2026-09-08
+
+Integration `70bedbbe86c9a09d5a39667c3532407c7d104204` passed independent review
+and exact Woodpecker #366 ci, mac68k and mac-automation. The unchanged NetBSD
+head now has 31 internal acceptance cases, retaining the original 21 and adding
+bounded input/output faults, exact statuses/diagnostics and subsequent recovery.
+Fresh Basilisk II `run-5q4jh90b` passed all 66 top-level records. The full
+transcript and screenshot were inspected, followed by normal application/guest
+shutdown and slot release in 27.78 seconds. Archive SHA256:
+`921c43cf4c727974606b67284ddc51c4ef1a28141455660bbb75a08b04c2c9c3`.
+Upstream zero status on input read errors remains an explicit limitation.
+Solaris qualification remains pending integration.
+
+## Accepted default creation mode, 2026-09-08
+
+Integration `f1a769a97017add822270526e06f826a1ab6bde4` passed independent review
+and exact Woodpecker #356 ci, mac68k and mac-automation. STAT-01 adds the
+private DEFFILEMODE constant and verifies actual stored mode and descriptor/path
+cleanup through the existing fileprobe. Fresh Basilisk II run `run-nszacm8k`
+passed all 66 records; the full transcript and screenshot were inspected.
+Normal application/guest shutdown and slot release completed in 34.06 seconds.
+Archive SHA256: `9148d9b45018bd23e6a461de6b58f6ccd342b3412990e3e72f71230f9edec46f`.
+Solaris qualification remains pending integration under notes/CI.md.
+
+## Accepted console-write boundary, 2026-09-08
+
+Main `e290168f0e080bd55dbbdcff65f87c4ecd2d2479` includes the finite Linux
+console loop and portable callback count validation. Independent feature and
+integration reviews passed; exact Woodpecker #340 passed ci, mac68k and
+mac-automation. Fresh Basilisk II run `run-nlaw0wk6` passed all 66 records,
+retaining all prior 65 and adding consolewrite. The complete transcript and
+screenshot were inspected; app and guest disks closed normally and the slot
+was released in 28.45 seconds. Archive SHA256:
+`774c1d5aea25b54201d75ef86405f1ac21d4f4056275acf5796cda8ac3a9248d`.
+
+Linux tests observed both old zero-progress and lost-prefix failures before the
+fix. The shared portable test observed the old nonempty zero-return failure
+before its guard. These are bounded deterministic callback tests; no real
+terminal fault or complete nonblocking/signal support is claimed.
+
 ## Active work after head acceptance
 
-Claude implements HEAD-02 failure characterization. Antigravity corrects the
-tee executor-state design; the reviewed next-utility audit identifies tee as a
-candidate, blocked on real signal disposition, per-execution list state and
-finite raw-write progress. Resetting a global or adding a signal stub is not
-acceptance. Codex owns WRITE-02-linux and coordinates the portable console-count
-validation worker, independent reviews and serialized Mac acceptance.
+HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
+SOLARIS-01. The synthetic tee-state replacement is accepted on Linux/Mac. A Codex
+worker implements the isolated TERM-03 engine after the reviewed TERM-05
+contract correction. Antigravity
+audits import provenance. The reviewed next-utility audit identifies tee as a
+candidate, blocked on real signal disposition and actual command integration. Resetting a global or adding a signal stub is not
+acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
+The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
+the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
+after resolving HEAD-02 review findings. Rig access is verified and the
+coordinator assigned the exclusive Solaris validation slot to Claude; current
+source qualification is still pending. Solaris qualification is pending under notes/CI.md.
 
 ## What this is
 
@@ -37,7 +95,7 @@ it is not done.
 ## Solaris portability priority, 2026-09-08
 
 The user requires the Solaris 9 SPARC rig for ongoing testing and CI. SOLARIS-01
-is the highest-priority unassigned task; SOLARIS-02 follows with serialized CI.
+is claimed by Claude as the highest-priority portability task; SOLARIS-02 follows with serialized CI.
 The earlier local port is preserved as reference, but current-main Solaris
 acceptance is pending integration. Existing assigned workers continue their IDs
 and report that outstanding gate under `notes/CI.md`; Linux and Mac requirements
@@ -69,11 +127,10 @@ calculation. The tested command requests 128 KiB without changing global default
 The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
-**Current assignments:** Claude is running HEAD-02, tests-only characterization
-of unchanged head input/output failures and repeated recovery, extending the
-existing helper while preserving all current records. Antigravity is correcting
-the TEE-STATE-01-design proposal after the reviewed uniq/cut/tee audit. Codex
-owns WRITE-02-linux and coordinates the portable write worker, reviews,
+**Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
+on Linux and Mac, with Solaris qualification pending. TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements the isolated TERM-03 engine; Antigravity
+audits imported-source provenance after completing the lifecycle trace. Codex
+coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
 implementation assignments. New signals, upstream head patches and general
