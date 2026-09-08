@@ -292,3 +292,15 @@ GPL-2.0-or-later adaptation of cdrtools `mkisofs/desktop.c` 1.10 (James Pearson 
 J. Schilling). `platform/mac68k/probes/catalog/PROVENANCE.md` pins the exact
 source revision and hash. It builds empty Desktop Manager metadata for the
 protected HFS fixture; this code is not linked into the Mac probe or runtime.
+
+## NetBSD `dirname`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/dirname/dirname.c`
+- Local path: `upstream/netbsd/usr.bin/dirname/dirname.c`
+- SHA-256: `839bee201d87fd1024fac687ce8b26963b33919b6c1086373d7ddfdaf6882cd9`
+- Embedded RCS identifier: `$NetBSD: dirname.c,v 1.12 2011/09/16 15:39:25 joerg Exp $`
+- License: file-specific three-clause Regents of the University of California license, retained verbatim.
+
+The imported file is byte-for-byte unchanged. The build renames `main` to `cb_dirname_main`. It depends on a C-only locale boundary (`setlocale`) and a libc `dirname` implementation.

@@ -5,6 +5,9 @@ add_compile_options(-Os -ffunction-sections -fdata-sections -Wall -Wextra)
 include_directories(${ROOT}/include ${ROOT}/src)
 
 # Keep the command/libc headers private to their original translation units.
+add_library(cb_dirname_command OBJECT ${ROOT}/upstream/netbsd/usr.bin/dirname/dirname.c)
+target_include_directories(cb_dirname_command PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_dirname_command PRIVATE main=cb_dirname_main)
 add_library(cb_wc OBJECT ${ROOT}/commands/wc.c)
 target_include_directories(cb_wc PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
@@ -53,7 +56,7 @@ add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
     ${ROOT}/src/core.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
-    ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
+    ${ROOT}/commands/dirname_module.c ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c
     ${ROOT}/libc/cb_libc.c
     ${ROOT}/tests/libc_locale_probe_module.c
@@ -67,7 +70,7 @@ add_application(CannedBSD CREATOR "CnBD"
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe>)
 target_sources(CannedBSD PRIVATE
-    $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
+    $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
