@@ -111,6 +111,13 @@ struct cb_vfs_node_ops {
     const char *(*name)(struct cb_vfs_node *node);
     /* Optional extension; callers must check struct_size before reading. */
     int (*truncate)(struct cb_vfs_node *node, cb_off_t length);
+    /* Optional extension; callers must check struct_size before reading.
+       Returns 0 and *child_out = NULL for clean end of directory (not an
+       error); a negative -CB_E* value for a real error. index is an
+       ordinal position, re-derived from the live child list on every
+       call -- see notes/iterations/VFS-03-design.md for why. */
+    int (*child_at)(struct cb_vfs_node *directory, size_t index,
+                    struct cb_vfs_node **child_out);
 };
 
 struct cb_vfs_mount_entry {
@@ -169,6 +176,16 @@ struct cb_fd_entry {
     int close_on_exec;
 };
 
+/* Directories held open concurrently are rare; no dynamic growth needed
+   for v0.1. */
+#define CB_MAX_DIRS 16
+
+struct cb_dir_handle {
+    struct cb_vfs_node *node;  /* retained while in_use */
+    size_t index;
+    int in_use;
+};
+
 struct cb_task {
     struct cb_kernel *kernel;
     cb_pid_t pid;
@@ -181,6 +198,7 @@ struct cb_task {
     char **environment;
     struct cb_getopt_state_v1 getopt_state;
     struct cb_fd_entry descriptors[CB_MAX_FDS];
+    struct cb_dir_handle directories[CB_MAX_DIRS];
     struct cb_vfs_node *root;
     struct cb_vfs_node *cwd;
     int *error_cell;
@@ -255,6 +273,10 @@ int cb_vfs_stat_path(struct cb_task *task, const char *path,
 int cb_vfs_truncate_node(struct cb_vfs_node *node, cb_off_t length);
 int cb_vfs_truncate_path(struct cb_task *task, const char *path,
                          cb_off_t length);
+struct cb_vfs_node *cb_vfs_opendir_path(struct cb_task *task,
+                                        const char *path);
+int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
+                    struct cb_vfs_node **child_out);
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
 int cb_vfs_unlink_path(struct cb_task *task, const char *path);
 int cb_vfs_chdir_path(struct cb_task *task, const char *path);

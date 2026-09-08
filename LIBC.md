@@ -68,6 +68,18 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   formatter and `exit`. Writes the task's own program name (`argv[0]`), `": "`,
   the formatted message, and a newline to `stderr` only, then exits with the
   caller's status.
+- `dirent.h`: an opaque `DIR` plus `opendir`, `readdir`, and `closedir`,
+  modeled on `stdio.h`'s `FILE` pattern. Each open directory is a task-owned
+  handle (never shared or inherited across `spawn`), holding a retained VFS
+  node and an ordinal read position; `readdir` returns entries by position,
+  re-derived from the live directory on every call, so concurrent creation
+  or removal can duplicate or skip an entry but never returns a stale or
+  freed node. `struct dirent` is sized to the pre-existing `CB_PATH_MAX`
+  (no separate, smaller `d_name` bound). Clean end-of-directory returns
+  `NULL`/`0` without touching `errno`; a caller buffer too small for the
+  next name fails with `ENAMETOOLONG` and leaves the read position
+  unchanged, so a retry with a larger buffer observes the same entry. On a
+  runtime that predates this feature, all three calls fail with `ENOSYS`.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.

@@ -54,6 +54,8 @@ static int ramfs_stat(struct cb_vfs_node *common,
 static struct cb_vfs_node *ramfs_parent(struct cb_vfs_node *common);
 static const char *ramfs_name(struct cb_vfs_node *common);
 static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length);
+static int ramfs_child_at(struct cb_vfs_node *common, size_t index,
+                          struct cb_vfs_node **child_out);
 static struct cb_vfs_node *ramfs_mount_root(struct cb_vfs_mount *common);
 static void ramfs_mount_destroy(struct cb_vfs_mount *common);
 
@@ -79,7 +81,8 @@ static const struct cb_vfs_node_ops ramfs_node_ops = {
     ramfs_stat,
     ramfs_parent,
     ramfs_name,
-    ramfs_truncate
+    ramfs_truncate,
+    ramfs_child_at
 };
 
 static const struct cb_vfs_mount_ops ramfs_mount_ops = {
@@ -271,6 +274,25 @@ static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length)
     if (needed > node->size)
         memset(node->data + node->size, 0, needed - node->size);
     node->size = needed;
+    return 0;
+}
+
+static int ramfs_child_at(struct cb_vfs_node *common, size_t index,
+                          struct cb_vfs_node **child_out)
+{
+    struct cb_ramfs_node *directory = ramfs_node(common);
+    struct cb_ramfs_node *child;
+    size_t position = 0;
+    if (directory->type != CB_NODE_DIRECTORY)
+        return -CB_ENOTDIR;
+    for (child = directory->children; child != NULL;
+         child = child->next_sibling, ++position) {
+        if (position == index) {
+            *child_out = &child->common;
+            return 0;
+        }
+    }
+    *child_out = NULL;
     return 0;
 }
 

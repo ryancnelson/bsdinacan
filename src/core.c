@@ -231,6 +231,18 @@ static void fd_close_all(struct cb_task *task)
     }
 }
 
+static void dir_close_all(struct cb_task *task)
+{
+    int descriptor;
+    for (descriptor = 0; descriptor < CB_MAX_DIRS; ++descriptor) {
+        if (task->directories[descriptor].in_use) {
+            cb_vfs_node_release(task->directories[descriptor].node);
+            task->directories[descriptor].node = NULL;
+            task->directories[descriptor].in_use = 0;
+        }
+    }
+}
+
 static struct cb_program *program_find(struct cb_kernel *kernel,
                                        const char *name)
 {
@@ -502,6 +514,7 @@ static void task_destroy(struct cb_task *task)
     struct cb_kernel *kernel = task->kernel;
     task_release_allocations(task);
     fd_close_all(task);
+    dir_close_all(task);
     cb_executor_instance_destroy(task->execution);
     string_vector_destroy(kernel, task->argv);
     string_vector_destroy(kernel, task->environment);
@@ -640,6 +653,9 @@ static void task_finish_exec(struct cb_task *task)
             task->descriptors[descriptor].close_on_exec)
             fd_close(task, descriptor);
     }
+    /* Directory descriptors have no close-on-exec flag: every open
+       directory closes unconditionally across a successful exec. */
+    dir_close_all(task);
     string_vector_destroy(kernel, task->argv);
     string_vector_destroy(kernel, task->environment);
     task->program = task->pending_program;
@@ -791,6 +807,7 @@ static void api_exit(int status)
     struct cb_task *task = active_kernel->current;
     task_release_allocations(task);
     fd_close_all(task);
+    dir_close_all(task);
     task->exit_status = status & 0xff;
     task->state = CB_TASK_ZOMBIE;
     if (task->pid == task->kernel->boot_pid) {
@@ -1273,6 +1290,101 @@ static const char *api_getprogname(void)
     return active_kernel->current->argv[0];
 }
 
+static int api_opendir(const char *path)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_vfs_node *node;
+    int descriptor;
+    node = cb_vfs_opendir_path(task, path);
+    if (node == NULL)
+        return -1;
+    for (descriptor = 0; descriptor < CB_MAX_DIRS; ++descriptor) {
+        if (!task->directories[descriptor].in_use) {
+            task->directories[descriptor].node = node;
+            task->directories[descriptor].index = 0;
+            task->directories[descriptor].in_use = 1;
+            cb_task_set_error(task, 0);
+            return descriptor;
+        }
+    }
+    cb_vfs_node_release(node);
+    cb_task_set_error(task, CB_EMFILE);
+    return -1;
+}
+
+static int api_readdir(int descriptor, char *name_out, size_t name_size,
+                       uint64_t *inode_out, uint32_t *type_out)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_dir_handle *handle;
+    struct cb_vfs_node *child;
+    struct cb_stat_v1 status;
+    const char *name;
+    size_t length;
+    int result;
+    if (descriptor < 0 || descriptor >= CB_MAX_DIRS ||
+        !task->directories[descriptor].in_use) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (name_out == NULL || name_size == 0) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    handle = &task->directories[descriptor];
+    result = cb_vfs_child_at(handle->node, handle->index, &child);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (child == NULL) {
+        name_out[0] = '\0';
+        /* Clean end of directory is not an error: errno is left exactly
+           as the caller had it, so a NULL/empty-name result can only be
+           told apart from a real error by the caller checking errno
+           itself -- touching it here (even to 0) would defeat that. */
+        return 0;
+    }
+    name = child->ops->name(child);
+    length = strlen(name);
+    if (length >= name_size) {
+        /* The entry is not consumed: the cursor does not advance, so a
+           caller with a larger buffer can still observe this exact entry
+           rather than silently receiving a truncated, wrong name for it. */
+        cb_task_set_error(task, CB_ENAMETOOLONG);
+        return -1;
+    }
+    memcpy(name_out, name, length);
+    name_out[length] = '\0';
+    result = child->ops->stat(child, &status);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (inode_out != NULL)
+        *inode_out = status.inode;
+    if (type_out != NULL)
+        *type_out = status.type;
+    ++handle->index;
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+static int api_closedir(int descriptor)
+{
+    struct cb_task *task = active_kernel->current;
+    if (descriptor < 0 || descriptor >= CB_MAX_DIRS ||
+        !task->directories[descriptor].in_use) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    cb_vfs_node_release(task->directories[descriptor].node);
+    task->directories[descriptor].node = NULL;
+    task->directories[descriptor].in_use = 0;
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
 static const struct cb_capabilities_v1 *api_capabilities(void)
 {
     return &active_kernel->capabilities;
@@ -1406,6 +1518,9 @@ static void initialize_api(struct cb_kernel *kernel)
     api->truncate = api_truncate;
     api->ftruncate = api_ftruncate;
     api->getprogname = api_getprogname;
+    api->opendir = api_opendir;
+    api->readdir = api_readdir;
+    api->closedir = api_closedir;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

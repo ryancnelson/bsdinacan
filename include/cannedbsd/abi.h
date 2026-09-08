@@ -164,6 +164,10 @@ struct cb_api_v1 {
     int (*truncate)(const char *path, cb_off_t length);
     int (*ftruncate)(int fd, cb_off_t length);
     const char *(*getprogname)(void);
+    int (*opendir)(const char *path);
+    int (*readdir)(int descriptor, char *name_out, size_t name_size,
+                   uint64_t *inode_out, uint32_t *type_out);
+    int (*closedir)(int descriptor);
 };
 
 struct cb_program_v1 {

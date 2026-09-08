@@ -194,12 +194,19 @@ objects, not directly to host file descriptors.
 
 Both operation tables are versioned. A mount supplies root-node discovery and
 mount destruction. A node supplies retain/release, child lookup and creation,
-unlink, open, stat, parent discovery, and name discovery. Root-mount
-installation validates the complete tables and ownership relationship before
-publishing the mount. Task root and cwd fields, plus open files, retain generic
-node handles; filesystem-specific node representations remain below the node
-operations. Path traversal and task-local errno translation belong to the VFS
-layer rather than to a filesystem implementation.
+unlink, open, stat, parent discovery, name discovery, and ordinal child
+enumeration for directory iteration (`child_at`). Root-mount installation
+validates the complete tables and ownership relationship before publishing the
+mount. Task root and cwd fields, plus open files, retain generic node handles;
+filesystem-specific node representations remain below the node operations.
+Path traversal and task-local errno translation belong to the VFS layer rather
+than to a filesystem implementation.
+
+Directory iteration is task-owned rather than object-owned: a per-task
+directory-handle table retains the open directory's node and an ordinal read
+position, mirroring the existing descriptor table's ownership shape. Older VFS
+node-operation table prefixes remain valid; a mount lacking `child_at` reports
+`ENOSYS` rather than being rejected outright.
 
 v0.1 installs one RAMFS root. Later mount routing may return nodes belonging to
 other mounts during lookup without changing task, descriptor, or program APIs.
@@ -355,6 +362,19 @@ Required objects are directories and regular files. Required behavior:
   lookup fails with `ENOENT`. The storage is reclaimed after the final open-file
   reference closes. Hard links are deferred, so v0.1 has at most one directory
   entry per file.
+
+- Directory iteration (`opendir`/`readdir`/`closedir`) enumerates entries by
+  ordinal position, re-derived from the live child list on every call rather
+  than a retained per-entry cursor. Concurrent creation or removal during
+  iteration MAY duplicate an already-returned entry (insertion at the head)
+  or skip an unreturned entry (removal of an already-returned one), but MUST
+  NOT return a stale or freed node; this looseness is within POSIX's own
+  permitted behavior for concurrent directory modification. Clean end of
+  directory MUST NOT modify `errno`. A caller-supplied name buffer too small
+  for the next entry fails with `ENAMETOOLONG` and leaves the iteration
+  position unchanged, so a retry with a larger buffer observes the same
+  entry rather than a different, truncated one. Each open directory handle
+  is task-owned and never shared or inherited across `spawn`.
 
 Symlinks, hard links, device nodes, ownership enforcement, timestamps,
 persistence, and `/Host` are deferred. The VFS boundary MUST allow them later.

@@ -8,6 +8,8 @@
 extern const struct cb_program_v1 cb_exitprobe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
+extern const struct cb_program_v1 cb_direntprobe_program;
+extern int cb_direntoldtable_main(int argc, char *argv[]);
 
 static char captured[32768];
 static size_t captured_size;
@@ -489,7 +491,13 @@ static void test_truncate_vfs_contract(void)
 
     copy = *original;
     node->ops = &copy;
-    copy.struct_size = sizeof(copy) - 1;
+    /* One byte short of fully including `truncate` specifically -- not
+       "one byte short of the whole struct", which only ever meant the
+       same thing while truncate happened to be the last field. A field
+       appended after it (e.g. VFS-03's child_at) must not silently make
+       this stop testing truncate's own old-table guard. */
+    copy.struct_size = (uint32_t)(offsetof(struct cb_vfs_node_ops, truncate) +
+                                  sizeof(copy.truncate) - 1);
     if (cb_vfs_truncate_path(&task, "/tmp/optional", 2) != -1 ||
         error != CB_ENOSYS)
         fail("partial truncate callback must not be read");
@@ -505,6 +513,25 @@ static void test_truncate_vfs_contract(void)
         cb_vfs_stat_path(&task, "/tmp/optional", &status) != 0 ||
         status.size != 2)
         fail("larger VFS table prefix compatibility");
+
+    /* child_at's own old-table guard (VFS-03), same style: a table one
+       byte short of fully including child_at must not have it read,
+       regardless of node type -- the struct_size check happens before
+       any type-specific dispatch. */
+    {
+        struct cb_vfs_node *unused_child;
+        copy = *original;
+        node->ops = &copy;
+        copy.struct_size = (uint32_t)(offsetof(struct cb_vfs_node_ops,
+                                               child_at) +
+                                      sizeof(copy.child_at) - 1);
+        if (cb_vfs_child_at(node, 0, &unused_child) != -CB_ENOSYS)
+            fail("partial child_at callback must not be read");
+        copy.struct_size = sizeof(copy);
+        copy.child_at = NULL;
+        if (cb_vfs_child_at(node, 0, &unused_child) != -CB_ENOSYS)
+            fail("NULL optional child_at callback");
+    }
     node->ops = original;
     cb_open_file_release(file);
     cb_kernel_destroy(kernel);
@@ -1539,6 +1566,352 @@ static int errxprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int direntbasicprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    int handle;
+    int handles[CB_MAX_DIRS];
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    int seen_bin = 0, seen_tmp = 0, seen_home = 0;
+    int result;
+    int fd;
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* Root enumeration. */
+    handle = api->opendir("/");
+    if (handle < 0)
+        return 360;
+    for (;;) {
+        result = api->readdir(handle, name, sizeof(name), &inode, &type);
+        if (result < 0)
+            return 361;
+        if (name[0] == '\0')
+            break;
+        if (strcmp(name, "bin") == 0) {
+            seen_bin = 1;
+            if (type != CB_NODE_DIRECTORY)
+                return 362;
+        } else if (strcmp(name, "tmp") == 0) {
+            seen_tmp = 1;
+            if (type != CB_NODE_DIRECTORY)
+                return 363;
+        } else if (strcmp(name, "home") == 0) {
+            seen_home = 1;
+            if (type != CB_NODE_DIRECTORY)
+                return 364;
+        }
+    }
+    if (!seen_bin || !seen_tmp || !seen_home)
+        return 365;
+    /* Clean end of directory must not touch errno at all -- proved by
+       priming a NONZERO sentinel first; testing from errno == 0 could
+       not tell "preserved" apart from "cleared to 0". */
+    api->set_errno(CB_EPERM);
+    result = api->readdir(handle, name, sizeof(name), &inode, &type);
+    if (result != 0 || name[0] != '\0' || api->get_errno() != CB_EPERM)
+        return 366;
+    api->set_errno(0);
+    if (api->closedir(handle) < 0)
+        return 367;
+
+    /* opendir() on a regular file: ENOTDIR. */
+    fd = api->open("/tmp/basicfile", CB_O_WRONLY | CB_O_CREAT, 0600);
+    if (fd < 0 || api->close(fd) < 0)
+        return 368;
+    if (api->opendir("/tmp/basicfile") != -1 || api->get_errno() != CB_ENOTDIR)
+        return 369;
+
+    /* readdir()/closedir() on a bad descriptor: EBADF. */
+    if (api->readdir(9999, name, sizeof(name), &inode, &type) != -1 ||
+        api->get_errno() != CB_EBADF)
+        return 370;
+    if (api->closedir(9999) != -1 || api->get_errno() != CB_EBADF)
+        return 371;
+
+    /* A caller-supplied name buffer too small for the entry: ENAMETOOLONG,
+       and the entry is NOT consumed -- a retry with a larger buffer must
+       still observe it, rather than silently skipping past truncated
+       data. */
+    if (api->mkdir("/tmp/longnamedir", 0755) < 0)
+        return 372;
+    if ((fd = api->open("/tmp/longnamedir/longname",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 373;
+    handle = api->opendir("/tmp/longnamedir");
+    if (handle < 0)
+        return 374;
+    if (api->readdir(handle, name, 3, &inode, &type) != -1 ||
+        api->get_errno() != CB_ENAMETOOLONG)
+        return 375;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "longname") != 0)
+        return 376;
+    if (api->closedir(handle) < 0)
+        return 377;
+
+    /* CB_MAX_DIRS exhaustion, then confirm a closed slot is reusable
+       (indirect but real evidence that closedir() actually released its
+       slot rather than leaking it). */
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        handles[index] = api->opendir("/tmp");
+        if (handles[index] < 0)
+            return 380;
+    }
+    if (api->opendir("/tmp") != -1 || api->get_errno() != CB_EMFILE)
+        return 381;
+    if (api->closedir(handles[0]) < 0)
+        return 382;
+    handle = api->opendir("/tmp");
+    if (handle < 0)
+        return 383;
+    if (api->closedir(handle) < 0)
+        return 384;
+    for (index = 1; index < CB_MAX_DIRS; ++index) {
+        if (api->closedir(handles[index]) < 0)
+            return 385;
+    }
+    return 0;
+}
+
+static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
+                                    char *const argv[], char *const envp[])
+{
+    int handle;
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    int fd;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* 4a, skip on removal: create C, B, A in that order so the resulting
+       list (newest-first) is [A, B, C]. Read A, unlink the ALREADY-
+       RETURNED A (not the next one), and confirm the following read
+       skips B entirely and returns C -- unlinking the next not-yet-
+       returned entry would only reflect ordinary shrinkage, not prove a
+       skip. */
+    if (api->mkdir("/tmp/skipdir", 0755) < 0)
+        return 380;
+    if ((fd = api->open("/tmp/skipdir/C", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 381;
+    if ((fd = api->open("/tmp/skipdir/B", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 382;
+    if ((fd = api->open("/tmp/skipdir/A", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 383;
+    handle = api->opendir("/tmp/skipdir");
+    if (handle < 0)
+        return 384;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "A") != 0)
+        return 385;
+    if (api->unlink("/tmp/skipdir/A") < 0)
+        return 386;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "C") != 0)
+        return 387;
+    if (api->closedir(handle) < 0)
+        return 388;
+
+    /* 4b, duplicate on insertion: create B, A in that order, so the list
+       is [A, B]. Read A, then create X (prepended, giving [X, A, B]),
+       and confirm the following read re-returns A rather than B or X. */
+    if (api->mkdir("/tmp/dupdir", 0755) < 0)
+        return 389;
+    if ((fd = api->open("/tmp/dupdir/B", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 390;
+    if ((fd = api->open("/tmp/dupdir/A", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 391;
+    handle = api->opendir("/tmp/dupdir");
+    if (handle < 0)
+        return 392;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "A") != 0)
+        return 393;
+    if ((fd = api->open("/tmp/dupdir/X", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 394;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "A") != 0)
+        return 395;
+    if (api->closedir(handle) < 0)
+        return 396;
+    return 0;
+}
+
+static int direntisolationchild_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    int handle;
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    unsigned char count = 0;
+    int result;
+    int sync_fd;
+    unsigned char payload[10000];
+    unsigned char buffer[777];
+    size_t index;
+    (void)envp;
+    if (argc != 3)
+        return 397;
+    sync_fd = atoi(argv[2]);
+
+    handle = api->opendir("/tmp/isodir");
+    if (handle < 0)
+        return 398;
+    result = api->readdir(handle, name, sizeof(name), &inode, &type);
+    if (result != 0 || name[0] == '\0')
+        return 399;
+    ++count;
+
+    if (argv[1][0] == 'A') {
+        for (index = 0; index < sizeof(payload); ++index)
+            payload[index] = (unsigned char)(index & 0xff);
+        if (api->write(sync_fd, payload, sizeof(payload)) !=
+            (cb_ssize_t)sizeof(payload))
+            return 400;
+    } else {
+        for (;;) {
+            cb_ssize_t got = api->read(sync_fd, buffer, sizeof(buffer));
+            if (got < 0)
+                return 401;
+            if (got == 0)
+                break;
+        }
+    }
+
+    for (;;) {
+        result = api->readdir(handle, name, sizeof(name), &inode, &type);
+        if (result != 0)
+            return 402;
+        if (name[0] == '\0')
+            break;
+        ++count;
+    }
+    if (count != 3)
+        return 403;
+    if (api->closedir(handle) < 0)
+        return 404;
+    return 0;
+}
+
+static int direntisolationprobe_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    char sync_write_fd[32];
+    char sync_read_fd[32];
+    char *argv_a[4];
+    char *argv_b[4];
+    int sync_pipe[2];
+    struct cb_spawn_action_v1 close_for_a;
+    struct cb_spawn_action_v1 close_for_b;
+    cb_pid_t child_a;
+    cb_pid_t child_b;
+    int status;
+    int fd;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/isodir", 0755) < 0)
+        return 410;
+    if ((fd = api->open("/tmp/isodir/one", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 411;
+    if ((fd = api->open("/tmp/isodir/two", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 412;
+    if ((fd = api->open("/tmp/isodir/three", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+        api->close(fd) < 0)
+        return 413;
+
+    if (api->pipe(sync_pipe) < 0)
+        return 414;
+    snprintf(sync_write_fd, sizeof(sync_write_fd), "%d", sync_pipe[1]);
+    snprintf(sync_read_fd, sizeof(sync_read_fd), "%d", sync_pipe[0]);
+
+    close_for_a.abi_version = CB_ABI_VERSION_V1;
+    close_for_a.struct_size = sizeof(close_for_a);
+    close_for_a.type = CB_SPAWN_CLOSE;
+    close_for_a.from_fd = sync_pipe[0];
+    close_for_a.to_fd = -1;
+    close_for_b = close_for_a;
+    close_for_b.from_fd = sync_pipe[1];
+
+    argv_a[0] = (char *)"direntisolationchild";
+    argv_a[1] = (char *)"A";
+    argv_a[2] = sync_write_fd;
+    argv_a[3] = NULL;
+    if (api->spawn("direntisolationchild", argv_a, NULL, &close_for_a, 1,
+                   &child_a) < 0)
+        return 415;
+
+    argv_b[0] = (char *)"direntisolationchild";
+    argv_b[1] = (char *)"B";
+    argv_b[2] = sync_read_fd;
+    argv_b[3] = NULL;
+    if (api->spawn("direntisolationchild", argv_b, NULL, &close_for_b, 1,
+                   &child_b) < 0)
+        return 416;
+
+    if (api->close(sync_pipe[0]) < 0 || api->close(sync_pipe[1]) < 0)
+        return 417;
+
+    if (api->waitpid(child_a, &status) != child_a || status != 0)
+        return 418;
+    if (api->waitpid(child_b, &status) != child_b || status != 0)
+        return 419;
+    return 0;
+}
+
+static int dirent_noop_main(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    return 0;
+}
+
+static int direntoldtableprobe_main(const struct cb_api_v1 *api, int argc,
+                                    char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* This runs as a real, currently-scheduled task, so
+       active_kernel->current is valid throughout -- unlike rebinding
+       bound_api from outside any running task, which crashes the moment
+       ordinary code touches errno/environ/anything else keyed off the
+       current task. copy lives on THIS function's stack, so bound_api
+       must be rebound back to the task's own stable `api` pointer before
+       returning -- otherwise every later probe in this same process
+       would dereference a dangling frame. */
+    copy = *api;
+    /* Everything through getprogname is present; opendir/readdir/closedir
+       are not -- exactly the "one release older" cb_api_v1 api_is_usable
+       must still accept (see cb_libc.c's api_is_usable comment). */
+    copy.struct_size = (uint32_t)offsetof(struct cb_api_v1, opendir);
+    result = cb_libc_start(&copy, 0, NULL, cb_direntoldtable_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 420;
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -1831,7 +2204,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->release == NULL || api->errno_location == NULL ||
         api->environ_location == NULL || api->getopt_state_location == NULL ||
         api->truncate == NULL || api->ftruncate == NULL ||
-        api->getprogname == NULL)
+        api->getprogname == NULL || api->opendir == NULL ||
+        api->readdir == NULL || api->closedir == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -2423,6 +2797,31 @@ static const struct cb_program_v1 errxprobe_program = {
     64 * 1024, errxprobe_main
 };
 
+static const struct cb_program_v1 direntbasicprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntbasicprobe", 0,
+    64 * 1024, direntbasicprobe_main
+};
+
+static const struct cb_program_v1 direntmutationprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntmutationprobe", 0,
+    64 * 1024, direntmutationprobe_main
+};
+
+static const struct cb_program_v1 direntisolationchild_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntisolationchild", 0,
+    64 * 1024, direntisolationchild_main
+};
+
+static const struct cb_program_v1 direntisolationprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntisolationprobe", 0,
+    64 * 1024, direntisolationprobe_main
+};
+
+static const struct cb_program_v1 direntoldtableprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntoldtableprobe", 0,
+    64 * 1024, direntoldtableprobe_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -2796,6 +3195,12 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &getoptclusterprobe_program) < 0 ||
             cb_kernel_register(kernel, &cb_errxprobe_program) < 0 ||
             cb_kernel_register(kernel, &errxprobe_program) < 0 ||
+            cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
+            cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -3268,6 +3673,11 @@ int main(int argc, char **argv)
     run_case("getopterrprobe", "", 0, 1);
     run_case("getoptclusterprobe", "", 0, 1);
     run_case("errxprobe", "", 0, 1);
+    run_case("libcdirentprobe", "", 0, 1);
+    run_case("direntbasicprobe", "", 0, 1);
+    run_case("direntmutationprobe", "", 0, 1);
+    run_case("direntisolationprobe", "", 0, 1);
+    run_case("direntoldtableprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);

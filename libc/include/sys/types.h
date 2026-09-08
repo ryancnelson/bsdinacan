@@ -4,4 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef uint64_t ino_t;
+
 #endif

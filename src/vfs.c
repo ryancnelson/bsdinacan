@@ -363,6 +363,45 @@ int cb_vfs_truncate_path(struct cb_task *task, const char *path,
     return result < 0 ? -1 : 0;
 }
 
+struct cb_vfs_node *cb_vfs_opendir_path(struct cb_task *task,
+                                        const char *path)
+{
+    char normalized[CB_PATH_MAX];
+    struct cb_vfs_node *node;
+    struct cb_stat_v1 status;
+    int result = normalize_for_task(task, path, normalized);
+    if (result >= 0)
+        result = resolve_normalized(task, normalized, &node);
+    if (result >= 0) {
+        if (!node_ops_valid(node->ops))
+            result = -CB_EIO;
+        else
+            result = node->ops->stat(node, &status);
+    }
+    if (result >= 0 && status.type != CB_NODE_DIRECTORY)
+        result = -CB_ENOTDIR;
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return NULL;
+    }
+    cb_vfs_node_retain(node);
+    cb_task_set_error(task, 0);
+    return node;
+}
+
+int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
+                    struct cb_vfs_node **child_out)
+{
+    if (directory == NULL || !node_ops_valid(directory->ops))
+        return -CB_EIO;
+    if (directory->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, child_at) +
+                sizeof(directory->ops->child_at) ||
+        directory->ops->child_at == NULL)
+        return -CB_ENOSYS;
+    return directory->ops->child_at(directory, index, child_out);
+}
+
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode)
 {
     char normalized[CB_PATH_MAX];

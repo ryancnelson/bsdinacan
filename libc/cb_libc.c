@@ -16,8 +16,20 @@ static const struct cb_api_v1 *bound_api;
 
 static int api_is_usable(const struct cb_api_v1 *api)
 {
+    /* opendir/readdir/closedir are NOT required here: they are an
+       optional tail, like cb_vfs_node_ops.truncate. An api struct one
+       release older than this build -- struct_size covering everything
+       through getprogname but not the three directory operations -- must
+       still be able to start an ordinary program; it can only fail once
+       that program actually calls opendir()/readdir()/closedir(), at
+       which point the wrappers below check this same boundary
+       themselves and return ENOSYS. Requiring the full current
+       sizeof(*api) here, or requiring these three fields non-NULL here,
+       would defeat that: a genuinely older, smaller api struct would be
+       rejected outright instead of degrading gracefully. */
     return api != NULL && api->abi_version == CB_ABI_VERSION_V1 &&
-           api->struct_size >= sizeof(*api) && api->read != NULL &&
+           api->struct_size >= offsetof(struct cb_api_v1, opendir) &&
+           api->read != NULL &&
            api->write != NULL && api->open != NULL && api->close != NULL &&
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
@@ -26,6 +38,19 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->exit != NULL && api->getopt_state_location != NULL &&
            api->truncate != NULL && api->ftruncate != NULL &&
            api->getprogname != NULL;
+}
+
+/* opendir/readdir/closedir share one boundary check: they were appended
+   together, contiguously, so if the struct is big enough to include
+   closedir (the last of the three) and all three are non-NULL, all three
+   are safe to call. */
+static int dirent_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, closedir) +
+                   sizeof(bound_api->closedir) &&
+           bound_api->opendir != NULL && bound_api->readdir != NULL &&
+           bound_api->closedir != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -318,4 +343,73 @@ void cb_libc_errx(int eval, const char *fmt, ...)
     va_end(arguments);
     write_all(2, "\n", 1);
     cb_libc_exit(eval);
+}
+
+struct cb_libc_dir {
+    int descriptor;       /* the opaque runtime handle; meaningless outside
+                              the runtime that issued it */
+    struct dirent entry;  /* reused every readdir() call, like FILE* */
+};
+
+struct cb_libc_dir *cb_libc_opendir(const char *path)
+{
+    struct cb_libc_dir *dir;
+    int descriptor;
+    if (!dirent_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    descriptor = bound_api->opendir(path);
+    if (descriptor < 0)
+        return NULL;
+    dir = bound_api->allocate(sizeof(*dir));
+    if (dir == NULL) {
+        bound_api->closedir(descriptor);
+        bound_api->set_errno(CB_ENOMEM);
+        return NULL;
+    }
+    dir->descriptor = descriptor;
+    return dir;
+}
+
+struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp)
+{
+    uint64_t inode;
+    uint32_t type;
+    if (dirp == NULL) {
+        bound_api->set_errno(CB_EBADF);
+        return NULL;
+    }
+    if (!dirent_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    if (bound_api->readdir(dirp->descriptor, dirp->entry.d_name,
+                           sizeof(dirp->entry.d_name), &inode, &type) < 0)
+        return NULL;
+    if (dirp->entry.d_name[0] == '\0')
+        return NULL;
+    dirp->entry.d_ino = inode;
+    switch (type) {
+    case CB_NODE_REGULAR: dirp->entry.d_type = DT_REG; break;
+    case CB_NODE_DIRECTORY: dirp->entry.d_type = DT_DIR; break;
+    default: dirp->entry.d_type = DT_UNKNOWN; break;
+    }
+    return &dirp->entry;
+}
+
+int cb_libc_closedir(struct cb_libc_dir *dirp)
+{
+    int result;
+    if (dirp == NULL) {
+        bound_api->set_errno(CB_EBADF);
+        return -1;
+    }
+    if (!dirent_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    result = bound_api->closedir(dirp->descriptor);
+    bound_api->release(dirp);
+    return result;
 }
