@@ -19,6 +19,9 @@ provenance_file=UPSTREAM.md
 strcmp_source=upstream/netbsd/common/lib/libc/string/strcmp.c
 strcmp_object=$build_path/netbsd_strcmp.o
 strcmp_hash=f06298e20a2c02e9fbe11aeb06123d8b2ad6c8d5a9a04ad68fdae2aa142524f6
+strcpy_source=upstream/netbsd/common/lib/libc/string/strcpy.c
+strcpy_object=$build_path/netbsd_strcpy.o
+strcpy_hash=36754cc692e0df72390e24cfd585a1fb9343257ae6edc4052771b1e5a47c9fad
 memcpy_source=upstream/netbsd/common/lib/libc/string/memcpy.c
 bcopy_source=upstream/netbsd/common/lib/libc/string/bcopy.c
 memcpy_object=$build_path/netbsd_memcpy.o
@@ -109,6 +112,38 @@ if nm -u "$strcmp_object" | matches '[[:space:]]U[[:space:]]+strcmp$'; then
 fi
 if ! ar t "$archive_file" | matches '^netbsd_strcmp\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strcmp' >&2
+    exit 1
+fi
+if [[ ! -f $strcpy_source ]]; then
+    echo "FAIL: pinned NetBSD strcpy source is missing: $strcpy_source" >&2
+    exit 1
+fi
+actual_strcpy_hash=$(sha256sum "$strcpy_source" | awk '{print $1}')
+if [[ $actual_strcpy_hash != "$strcpy_hash" ]]; then
+    printf 'FAIL: NetBSD strcpy source changed: expected %s, found %s\n' \
+        "$strcpy_hash" "$actual_strcpy_hash" >&2
+    exit 1
+fi
+if ! matches "$strcpy_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD strcpy provenance does not match the pin' >&2
+    exit 1
+fi
+if matches '\bassert[[:space:]]*\(' "$strcpy_source"; then
+    echo 'FAIL: the import-only assert shim is unsafe for strcpy' >&2
+    exit 1
+fi
+if [[ ! -f $strcpy_object ]] ||
+        ! nm "$strcpy_object" |
+            matches '[[:space:]]T[[:space:]]+cb_libc_strcpy$'; then
+    echo 'FAIL: NetBSD strcpy was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$strcpy_object" | matches '[[:space:]]U[[:space:]]+strcpy$'; then
+    echo 'FAIL: NetBSD strcpy object imports host strcpy' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | matches '^netbsd_strcpy\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD strcpy' >&2
     exit 1
 fi
 if [[ ! -f $memcpy_source || ! -f $bcopy_source ]]; then

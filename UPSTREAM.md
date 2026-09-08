@@ -393,3 +393,15 @@ The pinned source's `main` never reads `argc` (marked `/* ARGSUSED */`,
 a lint-only annotation with no effect on GCC/Clang warnings), so its
 build rule alone carries `-Wno-unused-parameter`; no other imported
 source loses that coverage.
+
+## NetBSD `strcpy`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/strcpy.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/strcpy.c`
+- SHA-256: `36754cc692e0df72390e24cfd585a1fb9343257ae6edc4052771b1e5a47c9fad`
+- Embedded RCS identifier: `$NetBSD: strcpy.c,v 1.4 2018/02/04 20:22:17 mrg Exp $`
+- License: file-specific three-clause Regents of the University of California license, retained verbatim.
+
+The imported file is byte-for-byte unchanged. It uses the `CANNEDBSD_BUILDING_LIBC_STRCPY` definition to emit a compiler-specific assembly renaming macro for the link name since the source contains an `#undef strcpy`.

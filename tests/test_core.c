@@ -15,6 +15,8 @@ extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
+extern const struct cb_program_v1 cb_strcpy_probe_program;
+extern int cb_strcpy_probe_main(int argc, char **argv);
 extern int cb_err_probe_main(int argc, char **argv);
 extern const struct cb_program_v1 cb_dirname_probe_program;
 extern int cb_dirname_probe_main(int argc, char *argv[]);
@@ -4165,6 +4167,7 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_strcpy_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
@@ -4375,6 +4378,7 @@ static void run_case(const char *command, const char *expected_output,
             fail("dirname probe registration");
     } else if (fixture == FIXTURE_FULL) {
         if (cb_kernel_register(kernel, &cb_err_probe_program) < 0 ||
+            cb_kernel_register(kernel, &cb_strcpy_probe_program) < 0 ||
             cb_kernel_register(kernel, &err_short_program) < 0 ||
             cb_kernel_register(kernel, &err_interleave_program) < 0 ||
             cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
@@ -5187,6 +5191,7 @@ int main(int argc, char **argv)
     run_case("getopterrprobe", "", 0, 1);
     run_case("getoptclusterprobe", "", 0, 1);
     run_case("errxprobe", "", 0, 1);
+    run_case("strcpyprobe", "", 0, 1);
     run_case("libcdirentprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntbasicprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntmutationprobe", "", 0, FIXTURE_DIRENT);

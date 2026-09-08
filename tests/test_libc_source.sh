@@ -427,4 +427,19 @@ if nm -u "$getopt_arg_object" | matches '[[:space:]]U[[:space:]]+(optind|optarg|
     exit 1
 fi
 
+
+strcpy_source=tests/libc_strcpy_probe.c
+strcpy_object=$build_path/strcpyprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$strcpy_source"; then
+    echo 'FAIL: strcpy source uses private names' >&2
+    exit 1
+fi
+for symbol in strcpy; do
+    if nm -u "$strcpy_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$strcpy_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: strcpy probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'
