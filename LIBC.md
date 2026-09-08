@@ -63,6 +63,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   `%s`, writes through partial descriptor writes, returns the exact byte count,
   and preserves descriptor errors such as `EBADF` and `EPIPE`. Unsupported
   conversions fail with `EINVAL` after any preceding literal output.
+- `err.h`: a non-returning `errx`, declared `__dead`, reusing the bounded
+  formatter and `exit`. Writes the task's own program name (`argv[0]`), `": "`,
+  the formatted message, and a newline to `stderr` only, then exits with the
+  caller's status.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.

@@ -161,6 +161,7 @@ struct cb_api_v1 {
     int *(*errno_location)(void);
     char ***(*environ_location)(void);
     struct cb_getopt_state_v1 *(*getopt_state_location)(void);
+    const char *(*getprogname)(void);
 };
 
 struct cb_program_v1 {
