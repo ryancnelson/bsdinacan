@@ -1193,3 +1193,17 @@ stream ownership and cross-target integer contracts still require explicit desig
   and stack-budget acceptance to carry into HEAD-01; identify required runtime
   setup and scoped program registration. Do not claim a host GNU head run proves
   NetBSD behavior, or bypass missing prerequisites. Exact docs CI required.
+
+### MAC-13 — document retirement of closed disposable boot copies
+
+- **Status:** Coordinator documentation complete; review/CI pending
+- **Base:** main after accepted strcpy
+- **Evidence:** accumulated 1 GiB boot copies exhausted host working space and
+  an agent application reported ENOSPC. Accepted closed copies were retired
+  while preserving all source and acceptance evidence.
+- **Scope:** document free-space inspection and exact eligibility for manual
+  retirement of older accepted System.dsk copies. No automatic deletion,
+  emulator termination, retention timer or runtime gate change.
+- **Accept:** receipt/manifest identity, no current slot, fresh open-file check,
+  ordinary copied file and exact deletion boundary; preserve newest/failed/live
+  runs, seed, ROM and all non-boot evidence. Documentation CI; no guest required.

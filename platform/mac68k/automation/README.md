@@ -42,6 +42,34 @@ this verified applet is a prerequisite; host automation does not rebuild it. The
 System 7 layout, fonts, and 2x template scale. Recalibrate explicitly if these
 change; a new dialog is not automatically dismissed.
 
+## Disk budget and retired boot copies
+
+Each staged run copies the boot seed. The calibrated System 7 seed is about
+1 GiB, so repeated accepted runs can exhaust the host even though the command
+artifacts are small. Check free space on the actual local state volume before
+staging; leave room for the new seed copy and other active applications. An
+ENOSPC error in another agent application is a reason to reclaim retired copies
+before starting another guest, not to delete a live emulator disk.
+
+The coordinator may retire only an older accepted run's disposable `System.dsk`
+after checking all of the following:
+
+1. The run's manifest and acceptance receipt identify it as a copied boot disk
+   (`boot_copy: true`), and the receipt says `ALL PASS`, `app_closed: true` and
+   `guest_disks_closed: true`.
+2. The run does not own the current guest slot. Its disk path is the expected
+   ordinary file inside that run directory, not a symlink or the reusable seed.
+3. A fresh open-file check such as `lsof` confirms no process has that exact
+   disk open. An unexpected tool failure is not proof that the disk is closed.
+4. The file selected for removal is only that retired run's `System.dsk`.
+   Preserve the newest accepted boot copy for inspection, all failed or active
+   runs, the reusable seed and ROM, command disks/archives, manifests, receipts,
+   transcripts, screenshots and automation logs.
+
+Do not remove a run directory wholesale, force-stop a guest to make it eligible,
+or treat a stale receipt alone as permission to delete a disk. This is a bounded
+manual maintenance procedure, not automatic retention or a new acceptance gate.
+
 ## Run each artifact
 
 First reserve the coordinator's shared guest slot and stage an exact Woodpecker
