@@ -48,3 +48,11 @@ before merge. They are pending at this commit. Fresh guest execution is not
 required for this Linux-host-only change: the Mac backend, portable runtime,
 Mac build inputs and guest acceptance protocol are unchanged. The separately
 implemented portable WRITE-02 half does require a fresh exact Mac artifact.
+
+## Feature review and CI
+
+Exact `df7b2987e8783efac23aa3d00b4e92ae1cee6893` passed independent review
+and all three Woodpecker #332 workflows. An additional focused Clang
+ASan/UBSan build ran all eight cases successfully. The coordinator combines
+this host-only fix with the portable counterpart for a separate exact-commit
+CI and Mac acceptance gate; feature success is not that integration result.

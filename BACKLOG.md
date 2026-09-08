@@ -1312,7 +1312,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-linux — finite Linux console writes
 
-- **Status:** Claimed by Codex on `work/WRITE-02-linux`; reviewed `df7b298`, CI pending
+- **Status:** Claimed by Codex on `work/WRITE-02-linux`; reviewed `df7b298`, exact #332 all three checks passed; integration pending
 - **Base:** main at `e65e36f`
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** zero progress must terminate and a failed continuation must
@@ -1324,7 +1324,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### WRITE-02-portable — validate console callback counts
 
-- **Status:** Claimed by Codex worker on `work/WRITE-02-portable`
+- **Status:** Implemented by Codex worker at `5f03a94`; review, exact CI and guest integration pending
 - **Base:** main
 - **Depends on:** reviewed WRITE-02-design
 - **Hypothesis:** a real task must receive EIO for nonempty zero progress or
