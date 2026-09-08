@@ -23,8 +23,11 @@ zero/EINVAL. Require valid existing output state before I/O; unavailable,
 undersized or wrong-version state returns zero/ENOSYS with no write or flag
 mutation. Reject size > SIZE_MAX / nmemb with zero/EOVERFLOW, and NULL buffer
 with zero/EINVAL. Argument errors do not mark a valid stream's write-error flag.
-Use the common EOVERFLOW mapping introduced by STDIN-03, avoiding parallel enum
-or strerror changes. FWRITE-01 remains blocked until that prerequisite lands.
+Use the shared EOVERFLOW mapping: CB_EOVERFLOW=84, private EOVERFLOW, and
+strerror `value too large to be stored in data type`. The coordinator permits
+parallel implementation with STDIN-03 in isolated worktrees because neither
+I/O loop depends on the other. Both workers use these identical definitions;
+integration retains one mapping and independently verifies both test suites.
 
 For a valid request, repeatedly write remaining bytes, clipping each request
 to INT64_MAX without narrowing on ILP32. Each positive return advances the

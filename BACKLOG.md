@@ -13,8 +13,8 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements CONV-01. Antigravity prepares
-HEAD-01-testplan; the coordinator worker implements STDIN-03. Codex owns review,
+**Current assignments:** Claude implements CONV-01. Antigravity implements
+FWRITE-01; the coordinator worker implements STDIN-03. Codex owns review,
 integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
 with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
 
@@ -1151,11 +1151,14 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### FWRITE-01 — unbuffered standard-stream fwrite
 
-- **Status:** Blocked on FWRITE-01-design review and accepted STDIN-03
-- **Base:** main after dependency acceptance
-- **Depends on:** FWRITE-01-design, STDIN-03 (shared EOVERFLOW mapping)
+- **Status:** Claimed by Antigravity on `work/FWRITE-01`; coordinator-authorized parallel implementation
+- **Base:** main at accepted file streams `0e35e50`
+- **Depends on:** reviewed FWRITE-01-design; coordinate the identical EOVERFLOW mapping with STDIN-03
 - **Scope:** implement the reviewed output-element design with existing output
   state; no new ABI field, writable fopen or generic buffered streams.
+  Parallel STDIN-03 shares exactly CB_EOVERFLOW=84, private EOVERFLOW and
+  lowercase strerror `value too large to be stored in data type`; integration
+  retains one identical definition. No other input-stream changes belong here.
 - **Accept:** exact bytes/element counts and sticky flags with partial/zero/error
   injection, binary ordinary probe, old-table rejection before I/O, full exact
   CI and fresh coordinator-owned Mac artifact acceptance.
@@ -1180,7 +1183,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### HEAD-01-testplan — exact command fixtures for the next utility
 
-- **Status:** Claimed by Antigravity on `work/HEAD-01-testplan`; design only
+- **Status:** Reviewed with coordinator pipe-API correction in `32ac5ca`; docs CI pending
 - **Base:** main after accepted strcpy `bb1190c`
 - **Depends on:** reviewed HEAD-01 plan and CONV-01-design
 - **Scope:** derive concrete input bytes, argv, stdout/stderr and status fixtures
