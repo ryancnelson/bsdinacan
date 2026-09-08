@@ -14,15 +14,35 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude owns BASENAME-01. Antigravity owns VFS-02
-regression corrections. Codex owns VFS-03 review, integration, and serialized
-guest acceptance. The next measured utility milestone is unchanged NetBSD
-basename. Main runtime `96d5936` passed all three Woodpecker workflows (#174)
-and twenty-eight fresh Mac checks, including the real dirname command.
+regression corrections. Codex owns serialized guest acceptance and the measured
+utility roadmap. VFS-03 is accepted at `6e83f00`: all three Woodpecker workflows
+(#182) and twenty-nine fresh Mac checks passed. The next measured utility
+milestone is unchanged NetBSD basename; ECHO-01-design is ready in parallel.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
 exact artifact in Basilisk II before integration. Other workers continue on
 independent backlog items while the emulator is occupied.
+
+### ECHO-01-design — output errors and program identity for unchanged echo
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** PENV-04, ERR-01 (Done)
+- **Hypothesis:** the four observed missing interfaces in pinned NetBSD echo
+  can be specified as small task-owned groundwork without general buffered I/O.
+- **Evidence:** `notes/iterations/utility-roadmap-20260908.md` records the actual
+  Linux compile diagnostics: setprogname, putchar, fflush, ferror. The existing
+  runtime getprogname callback does not supply the public setter or getter.
+- **Red:** design review must reject a constant-zero ferror or shared mutable
+  stream flag: unchanged echo ignores individual output returns and would
+  silently succeed after a write error or contaminate another task.
+- **Accept:** define task-owned sticky output errors, participation by existing
+  printf/fprintf/puts, putchar return/error behavior, the unbuffered fflush and
+  ferror boundary, and program-name setter/getter ownership and exec lifetime.
+  Specify old/missing ABI behavior, invalid-stream handling and deterministic
+  failure/interleaving tests. Split implementation into bounded prerequisites;
+  do not implement or import echo in this design task.
 
 ### PENV-01 — task-local libc process state and `environ`
 
@@ -218,7 +238,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### VFS-03 — directory iteration and libc `dirent`
 
-- **Status:** Claimed by Claude; directory ownership and mutation contract being corrected
+- **Status:** Done; integrated at `6e83f00`, all three #182 gates and exact 29-record guest acceptance
 - **Base:** main plus VFS-01
 - **Hypothesis:** a versioned node iterator can expose directories without
   leaking RAMFS representation.
@@ -702,7 +722,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### VFS-03-design — directory lifetime and mutation contract
 
-- **Status:** Claimed by Claude; corrections feed VFS-03 implementation
+- **Status:** Done; reviewed contract implemented and accepted with VFS-03 at `6e83f00`
 - **Base:** main
 - **Accept:** task-owned handles release node references on close/exit/exec;
   mutation promises match the algorithm; directory names preserve existing
@@ -893,3 +913,34 @@ review or to satisfy this measured command's dependencies.
   independent retained dirname results, old/null accessor, source pins and
   actual Mac command/probe registration; exact CI and fresh guest acceptance.
   Preserve production capacity and every existing executed test.
+
+### ECHO-01 — unchanged NetBSD echo after measured prerequisites
+
+- **Status:** Blocked on ECHO-01-design and its separately approved implementation prerequisites
+- **Base:** integrated dependencies
+- **Depends on:** ECHO-01-design; prerequisite IDs to be assigned after review
+- **Hypothesis:** unchanged pinned bin/echo/echo.c will correctly report output
+  failures through the owned libc stream state as well as reproduce its output.
+- **Red:** exact audited source currently fails compilation on four missing
+  interfaces; a fake ferror would fail an injected earlier-write-error case.
+- **Accept:** pin source/license/hash and private symbols; scope any unavoidable
+  unused-argc warning exception to this import. Compare exact streams/status
+  for empty input, spaces, leading -n, literal --/-e/backslashes, write failure
+  and independent subsequent task success. Require exact CI and fresh guest
+  acceptance. Preserve the existing cannedBSD echo behavior unless the reviewed
+  design explicitly chooses and tests its command-resolution relationship.
+
+### HEAD-01 — unchanged NetBSD head feasibility milestone
+
+- **Status:** Deferred; stream input and argument-parsing prerequisites are unassigned
+- **Base:** integrated dependencies
+- **Depends on:** a reviewed dependency plan based on the measured audit
+- **Hypothesis:** real stream input, count conversion and argument-taking getopt
+  can eventually support the pinned command without host libc leaks.
+- **Red:** current diagnostics lack ERANGE, fopen/warn/fclose/stdin/fread/fwrite,
+  feof/getc/putchar/strcpy/getprogname; host ctype/inttypes silently supply further
+  unsupported interfaces. Existing getopt does not consume required arguments.
+- **Accept:** resolve those source-backed prerequisites and the source's 65536-byte
+  automatic buffer versus the standard 64 KiB task stack before an unchanged
+  import. Compile success alone is insufficient. See the utility audit; no
+  worker may broaden a ready echo task into implementing head.

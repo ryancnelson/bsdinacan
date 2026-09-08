@@ -35,9 +35,29 @@ including six dirname command cases, a reviewed screenshot, and verified normal
 shutdown with the guest slot released. The automated cycle took 15.48 seconds.
 
 The next measured milestone is BASENAME-01, assigned to Claude. Antigravity
-is correcting VFS-02 regression coverage; VFS-03 remains in coordinator review.
-Neither VFS branch is merged or claimed as guest-accepted. See BACKLOG.md and
+is correcting VFS-02 regression coverage. VFS-03 is accepted as recorded below;
+VFS-02 remains outside that acceptance. See BACKLOG.md and
 notes/iterations/BASENAME-01-plan.md for the bounded next utility contract.
+The measured next utility after basename is echo: ECHO-01-design is ready,
+implementation is blocked on reviewed task-owned stream-error and program-name
+groundwork. Head is deferred on observed stream-input, numeric-conversion,
+getopt-argument and stack-size blockers; see
+notes/iterations/utility-roadmap-20260908.md.
+
+## Accepted directory iteration integration, 2026-09-08
+
+Exact commit `6e83f00` passed ci, mac68k and mac-automation in Woodpecker #182.
+Archive SHA256:
+`f6cc4b48b3a0cf21d6adb2c752e9c7455cfc2d0cbf43edb5406726ad65e8453c`.
+Basilisk II acceptance `run-26u3wozf` produced twenty-nine fresh PASS records
+including the direct ordinary dirent probe. The coordinator reviewed the
+screenshot, observed app closure and normal guest shutdown, verified closed
+mounted disks, and released the serialized slot.
+
+Two focus interruptions occurred before outputs were produced. After moving
+the emulator window left, the coordinator resumed the existing staged run;
+the successful resumed automation took 15.02 seconds. This is not a cold-boot
+measurement. See notes/iterations/VFS-03.md for the implementation and review.
 
 ## Verified working
 
@@ -87,9 +107,11 @@ MAC-07 adds direct libc/getopt/truncate guest probes.
 
 The former Documents-based runtime stalled on iCloud-evicted NumPy modules
 and shared files. Runtime, staging, scratch, and verified clean seed now live
-outside iCloud. Matcher readiness is required before boot. MAC-03's positive and failure cases are verified and merged. Claude is
-implementing directory iteration; Antigravity is implementing executable VFS
-nodes. Polling is merged; current runtime changes still require review and guest acceptance.
+outside iCloud. Matcher readiness is required before boot. MAC-03's positive
+and failure cases are verified and merged. Directory iteration is now accepted
+at `6e83f00`; Antigravity is correcting
+executable VFS node regression coverage. Polling is merged; pending runtime
+changes still require review and guest acceptance.
 
 ## Current evidence
 

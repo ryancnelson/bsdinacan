@@ -409,3 +409,19 @@ error from clean EOF instead of accepting either once tmp was observed.
 Its direct shared acceptance case makes 29 expected records including
 contexts. Host protocol, complete CI and exact-artifact guest acceptance
 remain pending for this candidate; the coordinator owns the guest slot.
+
+## Exact integration acceptance, 2026-09-08
+
+The coordinator verified integrated commit `6e83f00` with all three
+Woodpecker #182 workflows green (ci, mac68k, mac-automation). The exact
+CannedBSD archive SHA256 is
+`f6cc4b48b3a0cf21d6adb2c752e9c7455cfc2d0cbf43edb5406726ad65e8453c`.
+Fresh acceptance `run-26u3wozf` produced 29 PASS records including the direct
+ordinary dirent case. The screenshot was reviewed; the application closed,
+normal guest shutdown completed, mounted disks were verified closed and the
+serialized guest slot was released. This completes the integration acceptance
+that was pending in the preceding historical sections.
+
+Two focus interruptions preceded output creation. The coordinator moved the
+emulator window left and resumed the same staged run. The successful resumed
+automation took 15.02 seconds; it is not evidence of a 15.02-second cold boot.
