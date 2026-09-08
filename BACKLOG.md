@@ -1070,3 +1070,17 @@ stream ownership and cross-target integer contracts still require explicit desig
   exact boundary test matrix, no host-header leaks or speculative APIs. No
   runtime implementation or guest claim in this design task. Keep 32-bit
   classic Mac compatibility; no 16-bit port work is assigned.
+
+### STDIN-01-design — owned read-only streams for unchanged head
+
+- **Status:** Claimed by coordinator worker on `work/STDIN-01-design`; design only
+- **Base:** main
+- **Depends on:** HEAD-01 dependency plan, STDOUT-01 (Done)
+- **Scope:** design unbuffered stdin/fopen/getc/fread/feof/fclose and input ferror
+  support from actual runtime ownership. Preserve immutable standard-stream
+  identities while isolating EOF/error per task; define dynamic wrapper and fd
+  cleanup on failure, exit and exec. Preserve old-size/absent optional ABI behavior.
+- **Accept:** exact element-count, partial-read, zero/overflow, binary-byte, EOF
+  versus error and ownership test matrix; explicit task/exec/rebind contracts and
+  feof(stdout) errno preservation. Separate fwrite and write-mode buffering work.
+  No runtime implementation or guest acceptance claim in this design task.
