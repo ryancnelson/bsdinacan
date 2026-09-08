@@ -1254,7 +1254,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### NEXT-UTIL-02 — select the utility after head from measured dependencies
 
-- **Status:** Claimed by Antigravity on `work/NEXT-UTIL-02`; audit corrections in progress
+- **Status:** Reviewed audit integrated; tee import blocked on state, signal and write-progress contracts; audit corrections in progress
 - **Base:** main
 - **Depends on:** accepted libc inventory and HEAD-01 (Done)
 - **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
@@ -1298,3 +1298,54 @@ accepted. Future stream or integer extensions still require explicit design.
   source hashes, capacity, stack budget and fixture coverage; run full exact CI,
   independent review and coordinator-owned fresh Mac acceptance. No new guest
   run or error behavior is claimed by this assignment itself.
+
+### WRITE-02-design — finite console write progress
+
+- **Status:** Done; reviewed design `f734884`, exact #328 all three checks passed
+- **Base:** main at `e65e36f`
+- **Depends on:** NEXT-UTIL-02 source audit
+- **Scope:** `notes/iterations/WRITE-02-design.md` separates portable callback
+  validation from the Linux adapter loop that cannot be stopped by its caller.
+- **Accept:** bounded real-function tests for zero progress and partial failure;
+  preserve zero-count errno and avoid malformed negative-result overflow.
+
+### WRITE-02-linux — finite Linux console writes
+
+- **Status:** Claimed by Codex on `work/WRITE-02-linux`; reviewed `df7b298`, CI pending
+- **Base:** main at `e65e36f`
+- **Depends on:** reviewed WRITE-02-design
+- **Hypothesis:** zero progress must terminate and a failed continuation must
+  retain the count of an already emitted prefix.
+- **Red:** actual old backend fails bounded zero-progress and partial-error
+  assertions; see `notes/iterations/WRITE-02-linux.md` on the worker branch.
+- **Accept:** eight exact deterministic syscall plans, all three exact CI checks,
+  independent review. Linux-host-only; no fresh guest required for this half.
+
+### WRITE-02-portable — validate console callback counts
+
+- **Status:** Claimed by Codex worker on `work/WRITE-02-portable`
+- **Base:** main
+- **Depends on:** reviewed WRITE-02-design
+- **Hypothesis:** a real task must receive EIO for nonempty zero progress or
+  malformed host counts, preserving valid short writes and old error behavior.
+- **Red:** a checked task currently receives zero for nonempty fake-host output.
+- **Accept:** actual shared Linux/Mac fake-host task tests including wide positive
+  over-return, INT64_MIN, negative values outside int range, negative EPIPE,
+  successful recovery and valid zero-count errno/no-callback preservation.
+  Preserve all 65 existing guest records, fixed program capacity, checked setup
+  and cleanup. Review, exact all-three CI and fresh Mac acceptance required.
+
+### TEE-STATE-01-design — isolate tee's output list per execution
+
+- **Status:** Claimed by Antigravity on `work/TEE-STATE-01-design`; review corrections required
+- **Base:** main
+- **Depends on:** reviewed NEXT-UTIL-02 audit
+- **Scope:** documentation-only design using existing executor delegation and
+  typed per-execution state, with unchanged source and compile-time symbol names.
+- **Red:** resetting a shared list at entry does not isolate interleaved tasks;
+  task exit already frees list allocations before executor termination.
+- **Accept:** exact actual lifecycle references, no duplicate list freeing or
+  dangling-pointer inspection, safe inner-context delegation, failed/successful
+  exec and allocation rollback, deterministic pre-teardown ownership assertions.
+  No tee import or implementation authorized by this design task. Signal and
+  raw-write progress remain separate prerequisites.

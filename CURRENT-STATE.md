@@ -4,6 +4,15 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Active work after head acceptance
+
+Claude implements HEAD-02 failure characterization. Antigravity corrects the
+tee executor-state design; the reviewed next-utility audit identifies tee as a
+candidate, blocked on real signal disposition, per-execution list state and
+finite raw-write progress. Resetting a global or adding a signal stub is not
+acceptance. Codex owns WRITE-02-linux and coordinates the portable console-count
+validation worker, independent reviews and serialized Mac acceptance.
+
 ## What this is
 
 cannedBSD is a small user-space operating system hosted inside one native process.
