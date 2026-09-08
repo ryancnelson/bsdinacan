@@ -91,3 +91,15 @@ normal and sanitizer suites, source fences, build-mode isolation, publication
 checks, and GCC analyzer. Final local publication/diff checks also passed.
 Immutable Woodpecker results are recorded at handoff; exact Mac artifact
 execution belongs to the coordinator and is not yet claimed here.
+
+## Coordinator integration acceptance
+
+Combined integration `f1a769a97017add822270526e06f826a1ab6bde4` passed independent
+review and exact Woodpecker #356 ci, mac68k and mac-automation. Fresh guest
+`run-nszacm8k` passed all 66 current records, including the expanded fileprobe;
+all prior records were retained. Archive SHA256:
+`9148d9b45018bd23e6a461de6b58f6ccd342b3412990e3e72f71230f9edec46f`.
+The full transcript and decoded screenshot were inspected. Receipt confirms
+application and guest disks closed normally; driver confirms slot release,
+34.06 seconds from cold start. Solaris qualification is pending SOLARIS-01
+integration under the transition policy; no native Solaris success is claimed.

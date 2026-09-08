@@ -1406,8 +1406,8 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### STAT-01 — private default file-creation mode for tee
 
-- **Status:** Reviewed d5bbcf2; exact #347 all three checks passed; combined
-  integration and fresh Mac acceptance pending; Solaris qualification pending
+- **Status:** Done on Linux/Mac; reviewed integration f1a769a, exact #356 all
+  three checks, fresh run-nszacm8k 66 records; Solaris qualification pending
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 source audit
 - **Scope:** private sys/stat.h exposes only the DEFFILEMODE integer constant
@@ -1439,7 +1439,8 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### SIG-01-design — define honest interrupt behavior before tee -i
 
-- **Status:** Reviewed b2425a2; documentation only; integration checks pending
+- **Status:** Done; reviewed b2425a2, integrated f1a769a with exact #356 all
+  three checks; design only, no signal implementation
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 audit
 - **Scope:** define a bounded task-owned interrupt/disposition contract and real

@@ -4,6 +4,17 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted default creation mode, 2026-09-08
+
+Integration `f1a769a97017add822270526e06f826a1ab6bde4` passed independent review
+and exact Woodpecker #356 ci, mac68k and mac-automation. STAT-01 adds the
+private DEFFILEMODE constant and verifies actual stored mode and descriptor/path
+cleanup through the existing fileprobe. Fresh Basilisk II run `run-nszacm8k`
+passed all 66 records; the full transcript and screenshot were inspected.
+Normal application/guest shutdown and slot release completed in 34.06 seconds.
+Archive SHA256: `9148d9b45018bd23e6a461de6b58f6ccd342b3412990e3e72f71230f9edec46f`.
+Solaris qualification remains pending integration under notes/CI.md.
+
 ## Accepted console-write boundary, 2026-09-08
 
 Main `e290168f0e080bd55dbbdcff65f87c4ecd2d2479` includes the finite Linux
@@ -25,10 +36,10 @@ terminal fault or complete nonblocking/signal support is claimed.
 Claude implements HEAD-02 failure characterization. Antigravity implements the
 reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
-acceptance. WRITE-02 is accepted. STAT-01 has clean feature review and all three
-checks on d5bbcf2; its combined integration and fresh Mac acceptance are pending.
+acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
 The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
-the Solaris integration priority. Solaris qualification is pending under notes/CI.md.
+the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
+after resolving HEAD-02 review findings; rig access/ownership is still unresolved. Solaris qualification is pending under notes/CI.md.
 
 ## What this is
 
