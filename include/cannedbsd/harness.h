@@ -36,7 +36,7 @@ static void cb_harness_expect_invalid_host(
     struct cb_kernel *kernel = create_fn(host);
     if (kernel != NULL) {
         cb_harness_fail(reason);
-    }
+}
 }
 
 static void *cb_harness_mock_allocate(size_t size) { return malloc(size); }
@@ -79,7 +79,7 @@ static inline void cb_harness_run_mock_api_validation(
         cb_harness_mock_wall,
         cb_harness_mock_yield,
         cb_harness_mock_fatal
-    };
+};
 
     cb_harness_expect_invalid_host(create_fn, NULL, "null table");
     host = mock_host_ops;
@@ -109,21 +109,15 @@ static inline void cb_harness_run_mock_api_validation(
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(context_create);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(context_switch);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(context_destroy);
+    CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(console_poll);
+    CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(console_read);
+    CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(console_write);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(monotonic_millis);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(wall_clock_millis);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(yield_host);
     CB_HARNESS_EXPECT_NULL_HOST_CALLBACK(fatal);
 #undef CB_HARNESS_EXPECT_NULL_HOST_CALLBACK
 
-    // Also check optional console callbacks. The host_ops_valid should NOT fail if they are NULL!
-    host = mock_host_ops;
-    host.console_poll = NULL;
-    host.console_read = NULL;
-    host.console_write = NULL;
-    kernel = create_fn(&host);
-    if (kernel == NULL)
-        cb_harness_fail("Missing optional console callbacks rejected");
-    destroy_fn(kernel);
 }
 
 static struct cb_host_context *cb_harness_test_root_ctx;
@@ -206,11 +200,11 @@ static inline void cb_harness_test_real_conformance_contract(const struct cb_hos
     if (adapter->console_poll != NULL) {
         int events = adapter->console_poll(0);
         (void)events; // Check it executes without crashing
-    }
+}
     if (adapter->console_write != NULL) {
         cb_ssize_t w = adapter->console_write(1, "", 0);
         (void)w; // Check it executes without crashing
-    }
+}
 
     // Context switching conformance
     cb_harness_test_adapter = adapter;
