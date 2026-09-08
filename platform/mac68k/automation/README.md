@@ -217,3 +217,30 @@ python tests/test_mac_picture.py
 
 These tests validate controller ordering and rejection of blank decoded pixels.
 They do not replace the exact-artifact guest PICT and shutdown acceptance gate.
+
+## Optional pre-match calibration
+
+A private config may add `calibration` with `window_origin` (absolute screen
+points) and `cursor_park` (fractions strictly between zero and one):
+
+```json
+"calibration": {
+  "window_origin": {"x": 20, "y": 60},
+  "cursor_park": {"x": 0.4, "y": 0.5}
+}
+```
+
+Choose an unobstructed position and a neutral point away from the image templates
+in the calibrated guest layout. The verified guest window must fit its current
+screen's usable frame. After checking the launched PID/preferences, the driver
+moves only that window, checks the exact resulting frame and foreground state,
+and parks the pointer before finding the first template. It does not click the
+parking point. Missing calibration preserves the existing placement behavior.
+Invalid numbers reject before launch; a position that cannot be applied exactly
+stops and leaves the guest for inspection. Focus/lock/frame changes and unexpected
+dialogs still stop the run; this is not automatic focus recovery or a resume mode.
+
+This addresses observed interrupted runs: another app took focus during clicks,
+and a guest pointer overlapping a template prevented matching. Earlier manual
+repositioning and parking were followed by successful runs; the new configured
+path still requires exact CI and fresh guest acceptance before a speed claim.

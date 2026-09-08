@@ -11,6 +11,8 @@ steps:
     image: python:3.14-slim
     commands:
       - apt-get update && apt-get install -y --no-install-recommends lua5.4
+      - lua tests/test_mac_calibration.lua
+      - lua tests/test_mac_calibration_driver.lua
       - lua tests/test_mac_runner_startup.lua
       - luac -p platform/mac68k/automation/close-window.lua
       - lua tests/test_mac_autorun_driver.lua

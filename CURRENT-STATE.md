@@ -48,10 +48,20 @@ resumed portion took 12.42 seconds, not a cold-boot measurement. The coordinator
 reviewed the screenshot and receipt and verified app closure, normal guest
 shutdown, closed mounted disks and slot release.
 
-Claude prepares ECHO-01, whose runtime acceptance awaits Antigravity's STDOUT-01.
-Codex owns the bounded MAC-12 calibration task next: optional verified window
-positioning and cursor parking before matching, preserving all focus checks and
-never automatically dismissing dialogs. See BACKLOG.md for its acceptance scope.
+STDOUT-01 and MAC-12 are now accepted at
+`894b75316eea9965438aa45b12e5875c53f5136a`. Woodpecker #230 passed all
+three workflows. Archive SHA256:
+`ca21a340b41340796078a4236ac81fa3123cd31fa93de85d6c258932a31dcd1c`.
+Fresh guest `run-mraq4k0o` produced the complete 42-case transcript and ALL PASS.
+The coordinator inspected the decoded screenshot and bound receipt; app closure,
+closed guest disks and slot release were verified. The cold automated cycle took
+16.09 seconds, including verified window positioning, cursor parking, launch,
+tests, screenshot capture and normal shutdown. One successful measurement does
+not establish a reliability rate or guarantee against external focus changes.
+
+Claude is implementing unchanged NetBSD echo with the accepted prerequisites.
+Antigravity is preparing a source-backed HEAD-01 dependency plan; head code
+implementation remains deferred. Codex owns reviews and serialized guest runs.
 
 The earlier unchanged dirname/locale milestone remains accepted at `96d5936`:
 Woodpecker #174 all three checks, twenty-eight PASS records in `run-u4ko4rto`,

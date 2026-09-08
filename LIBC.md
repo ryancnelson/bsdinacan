@@ -1,7 +1,7 @@
 # cannedBSD libc and source compatibility
 
-Status: first unmodified NetBSD utility and libc routine running through the
-compatibility layer
+Status: unchanged NetBSD utilities and libc routines run through the
+compatibility layer; accepted interfaces below remain deliberately bounded.
 
 ## Compatibility authority
 
@@ -62,6 +62,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
+- `stdlib.h`: `getprogname` selects the final slash-delimited component of the
+  saved startup name. `setprogname` is intentionally inert after startup.
+  Replacing argv[0] does not change that identity; successful exec installs the
+  new startup name and failed exec preserves the old one.
 - `stdlib.h`: a non-returning `exit`, declared `__dead`
   (`sys/cdefs.h`), that reuses the existing task-exit ABI operation, so heap
   and descriptor reclamation are identical to a program simply returning from
@@ -73,6 +77,20 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   `%s`, writes through partial descriptor writes, returns the exact byte count,
   and preserves descriptor errors such as `EBADF` and `EPIPE`. Unsupported
   conversions fail with `EINVAL` after any preceding literal output.
+- `stdio.h`: `putchar`, `fflush`, and `ferror` use independent task-owned
+  stdout/stderr error indicators. `putchar` returns the unsigned byte written
+  or `EOF`. Positive short writes are retried; zero progress becomes `EIO`.
+  Actual stdio write failures set a sticky indicator; successful later output
+  preserves it and incoming errno. Raw `write` and formatter-only rejection
+  do not themselves set these indicators. Successful exec resets indicators;
+  failed exec or libc rebinding preserves them.
+- `fflush(stdout)`, `fflush(stderr)`, and `fflush(NULL)` succeed without changing
+  errno or existing indicators because no output buffering exists. This is not
+  a durability guarantee. Invalid stream pointers produce `EINVAL`; unsupported
+  optional stream state produces `ENOSYS` before new-interface output. `ferror`
+  reports nonzero on either rejection path. Existing output APIs still operate
+  on old runtimes without the optional state. No general input streams or
+  `fopen`/`fclose` subsystem is implied by these standard-output interfaces.
 - `err.h`: a non-returning `errx`, declared `__dead`, reusing the bounded
   formatter and `exit`. Writes the task's own program name (`argv[0]`), `": "`,
   the formatted message, and a newline to `stderr` only, then exits with the
