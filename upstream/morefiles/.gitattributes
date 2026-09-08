@@ -1,0 +1,2 @@
+# Preserve original source bytes; imported whitespace is hash-checked, not edited.
+*.[ch] -text whitespace=-trailing-space,-space-before-tab

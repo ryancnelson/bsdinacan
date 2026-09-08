@@ -11,3 +11,7 @@ steps:
     image: ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019
     commands:
       - bash platform/mac68k/ci-build.sh
+  - name: diagnose-morefiles-not-viable
+    image: ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019
+    commands:
+      - bash platform/mac68k/probes/morefiles/ci-diagnose.sh

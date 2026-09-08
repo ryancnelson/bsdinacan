@@ -205,3 +205,33 @@ enumerate-all lookups, the `=`-in-name diagnostic, the too-many-arguments
 usage diagnostic, pipeline use, and output redirection, entirely through the
 shell against the real registered command — no direct unit-level probe was
 needed since every required behavior is externally observable this way.
+
+## MoreFiles read-only catalog feasibility inputs (REUSE-02)
+
+Official MacPerl CVS snapshot: `https://sourceforge.net/code-snapshots/cvs/m/ma/macperl.zip`
+(archive SHA-256 `afc00b6009d79d37b7146116e6ce1a44a4f530303b693cb217c9de0604bd6222`).
+All files below are CVS revision 1.1 under
+`perl/macos/ext/Mac/MoreFiles/MoreFilesSrc/`; local directory is
+`upstream/morefiles/`. Each is byte-for-byte unchanged, including its notice.
+`pins.json` is the machine-readable ledger checked by the diagnostic.
+
+| File | SHA-256 |
+| --- | --- |
+| `IterateDirectory.c` | `0e2cd7812068d0d2b95d3dc023a2e10114504e8183302ea178c742d4359de882` |
+| `IterateDirectory.h` | `6746204bebd5d25c1dabda3d1f4693c67628b7490333fe8346fd12d82dd7ac31` |
+| `MoreFilesExtras.c` | `56d03290e6ac1912c8c4eb7b7945b5f154a244fe17a9b01982502bc94d920865` |
+| `MoreFilesExtras.h` | `41d0ddebd6aa650083e22f0cf023b3092accc36d890de00d889dac9b60995775` |
+| `MoreFiles.h` | `51987f9a1a4542a86d0f1fe9a192a9ef5c53a5232cf008324d64dcfa0246600b` |
+| `MoreDesktopMgr.h` | `ac811ae307b612bf40a16fb30b91eb8e732f4ef96314ba81d854756c1623d998` |
+| `FSpCompat.h` | `66fdc2c0f457f42cfd964f73c827ce34f2c83fe83634353fcd966b713e5795d4` |
+| `Optimization.h` | `19ec510e046f2291905d8b41bcc12da0c2c920ad45620eb813181e2f3f9c4800` |
+| `OptimizationEnd.h` | `587661dded9e22e941555dbed289e83ead4348c3a1f9a4692b32872e0c4234c7` |
+
+`IterateDirectory.c` and `.h` retain the Jim Luther/Apple 1995–1999
+permission to incorporate without restriction, as-is and at the user’s
+responsibility. The other seven files retain their Apple 1992–1999
+sample-code notices, including the requirement that altered redistributed
+source identify its Apple origin and changes. No source alteration or
+replacement license is applied here. These files are diagnostic inputs only,
+not linked into cannedBSD. The pinned SDK cannot currently compile them; see
+`notes/iterations/REUSE-02.md`.
