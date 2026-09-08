@@ -207,8 +207,8 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### VFS-02 — runtime-visible executable nodes
 
-- **Status:** Blocked on VFS-01
-- **Base:** main plus VFS-01
+- **Status:** Design claimed by Antigravity on `work/VFS-02-design`
+- **Base:** main
 - **Hypothesis:** registered programs can appear as executable VFS objects and
   shell lookup can resolve those objects instead of a hidden path registry.
 - **Red:** prove `/bin/sh` and registered commands cannot currently be statted
@@ -676,14 +676,14 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-08 — image-matched failure-window closure
 
-- **Status:** Reviewed; live close verified; integration checks pending
+- **Status:** Done; merged at `52cc6f9` after live close verification and CI
 - **Base:** main
 - **Accept:** match the cannedBSD title/go-away box, validate staged PID and
   focus, retain before/after evidence; no automatic shutdown or pass claim.
 
 ### MAC-09 — supported guest-owned autorun cycle
 
-- **Status:** Claimed by Codex on `work/MAC-09`
+- **Status:** Reviewed; exact feature CI and 14.08-second autorun passed; integration pending
 - **Base:** `c93e2ba`
 - **Accept:** stage all marker/evidence files before boot; validate exact fresh
   results, completion and readable screenshot; observe app closure, then normal
@@ -691,7 +691,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### REUSE-01 — MacPerl/GUSI source reuse audit
 
-- **Status:** Claimed by Codex on `work/REUSE-01`
+- **Status:** Reviewed; source pins and licenses verified, all three #86 workflows passed; integration pending
 - **Base:** main
 - **Hypothesis:** historical MacPerl and GUSI already implement useful classic
   Mac filesystem, networking and compatibility operations.

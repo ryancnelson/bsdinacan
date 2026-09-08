@@ -72,10 +72,9 @@ MAC-07 adds direct libc/getopt/truncate guest probes.
 
 The former Documents-based runtime stalled on iCloud-evicted NumPy modules
 and shared files. Runtime, staging, scratch, and verified clean seed now live
-outside iCloud. Matcher readiness is required before boot. MAC-03's corrected
-PICT visibly decoded with ALL PASS; its failure cases remain pending before
-integration. Claude is implementing printenv; Antigravity is completing mount
-regression tests and the polling design.
+outside iCloud. Matcher readiness is required before boot. MAC-03's positive and failure cases are verified and merged. Claude is
+implementing directory iteration; Antigravity's polling changes are in review
+and it is designing executable VFS nodes.
 
 ## Current evidence
 
@@ -350,13 +349,11 @@ gate and Retro68 cross-build on the final evidence commit.
 
 ## What's next
 
-`PENV-02`, `PENV-03`, and `PENV-04` are now independent ready tasks for
-`exit(3)` plus `__dead`, the exact empty-option `getopt` slice, and bounded
-unbuffered formatted output. `VFS-01` remains claimed until its branch is clean
-and both Woodpecker workflows pass. The remaining pinned NetBSD `printenv`
-dependencies stay gated by those worker-sized loops.
-The original bounded bootstrap `wc` remains scaffolding, not imported-source
-provenance evidence.
+Directory iteration and polling are the active runtime loops. Executable VFS
+nodes have a separate design task. The reviewed MacPerl/GUSI audit identifies
+MoreFiles as a candidate for a bounded future Mac host filesystem probe, with
+source pins and license distinctions recorded in `notes/iterations/REUSE-01.md`.
+The original bounded bootstrap `wc` remains scaffolding.
 
 ## Key files and commands
 
