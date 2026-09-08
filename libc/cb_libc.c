@@ -475,6 +475,17 @@ int cb_libc_feof(struct cb_libc_file *stream)
     return *ref.eof;
 }
 
+int cb_libc_isdigit(int character)
+{
+    return character >= '0' && character <= '9';
+}
+
+int cb_libc_isspace(int character)
+{
+    return character == ' ' || character == '\t' || character == '\n' ||
+           character == '\v' || character == '\f' || character == '\r';
+}
+
 static struct cb_stdio_state_v1 *stdio_state(void)
 {
     struct cb_stdio_state_v1 *state = NULL;

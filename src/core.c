@@ -1516,6 +1516,7 @@ static const char *api_strerror(int error)
     case CB_ENAMETOOLONG: return "file name too long";
     case CB_ENOSYS: return "function not implemented";
     case CB_ENOTEMPTY: return "directory not empty";
+    case CB_ERANGE: return "result too large";
     default: return "unknown error";
     }
 }
