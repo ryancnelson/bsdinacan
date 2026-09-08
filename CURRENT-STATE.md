@@ -50,6 +50,15 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Solaris portability priority, 2026-09-08
+
+The user requires the Solaris 9 SPARC rig for ongoing testing and CI. SOLARIS-01
+is the highest-priority unassigned task; SOLARIS-02 follows with serialized CI.
+The earlier local port is preserved as reference, but current-main Solaris
+acceptance is pending integration. Existing assigned workers continue their IDs
+and report that outstanding gate under `notes/CI.md`; Linux and Mac requirements
+remain in force. No Solaris CI workflow is installed by this documentation change.
+
 ## Current accepted state and assignments, 2026-09-08
 
 Main `e65e36fc0444193445b8a304f6e818d2768d5b62` includes accepted unchanged

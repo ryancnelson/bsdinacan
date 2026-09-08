@@ -20,10 +20,63 @@ integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
 FWRITE-01 was accepted at `885d83c` with 64 records.
 
+Solaris testing is now required for shared behavior changes under the transition
+policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
+coordinate Solaris validation; SOLARIS-01 is the next unassigned worker task.
+
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
 exact artifact in Basilisk II before integration. Other workers continue on
 independent backlog items while the emulator is occupied.
+
+### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
+
+- **Status:** Ready; highest-priority unassigned implementation task by user direction (2026-09-08)
+- **Base:** freshly fetched main
+- **Depends on:** none; existing Linux and Mac gates remain mandatory
+- **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
+  native GCC 3.4.6 build on Solaris 9 SPARC without weakening shared contracts.
+- **Reference:** `work/SOLARIS-01-reference`, commit
+  `a28f9ed8b369b37547df8fa62c08d3565bad8f23`, contains the earlier local port.
+  Reconcile only the necessary changes against current main; it also contains
+  older review fixes and Makefile changes and must not replace newer code wholesale.
+- **Rig:** use the existing isolated Solaris 9 sun4m VM. Coordinator operational
+  notes are in `~/wiki/hosts/cannedbsd-solaris9.md` on the documentation workstation.
+  Obtain the current serialized rig slot before opening its console or changing
+  media; do not copy, replace, or concurrently attach active writable images.
+- **Red:** compile the exact current source in the guest and record the first
+  relevant compiler/runtime failure. A lost SSH connection or occupied rig is
+  setup failure, not behavioral red evidence.
+- **Accept:** preserve the original Solaris 9 context-stack ABI, provide bounded
+  old-toolchain/header adapters, and run the complete applicable core, libc,
+  command and launcher acceptance suite with warnings treated as errors.
+  Test 32-bit overflow behavior without speculative multi-gigabyte allocation.
+  Capture compiler identity, source commit and archive digest, commands, exit
+  statuses, fresh full output and explicit PASS completion. Do not promote the
+  historical Solaris result to acceptance of current main. Run existing Linux
+  CI and exact-artifact Mac acceptance for shared runtime changes.
+- **Handoff:** add a public platform runbook, portable gate command and
+  `notes/iterations/SOLARIS-01.md`; keep private rig addresses in operational
+  configuration. This integration precedes automated Solaris CI.
+
+### SOLARIS-02 — serialized exact-commit Solaris CI
+
+- **Status:** Blocked on SOLARIS-01; next Solaris task after integration
+- **Base:** main with accepted SOLARIS-01
+- **Depends on:** SOLARIS-01
+- **Hypothesis:** a trusted CI runner can test an exact source commit in the
+  existing guest and reject stale output, missing completion and failed probes.
+- **Red:** harness controls must reject wrong source identity, nonzero probe exit,
+  stale PASS output, timeout and a competing rig owner.
+- **Accept:** add a distinct `solaris9` workflow/status with serialized ownership,
+  fresh per-run staging and logs, source/artifact digests, bounded timeouts and
+  cleanup that preserves other runs and the original disk images. The owner
+  lock must cover both manual acceptance and CI, and live ownership must never
+  be stolen merely because a run is slow. Test failed-run cleanup and a subsequent
+  successful run. Keep credentials and private addresses out of the repository;
+  untrusted PR code must not receive infrastructure credentials. A skipped,
+  unreachable or occupied guest cannot produce a passing Solaris result.
+  Record an actual green exact-commit CI run before declaring automation done.
 
 ### ECHO-01-design — output errors and program identity for unchanged echo
 
