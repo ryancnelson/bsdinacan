@@ -2813,12 +2813,41 @@ static int overflowprobe_main(const struct cb_api_v1 *api, int argc,
                            CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0600);
     if (descriptor < 0)
         return 191;
+#if SIZE_MAX > INT64_MAX
+    /* Only reachable on a host where size_t can actually hold a value
+       exceeding INT64_MAX (e.g. LP64 Linux) -- exercises api_read's/
+       api_write's own INT64_MAX bounds rejection, which must fire
+       before either ever reaches the real syscall with this 1-byte
+       buffer against a wildly mismatched huge count. */
     if (api->read(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 192;
     if (api->write(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 193;
+#else
+    /* On an ILP32 host (e.g. Solaris 9 SPARC), size_t itself can never
+       exceed INT64_MAX, so that bounds check is unreachable via any
+       legal count -- there is no "count too large" failure to observe
+       here, and deliberately passing SIZE_MAX as a count against this
+       1-byte buffer would be unsafe on this branch (a real
+       out-of-bounds read from this stack variable on the write side,
+       not merely a big-but-harmless allocation). Exercise a different,
+       still-meaningful and safe boundary instead: cb_off_t is a fixed
+       64-bit type independent of the host's size_t width, so seeking
+       to an offset at SIZE_MAX remains a real, representable boundary
+       on any word size, and reading an ordinarily-sized count from
+       there is bounded and safe -- the file is empty, so any offset is
+       past its end, and a real read() there simply returns a clean 0
+       (EOF), never a crash or a huge transfer. */
+    if (api->lseek(descriptor, (cb_off_t)SIZE_MAX, CB_SEEK_SET) !=
+        (cb_off_t)SIZE_MAX)
+        return 192;
+    if (api->read(descriptor, &byte, sizeof(byte)) != 0)
+        return 193;
+    if (api->lseek(descriptor, 0, CB_SEEK_SET) != 0)
+        return 193;
+#endif
     if (api->lseek(descriptor, INT64_MAX, CB_SEEK_SET) != INT64_MAX ||
         api->lseek(descriptor, 1, CB_SEEK_CUR) != -1 ||
         api->get_errno() != CB_EINVAL)
