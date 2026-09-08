@@ -49,3 +49,10 @@ stderr separately; the Mac host captures their combined console output.
 
 Combined validation and exact-artifact guest acceptance are pending. No
 guest completion is claimed by this integration preparation.
+
+The first combined candidate's Woodpecker Linux sanitizer run reached the
+new exact-stderr matrix and exposed the existing ASan ucontext warning in
+the command capture. The matrix now sends ASan's own reports to its private
+temporary directory and accepts only the exact known three-line
+`__asan_handle_no_return` warning. Any other report fails, including on
+cases expecting status 1; stdout and command stderr remain byte-exact.

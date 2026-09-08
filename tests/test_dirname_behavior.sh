@@ -14,6 +14,27 @@ fail() {
     exit 1
 }
 
+check_sanitizer_reports() {
+    local report
+    for report in "$case_dir"/asan.*; do
+        [ -f "$report" ] || continue
+        # The existing ucontext backend emits this precise ASan warning.
+        # Keep sanitizer output separate from command stderr, and reject all
+        # other reports (including errors on cases expecting exit status 1).
+        if ! awk '
+            NR == 1 && /^==[0-9]+==WARNING: ASan is ignoring requested __asan_handle_no_return: stack type: default top: 0x[0-9a-f]+; bottom 0x[0-9a-f]+; size: 0x[0-9a-f]+ \([0-9]+\)$/ { next }
+            NR == 2 && $0 == "False positive error reports may follow" { next }
+            NR == 3 && $0 == "For details see https://github.com/google/sanitizers/issues/189" { next }
+            { bad = 1 }
+            END { exit bad || NR != 3 }
+        ' "$report"; then
+            cat "$report" >&2
+            fail "unexpected sanitizer diagnostic"
+        fi
+        rm -f "$report"
+    done
+}
+
 check_case() {
     local cmd="$1"
     local exp_status="$2"
@@ -26,9 +47,11 @@ check_case() {
     printf "%b" "$exp_stderr" > "$case_dir/exp_stderr"
 
     set +e
-    "$program" -c "$cmd" > "$case_dir/out" 2> "$case_dir/err"
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}log_path=$case_dir/asan" \
+        "$program" -c "$cmd" > "$case_dir/out" 2> "$case_dir/err"
     local status=$?
     set -e
+    check_sanitizer_reports
 
     if [ "$status" -ne "$exp_status" ]; then
         fail "$name: expected status $exp_status, got $status"
