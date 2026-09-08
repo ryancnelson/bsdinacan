@@ -213,7 +213,7 @@ struct cb_task {
     struct cb_task *next;
 };
 
-#define CB_MAX_PROGRAMS 64
+#define CB_MAX_PROGRAMS 96
 
 struct cb_kernel {
     const struct cb_host_ops_v1 *host;

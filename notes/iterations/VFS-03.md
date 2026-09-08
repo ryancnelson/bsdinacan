@@ -326,6 +326,56 @@ ASan/UBSan remains the honest scope of that one scenario.) All fixes
 re-verified against a full `make LDLIBS=-lucontext test` and the complete
 `make LDLIBS=-lucontext SANITIZE_CC=clang ci` gate.
 
+## Sixth review pass: a real descriptor leak in `cb_libc_opendir`
+
+An independent review of `f9c3214` found a genuine bug the fifth pass's
+per-field independence introduced: `cb_libc_opendir` only required
+`opendir` itself to be usable, not `closedir`. `opendir` is the only
+thing that ever acquires the raw runtime descriptor, and `closedir` is
+the only thing that can ever release it (`readdir` cannot). A table
+providing `opendir` without `closedir` -- fully legitimate under the
+per-field-independence model just established -- would let
+`cb_libc_opendir` acquire a descriptor with no way to ever release it:
+not on a later allocation failure (the existing cleanup call would be a
+`NULL` dereference, previously guarded defensively rather than
+prevented), and not even on a normal, successful `closedir()` call
+(which would just report `ENOSYS` forever, leaking for the rest of the
+task's lifetime).
+
+Fixed by requiring `closedir_api_available()` in addition to
+`opendir_api_available()` before `cb_libc_opendir` ever calls
+`bound_api->opendir()` -- the leak path is now unreachable by
+construction, not merely handled defensively. `readdir` is still not
+required: its absence alone never prevents a successful `open`/`close`
+pair.
+
+This changed what `direntclosedirnulltableprobe` (closedir `NULL` from
+the start) actually proves: `opendir()` itself must now fail with
+`ENOSYS` immediately, not "opendir/readdir succeed, only closedir
+fails" -- it now reuses the same ordinary probe as the old-table case
+(`cb_direntoldtable_main`). The scenario that used to be tested there
+(closedir's own per-call guard against an *already-open* handle) is
+preserved, not dropped, by a new `direntclosedirrebindprobe`: it opens
+and reads a real handle under the full, working table first, then
+rebinds `bound_api` to a copy with only `closedir` `NULL` to exercise
+`closedir()`'s guard against that already-open handle, then restores the
+full table (the degraded copy has no way to ever close it) before
+actually closing it for real. `direntopendirnulltableprobe` and
+`direntreaddirnulltableprobe` (the other two independent per-field
+scenarios) are unaffected and unchanged -- neither one's table is
+missing `closedir`, so `opendir()` still succeeds in both.
+
+Verified the fix is real: temporarily reverted the guard to check only
+`opendir_api_available()`, rebuilt, and confirmed
+`direntclosedirnulltableprobe` fails (`cb_direntoldtable_main` observing
+`opendir()` unexpectedly succeed); restored the fix and reconfirmed
+green. `CB_MAX_PROGRAMS` (test-only kernel capacity, not a documented
+ABI limit) raised from 64 to 96 to make room for the growing registered
+test-program list; unrelated to the fix itself.
+
+`make LDLIBS=-lucontext test` and the full
+`make LDLIBS=-lucontext SANITIZE_CC=clang ci` gate both pass clean.
+
 - Remaining risk or follow-up: `rewinddir`/`seekdir`/`telldir`,
   `scandir`, and `readdir_r` are explicitly not claimed (design doc §9).
   `IO-01` (public descriptor polling) is a separate, concurrently-worked

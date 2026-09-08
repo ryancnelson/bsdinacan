@@ -374,7 +374,17 @@ struct cb_libc_dir *cb_libc_opendir(const char *path)
 {
     struct cb_libc_dir *dir;
     int descriptor;
-    if (!opendir_api_available()) {
+    /* closedir must be usable too, not just opendir: opendir is the only
+       thing that acquires the raw runtime descriptor, and closedir is the
+       only thing that can ever release it (readdir cannot). A table
+       missing closedir would otherwise let this acquire a descriptor that
+       nothing -- not even a later allocation failure's own cleanup below
+       -- can ever release, leaking it for the rest of the task's
+       lifetime. Requiring closedir up front means that leak path simply
+       cannot be reached. readdir is not required here: its absence alone
+       never prevents cleanup, so opendir()/closedir() must still work
+       without it. */
+    if (!opendir_api_available() || !closedir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return NULL;
     }
@@ -383,13 +393,7 @@ struct cb_libc_dir *cb_libc_opendir(const char *path)
         return NULL;
     dir = bound_api->allocate(sizeof(*dir));
     if (dir == NULL) {
-        /* Only release the acquired descriptor if this table's closedir
-           is itself usable -- a table providing opendir without closedir
-           is a degenerate combination no real runtime ships, but must not
-           crash on a NULL call here; the descriptor is simply left open
-           in that case, same as any other closedir()-unavailable table. */
-        if (closedir_api_available())
-            bound_api->closedir(descriptor);
+        bound_api->closedir(descriptor);
         bound_api->set_errno(CB_ENOMEM);
         return NULL;
     }

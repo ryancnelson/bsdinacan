@@ -12,7 +12,10 @@ extern const struct cb_program_v1 cb_direntprobe_program;
 extern int cb_direntoldtable_main(int argc, char *argv[]);
 extern int cb_direntallocfail_main(int argc, char *argv[]);
 extern int cb_direntreaddirunavail_main(int argc, char *argv[]);
-extern int cb_direntclosedirunavail_main(int argc, char *argv[]);
+extern int dirent_rebind_open(int argc, char *argv[]);
+extern int dirent_rebind_readdir(int argc, char *argv[]);
+extern int dirent_rebind_closedir_reject(int argc, char *argv[]);
+extern int dirent_rebind_closedir_accept(int argc, char *argv[]);
 
 static char captured[32768];
 static size_t captured_size;
@@ -1979,14 +1982,56 @@ static int direntclosedirnulltableprobe_main(const struct cb_api_v1 *api,
     (void)argv;
     (void)envp;
 
-    /* Only closedir NULL -- opendir and readdir are untouched and must
-       still succeed; only closedir() itself degrades to ENOSYS. */
+    /* Only closedir NULL. Unlike the readdir case above, this must now
+       make opendir() itself fail: cb_libc_opendir requires closedir to be
+       usable before it ever acquires a descriptor, since closedir is the
+       only thing that can release it (see cb_libc_opendir's own comment
+       -- an independent review found the prior per-field-only guard let
+       an allocation failure permanently leak the raw descriptor whenever
+       closedir was absent). direntclosedirrebindprobe below is what
+       actually exercises closedir()'s own per-call guard against an
+       already-open handle. */
     copy = *api;
     copy.closedir = NULL;
-    result = cb_libc_start(&copy, 0, NULL, cb_direntclosedirunavail_main);
+    result = cb_libc_start(&copy, 0, NULL, cb_direntoldtable_main);
     cb_libc_start(api, 0, NULL, dirent_noop_main);
     if (result != 0)
         return 443;
+    return 0;
+}
+
+static int direntclosedirrebindprobe_main(const struct cb_api_v1 *api,
+                                          int argc, char *const argv[],
+                                          char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* Open and read under the full, working table first, so this really
+       does acquire a real handle -- this is testing readdir()/closedir()'s
+       own per-call guards against a handle that is ALREADY open, not
+       opendir()'s closedir precondition (direntclosedirnulltableprobe
+       above covers that). */
+    if (cb_libc_start(api, 0, NULL, dirent_rebind_open) != 0)
+        return 484;
+    if (cb_libc_start(api, 0, NULL, dirent_rebind_readdir) != 0)
+        return 485;
+
+    /* Rebind to a copy with only closedir NULL, exercise closedir()'s own
+       guard against the already-open handle, then restore the real table
+       immediately -- the degraded copy has no way to ever close it. */
+    copy = *api;
+    copy.closedir = NULL;
+    result = cb_libc_start(&copy, 0, NULL, dirent_rebind_closedir_reject);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 486;
+
+    if (cb_libc_start(api, 0, NULL, dirent_rebind_closedir_accept) != 0)
+        return 487;
     return 0;
 }
 
@@ -3121,6 +3166,12 @@ static const struct cb_program_v1 direntclosedirnulltableprobe_program = {
     direntclosedirnulltableprobe_main
 };
 
+static const struct cb_program_v1 direntclosedirrebindprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1),
+    "direntclosedirrebindprobe", 0, 64 * 1024,
+    direntclosedirrebindprobe_main
+};
+
 static const struct cb_program_v1 direntlibcallocfailprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1),
     "direntlibcallocfailprobe", 0, 64 * 1024, direntlibcallocfailprobe_main
@@ -3652,6 +3703,7 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &direntopendirnulltableprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntreaddirnulltableprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntclosedirnulltableprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntclosedirrebindprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntlibcallocfailprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
@@ -4134,6 +4186,7 @@ int main(int argc, char **argv)
     run_case("direntopendirnulltableprobe", "", 0, 1);
     run_case("direntreaddirnulltableprobe", "", 0, 1);
     run_case("direntclosedirnulltableprobe", "", 0, 1);
+    run_case("direntclosedirrebindprobe", "", 0, 1);
     run_case("direntlibcallocfailprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);

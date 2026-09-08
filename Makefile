@@ -40,7 +40,7 @@ DIRENTPROBE_COMMAND_OBJECT := $(BUILD)/direntprobe_command.o
 DIRENT_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirent_oldtable_probe.o
 DIRENT_ALLOCFAIL_TEST_OBJECT := $(BUILD)/libc_dirent_allocfail_probe.o
 DIRENT_READDIR_UNAVAIL_TEST_OBJECT := $(BUILD)/libc_dirent_readdir_unavailable_probe.o
-DIRENT_CLOSEDIR_UNAVAIL_TEST_OBJECT := $(BUILD)/libc_dirent_closedir_unavailable_probe.o
+DIRENT_CLOSEDIR_REBIND_TEST_OBJECT := $(BUILD)/libc_dirent_closedir_rebind_probe.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
@@ -137,11 +137,11 @@ $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT): tests/libc_dirent_readdir_unavailable_pro
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntreaddirunavail_main \
 		-c tests/libc_dirent_readdir_unavailable_probe.c -o $@
 
-$(DIRENT_CLOSEDIR_UNAVAIL_TEST_OBJECT): tests/libc_dirent_closedir_unavailable_probe.c \
+$(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT): tests/libc_dirent_closedir_rebind_probe.c \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
 		libc/include/dirent.h libc/include/errno.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntclosedirunavail_main \
-		-c tests/libc_dirent_closedir_unavailable_probe.c -o $@
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) \
+		-c tests/libc_dirent_closedir_rebind_probe.c -o $@
 
 $(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h | $(BUILD)
@@ -223,10 +223,10 @@ $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRIN
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 $(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) \
-		$(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_UNAVAIL_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_ARCHIVE) \
+		$(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_UNAVAIL_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 check-architecture:
@@ -327,9 +327,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntreaddirunavail_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_dirent_readdir_unavailable_probe.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_direntclosedirunavail_main \
+	$(CC) $(CPPFLAGS) -Ilibc/include \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only tests/libc_dirent_closedir_unavailable_probe.c
+		-fanalyzer -fsyntax-only tests/libc_dirent_closedir_rebind_probe.c
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Os \
 		-DCANNEDBSD_BUILDING_LIBC_MEMMOVE \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
