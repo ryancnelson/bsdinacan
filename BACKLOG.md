@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns `PENV-05` on the combined PENV integration
-base. Antigravity owns `VFS-01` corrections. Codex workers own `FS-01` and
-`MAC-03`; the coordinator owns exact-artifact guest acceptance and integration.
-`PENV-02`, `PENV-03`, `PENV-04`, and `PORT-01` are reviewed and combined for
-integration validation. `MAC-01`, `MAC-02`, `MAC-04`, and `MAC-05` are on main.
+**Current assignments:** Claude owns `PENV-06`; Antigravity owns the final
+`VFS-01` regression tests and `IO-01-design` corrections. Codex owns `MAC-07`,
+serialized guest acceptance, and integration. PENV-02 through PENV-05, FS-01,
+PORT-01, and MAC-01/02/04/05/06 are merged at `4f80e83` after integration
+Woodpecker #66 and exact-artifact guest smoke acceptance.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -54,7 +54,7 @@ independent backlog items while the emulator is occupied.
 
 ### PORT-01 — host adapter conformance harness
 
-- **Status:** Review corrections assigned to Antigravity on `work/PORT-01`
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a reusable mock-host suite can prove the version, size,
@@ -149,7 +149,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-02 — `exit(3)` and `__dead`
 
-- **Status:** Implemented; review passed; exact-artifact guest smoke pending
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** the existing task-exit operation can provide a non-returning
@@ -160,7 +160,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-03 — empty-option `getopt`
 
-- **Status:** Review corrections assigned to Claude on `work/PENV-03`
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** task-local getopt state can support the exact empty optstring
@@ -172,7 +172,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-04 — bounded unbuffered formatted output
 
-- **Status:** Review and guest smoke passed; awaiting integration
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** literals, `%%`, and `%s` are sufficient for every format in
@@ -184,7 +184,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-05 — `errx(3)` diagnostic
 
-- **Status:** Claimed by Claude on `work/PENV-05`; reviewed dependencies combined
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** integrated dependencies
 - **Hypothesis:** the bounded formatter plus exit can provide printenv's exact
   fatal diagnostic without a general stdio implementation.
@@ -194,7 +194,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-06 — unchanged NetBSD `printenv`
 
-- **Status:** Blocked on PENV-02, PENV-03, PENV-04, and PENV-05
+- **Status:** Claimed by Claude on `work/PENV-06`; dependencies merged
 - **Base:** integrated dependencies
 - **Hypothesis:** the exact pinned NetBSD source will compile unchanged and run
   entirely through the cannedBSD libc and runtime.
@@ -238,7 +238,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### FS-01 — truncate and ftruncate
 
-- **Status:** Blocked pending design review
+- **Status:** Done; merged at `4f80e83` after review, CI, and guest smoke
 - **Base:** main
 - **Hypothesis:** VFS node/open-file operations can resize regular files while
   preserving shared open-file offsets and failure atomicity.
@@ -642,3 +642,34 @@ with an ID, dependencies, red test, and acceptance boundary above.
 - [x] 2026-09-06: read the canonical Gilfoyle and Iterate Bot documents; adopted
   evidence-only claims, falsifying tests, immediate notes, and the
   `CURRENT-STATE.md`/`BACKLOG.md` handoff loop.
+
+### MAC-06 — matcher readiness and local storage
+
+- **Status:** Done; merged at `4f80e83`
+- **Base:** MAC-04
+- **Hypothesis:** a matcher handshake before boot detects stalled imports before
+  starting a guest; local storage avoids iCloud hydration in the test path.
+- **Accept:** no boot before readiness, late readiness cannot launch, owned
+  helper cleanup, exact guest run with local state. Verified by #65/#66 and
+  the 19.03-second cold acceptance cycle.
+
+### MAC-07 — direct libc and filesystem guest coverage
+
+- **Status:** Claimed by Codex on `work/MAC-07`
+- **Base:** `4f80e83`
+- **Depends on:** PENV-03 and FS-01 (Done)
+- **Hypothesis:** identical ordinary-source probes can run on Linux and System 7
+  to expose target-specific string, getopt, and truncate failures.
+- **Red:** the old eight-record result must not pass the expanded acceptance.
+- **Accept:** share exact case definitions, execute memory/string boundaries,
+  getopt and truncate probes in the guest, reject missing/duplicate records,
+  and preserve fresh evidence and normal shutdown.
+
+### IO-01-design — polling and deadline contract
+
+- **Status:** Claimed by Antigravity; review corrections in progress
+- **Base:** main
+- **Hypothesis:** explicit readiness and unavailable-clock behavior can unblock
+  deterministic descriptor polling without host descriptors or busy waiting.
+- **Accept:** finite deadlines must never silently become infinite; specify
+  task ownership, masks/errors, clock loss, wake/cancel and overflow behavior.

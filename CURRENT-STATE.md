@@ -61,13 +61,21 @@ Woodpecker #54 passed all three workflows, and its exact artifact passed the
 System 7 startup suite with a fresh result, screenshot, normal shutdown, and
 slot release. MAC-05 also passed its dedicated nested-task service tests.
 
-PENV-02 (exit), PENV-03 (bounded getopt), PENV-04 (bounded stdio), and PORT-01
-(adapter conformance) passed individual review and Woodpecker gates. Their
-combined integration is undergoing fresh CI and guest acceptance. Claude is
-implementing PENV-05; Antigravity is correcting VFS-01. Codex workers are
-implementing FS-01 and correcting MAC-03 screenshot encoding. MAC-03 remains
-unaccepted until the guest-owned PICT decodes visibly and failure handling is
-verified.
+PENV-02 (exit), PENV-03 (bounded getopt), PENV-04 (bounded stdio), PENV-05
+(errx), FS-01 (truncate/ftruncate), PORT-01 (adapter conformance), and MAC-06
+(matcher readiness) are merged at `4f80e83`. All three Woodpecker #66 workflows
+passed. Its exact archive SHA-256 is
+`2b0095150422e38b2d74e7c76524f69316f903c953cea69bdc08d964fa1f0d2f`.
+The fresh System 7 smoke suite, screenshot, normal shutdown, and slot release
+completed in 19.03 seconds. These eight records are a guest regression smoke;
+MAC-07 adds direct libc/getopt/truncate guest probes.
+
+The former Documents-based runtime stalled on iCloud-evicted NumPy modules
+and shared files. Runtime, staging, scratch, and verified clean seed now live
+outside iCloud. Matcher readiness is required before boot. MAC-03's corrected
+PICT visibly decoded with ALL PASS; its failure cases remain pending before
+integration. Claude is implementing printenv; Antigravity is completing mount
+regression tests and the polling design.
 
 ## Current evidence
 
