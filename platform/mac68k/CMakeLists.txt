@@ -17,7 +17,7 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
-foreach(probe fwrite fwrite_wrapper fread file stdin memory getopt truncate err warn strcpy terminal locale dirname dirent progname exec_errno basename stdio_state stdio_oldtable argv getopt_arg strtoimax)
+foreach(probe fwrite fread file stdin memory getopt truncate err warn strcpy terminal locale dirname dirent progname exec_errno basename stdio_state stdio_oldtable argv getopt_arg strtoimax)
     add_library(cb_${probe}_probe OBJECT ${ROOT}/tests/libc_${probe}_probe.c)
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
@@ -39,7 +39,6 @@ target_compile_definitions(cb_dirent_probe PRIVATE main=cb_direntprobe_main)
 target_compile_definitions(cb_argv_probe PRIVATE main=cb_argv_probe_main)
 target_compile_definitions(cb_stdio_state_probe PRIVATE main=cb_stdio_state_probe_main)
 target_compile_definitions(cb_fwrite_probe PRIVATE main=cb_fwrite_probe_main)
-target_compile_definitions(cb_fwrite_wrapper_probe PRIVATE main=cb_fwrite_wrapper_main)
 target_compile_definitions(cb_stdio_oldtable_probe PRIVATE main=cb_stdio_oldtable_main)
 target_compile_definitions(cb_exec_errno_probe PRIVATE main=cb_exec_errno_probe_main)
 target_compile_definitions(cb_basename_probe PRIVATE main=cb_basename_probe_main)
@@ -111,6 +110,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_stdin_probe_module.c
     ${ROOT}/tests/libc_stdin_compat_module.c
     ${ROOT}/tests/libc_stdio_state_probe_module.c
+    ${ROOT}/tests/libc_fwrite_wrapper_probe.c
     ${ROOT}/tests/libc_fwrite_compat_module.c
     ${ROOT}/tests/libc_fwrite_probe_module.c
     ${ROOT}/tests/libc_stdio_oldtable_probe_module.c
@@ -124,7 +124,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_strtoimax_probe_module.c
     ${ROOT}/tests/vfs_executable_probe.c)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>
-    $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fwrite_wrapper_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
+    $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>

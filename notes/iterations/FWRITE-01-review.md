@@ -84,5 +84,12 @@ after-implementation regression controls, not preimplementation TDD evidence:
 Full `make LDLIBS=-lucontext SANITIZE_CC=clang ci`: passed, including
 native/shared cases, ASAN/UBSAN, private-source fences, publication, protocol,
 clean build-mode isolation and GCC static analysis.
-Exact feature Woodpecker and coordinator-owned exact-artifact Mac execution:
-pending. No guest acceptance or timing is claimed by this repair worker.
+Exact first repair `7ce2cc7` Woodpecker #317 exposed an existing build-wiring
+error: the runtime-side binary wrapper was compiled with ordinary private libc
+headers, whose string.h intentionally does not declare memset. Its native rule
+already used host headers. The follow-up moves that unchanged source into the
+Mac application with other runtime modules and removes its private object target.
+This compiler failure is setup evidence, not either behavioral regression control.
+The local runtime/full-gate result remains applicable; only CMake wiring and this
+note changed after it. The follow-up exact Woodpecker checks are pending.
+Coordinator-owned exact-artifact Mac execution remains pending. No guest acceptance or timing is claimed by this repair worker.
