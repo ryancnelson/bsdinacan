@@ -1,41 +1,53 @@
 # TERM-01: Terminal Mode Contract
 
 ## Goal
-Establish the minimal `termios` contract required to support canonical and raw terminal modes (including echo, erase, and EOF processing) over the existing deterministic host console adapter.
+Establish the minimal `termios` contract required to support canonical and raw terminal modes (including echo, erase, and EOF processing) while accounting for actual host adapter behaviors (e.g., Mac UI buffering, Linux TTY inheritance).
 
 ## Design
 
-### Termios State Ownership and Sharing
-- **Ownership:** Terminal state (`struct termios`) is owned by the core engine (specifically, the VFS node of type `CB_NODE_TERMINAL`) rather than the host adapter. The host adapter continues to provide only raw byte streams.
-- **Sharing:** Since `termios` attributes are tied to the underlying terminal device, they are shared across tasks that inherit, `dup`, or open the same terminal node. Modifying the terminal mode in one task instantly affects all other tasks sharing that terminal.
+### Shared Terminal-State Owner
+Core console descriptors (`0`, `1`, `2`) are currently discrete `cb_open_file` objects, not VFS nodes. 
+- **Ownership:** A new `struct cb_terminal_state` will be created natively by the kernel during `cb_kernel_boot` and owned by the `struct cb_kernel`.
+- **Sharing:** All three standard console `cb_open_file` instances will hold a reference to this shared state. `tcsetattr` calls on `fd=0` will immediately reflect in the shared structure, dictating input disciplines globally across all tasks sharing the console.
 
-### Line Discipline: Echo, Erase, and EOF Handling
-- **Canonical vs. Raw:** A line discipline buffer is introduced in the core `read` path for `CB_NODE_TERMINAL`.
-  - In **Raw mode** (`~ICANON`), reads draw directly from the host adapter and return immediately based on available bytes.
-  - In **Canonical mode** (`ICANON`), the core engine buffers incoming bytes until a newline (`\n`), EOF, or carriage return is received.
-- **Echo (`ECHO`):** When `ECHO` is enabled, the core engine explicitly writes received characters back to the host adapter (`console_write`) as they are typed.
-- **Erase (`VERASE`):** The engine processes the backspace/delete character (typically `^H` or `^?`). It removes the previous character from the line buffer and, if `ECHO` is enabled, outputs the appropriate terminal erase sequence (e.g., `\b \b`) to the host.
-- **EOF (`VEOF`):** The `^D` character forces the canonical buffer to be immediately available to the reader without waiting for a newline. If the buffer is empty, it signifies `EOF` (the read returns `0`). `EOF` characters are absorbed and not included in the read buffer.
+### Host Adapter Capabilities & Fallback
+Currently, hosts are falsely assumed to provide raw byte streams: `host_mac.c` explicitly buffers canonical lines with `\b` erase and echo, and Linux inherits the terminal's state. 
+- **Adapter Contract:** `struct cb_host_ops_v1` is extended with an optional `int (*console_set_raw)(int enable)` function.
+- **ENOSYS Fallback:** If the adapter leaves this `NULL` or returns `-CB_ENOSYS` (e.g., unchanged legacy mock adapters or a Mac UI that cannot natively cede raw control), the core assumes the host natively forces canonical mode. 
+  - To prevent double echo/canonical processing, the core disables its internal line discipline.
+  - If a guest task calls `tcsetattr` to request raw mode (`~ICANON`), the core returns `-CB_ENOSYS`.
+- **Raw Capability:** If the adapter successfully implements `console_set_raw(1)` (e.g., Linux configuring STDIN to raw), the core assumes complete control over the byte stream and performs all echo, erase, and line buffering internally.
 
-### Versioned ABI Guards
-- `struct cb_api_v1` will be extended with `isatty`, `tcgetattr`, and `tcsetattr` function pointers.
-- `libc/include/termios.h` will be populated with standard POSIX flag definitions (`ICANON`, `ECHO`, `TCSANOW`, etc.) and `struct termios`.
-- Compatibility with older engine mock structures is preserved: `api_is_usable` linkage validation will allow `struct cb_api_v1` that shrinks precisely to older offset boundaries. Invoking terminal functions on an outdated table will safely return `-1` with `CB_ENOSYS`.
+### Line Discipline Behavior
+When the core manages the line discipline (raw adapter available):
+- **Canonical Mode (`ICANON`):** Input bytes are buffered internally up to a fixed line length (e.g., 1024 bytes).
+  - **Echo (`ECHO`):** Characters are explicitly written back to the adapter via `console_write`.
+  - **Erase (`VERASE`):** Backspace removes the preceding character from the buffer and echoes the destructive sequence (e.g., `\b \b`).
+  - **Incomplete Lines:** `poll` returns `0` (not ready) and `read` blocks (yields `CB_TASK_BLOCKED_CONSOLE`) until a line is completed by `\n`, `\r`, or `VEOF`.
+  - **Overflow:** If the 1024-byte capacity is reached without a newline, further input is discarded until the buffer is consumed.
+- **Partial Reads:** If a guest `read` buffer is smaller than the completed canonical line, the requested bytes are delivered. The remainder of the line remains available for the next `read`.
 
-### Current Host Capabilities and Unsupported Cases
-- **Host Capabilities:** The current host adapter interfaces (`console_read`, `console_write`, `console_poll`) remain unchanged. They are completely unaware of line disciplines and operate strictly in non-blocking raw mode.
-- **Unsupported Cases:** The following are explicitly out-of-scope for TERM-01 and deferred to future backlog items:
-  - Window size queries (`TIOCGWINSZ`) and `SIGWINCH` resize notifications.
-  - Pseudo-terminals (PTYs) and multiplexing.
-  - Session management, foreground process groups, and job control signals (`tcsetpgrp`, `SIGTTOU`, `SIGTTIN`).
-  - Signal-generating characters (`VINTR` for `SIGINT`, `VSUSP` for `SIGTSTP`, `VQUIT`).
-  - Complex output processing (e.g., `ONLCR` newline translation), except for basic echo.
+### Canonical VEOF Handling
+The `^D` (`VEOF`) character explicitly terminates a canonical line without injecting a newline.
+- **Pending Data:** If the buffer contains data (`"abc\x04"`), the `VEOF` flushes the pending data (`"abc"`) making it immediately available to the reader. The `VEOF` character is consumed.
+- **Empty Buffer:** VEOF does *not* permanently toggle an EOF state. It is a discrete event. If the buffer is completely empty when `VEOF` is received, `read` returns `0` signifying EOF. The very next `read` blocks normally waiting for new input.
 
-### Deterministic Test Plan
-1. **ABI Guard:** Verify that shrinking `struct cb_api_v1` below the terminal offsets causes `tcgetattr` to safely fail with `CB_ENOSYS`.
-2. **Isatty:** Validate that `isatty(0)` returns `1` for the console node, while `isatty` on a pipe or regular file returns `0` with `ENOTTY`.
-3. **Canonical State Transitions:** Provide a probe to query `tcgetattr` on `fd=0`, toggle `ICANON` and `ECHO`, call `tcsetattr`, and assert the state persisted properly.
-4. **Raw Byte Delivery:** Provide mock host input (e.g., `"a\b\n"`). Verify that in raw mode, the reader receives exactly `"a\b\n"`.
-5. **Canonical Line Discipline:** Provide mock host input `"a\bb\n"`. Verify that in canonical mode with erase processing, the reader receives exactly `"b\n"`.
-6. **Echo Verification:** Verify that while canonical `ECHO` is on, providing `"abc"` to the host read adapter results in `"abc"` (plus any necessary carriage returns) being written to the host write adapter.
-7. **Canonical EOF:** Provide `"data\x04"` (where `\x04` is `VEOF`). Verify the reader receives `"data"` immediately, without a newline, and the subsequent read returns `0` (EOF).
+### Raw Mode Supported Subset
+In raw mode (`~ICANON`), input is made available immediately.
+- **VMIN / VTIME:** For TERM-01, the core explicitly guarantees support for:
+  - `VMIN=1, VTIME=0` (Blocking until at least 1 byte is available).
+  - `VMIN=0, VTIME=0` (Strict non-blocking, returning `0` if empty).
+- `VTIME > 0` inter-byte timers are deferred to future backlog items. If requested, they fallback safely (e.g., treated as `VTIME=0`).
+
+### Mode Transitions
+- **Canonical to Raw:** Any pending unread bytes residing in the canonical line buffer are immediately flushed and become readable as raw bytes.
+- **Raw to Canonical:** Existing raw bytes are immediately retro-processed through the line discipline (checking for newlines, erase characters, etc.).
+
+## Deterministic Test Plan
+
+1. **Adapter ENOSYS Fallback:** Verify that using a mock adapter with a `NULL` `console_set_raw` rejects `tcsetattr(~ICANON)` with `CB_ENOSYS`, preserving host canonical guarantees.
+2. **Raw Byte Delivery:** Provide a raw mock adapter. Set `~ICANON`, inject `"a\b\n"`. Verify `read` returns `"a\b\n"` exactly, and `poll` reports `POLLIN` immediately upon the first byte.
+3. **Canonical Erase & Echo:** Set `ICANON | ECHO`. Inject `"a\bb\n"`. Verify `read` delivers `"b\n"`. Assert the mock `console_write` captured the precise output `"a\b \bb\n"`.
+4. **VEOF Non-Stickiness:** Inject `"data\x04\x04more\n"`. Verify the first `read` yields `"data"`, the second `read` yields `0` (EOF), and the third `read` successfully yields `"more\n"`.
+5. **Partial Read Persistence:** Inject `"12345\n"`. Read 3 bytes, verifying `"123"`. Read again, verifying `"45\n"`.
+6. **VMIN Blocking:** Set `VMIN=1, VTIME=0`. Assert `read` explicitly yields `CB_TASK_BLOCKED_CONSOLE` when no bytes are available.
