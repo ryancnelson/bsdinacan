@@ -15,6 +15,7 @@ extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
+extern const struct cb_program_v1 cb_warn_probe_program;
 extern int cb_err_probe_main(int argc, char **argv);
 extern const struct cb_program_v1 cb_dirname_probe_program;
 extern int cb_dirname_probe_main(int argc, char *argv[]);
@@ -4148,7 +4149,8 @@ enum test_fixture {
     FIXTURE_DIRNAME = 3,
     FIXTURE_DIRENT = 4,
     FIXTURE_BASENAME = 5,
-    FIXTURE_YES = 6
+    FIXTURE_YES = 6,
+    FIXTURE_ERR = 7
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -4165,6 +4167,7 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_warn_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
@@ -4448,6 +4451,9 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel,
                                &direntlibcallocfailprobe_program) < 0)
             fail("dirent test program registration");
+    } else if (fixture == FIXTURE_ERR) {
+        if (cb_kernel_register(kernel, &cb_warn_probe_program) < 0)
+            fail("warnprobe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -4836,7 +4842,18 @@ static void test_err(void)
     expect_streams("", "libcerrprobe: path alpha %: no such file or directory\n");
     run_case("libcerrprobe null", "libcerrprobe: no such file or directory\n", 7, 1);
     run_case("libcerrprobe empty", "libcerrprobe: : no such file or directory\n", 7, 1);
+
     run_case("libcerrprobe closed", "", 7, 1);
+
+    run_case("warnprobe ordinary", "warnprobe: ordinary format: bad file descriptor\ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnprobe: ordinary format: bad file descriptor\n");
+    run_case("warnprobe null", "warnprobe: no such file or directory\ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnprobe: no such file or directory\n");
+    run_case("warnprobe empty", "warnprobe: : no such file or directory\ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnprobe: : no such file or directory\n");
+    run_case("warnprobe failed", "preserved\n", 0, FIXTURE_ERR);
+    expect_streams("preserved\n", "");
+
     /* A zero-progress writer must not trap err in an infinite retry loop. */
     capture_write_limit = 0;
     run_case("libcerrprobe", "", 7, 1);

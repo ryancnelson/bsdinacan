@@ -17,6 +17,7 @@ extern const struct cb_program_v1 cb_locale_env_probe_program;
 extern const struct cb_program_v1 cb_terminal_probe_program;
 extern const struct cb_program_v1 cb_poll_probe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
+extern const struct cb_program_v1 cb_warn_probe_program;
 extern const struct cb_program_v1 cb_memory_probe_program;
 extern const struct cb_program_v1 cb_stdio_state_probe_program;
 extern const struct cb_program_v1 cb_argv_probe_program;
@@ -65,6 +66,7 @@ int main(void)
                 cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_poll_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_warn_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_getopt_arg_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&
