@@ -104,3 +104,43 @@ contaminate the second task.
 - No guest/Basilisk II acceptance attempted; that remains
   coordinator-owned per this task's direction.
 - No merge to `main` attempted or implied.
+
+## CI verification of the preparation commit
+
+The preparation commit (`1c9f28e`, pure vendoring plus documentation --
+no Makefile, build, or source-of-truth file touched) first reported
+Woodpecker `ci` as `failure`, with `mac-automation` and `mac68k` both
+`success`. Fetching the actual pipeline log (via the Woodpecker API,
+not just the GitHub status summary) showed the concrete failure:
+
+```
+FAIL: cannedBSD dirname veneer does not use the imported dirname
+```
+
+from `tests/test_netbsd_libc_source.sh`'s
+`nm -u $BUILD_PATH/cb_libc.o | grep cb_libc_dirname_upstream` check,
+raised inside `make check-build-modes`'s own internal
+`make clean; make sanitize; make test` sequence (`tests/test_build_modes.sh`).
+
+This is very unlikely to be a real regression from this commit:
+
+- The identical check, against the identical source tree, had already
+  passed twice earlier in the same pipeline run -- once for the main
+  `make clean test` (`BUILD_PATH=build`) and once for the main
+  `make sanitize` (`BUILD_PATH=build/sanitize`) -- both logging
+  `pinned unmodified NetBSD libc source boundary passed`. Only the
+  third, redundant rebuild triggered by `check-build-modes` failed.
+- This commit changed zero files the check depends on: not
+  `libc/cb_libc.c`, not `src/core.c`, not any dirname Makefile rule,
+  not `tests/test_netbsd_libc_source.sh` itself.
+
+The leading hypothesis is CI-runner-level nondeterminism (e.g.
+resource pressure or a shared/racing build directory on the
+Woodpecker host) rather than a genuine bug, since three consecutive,
+byte-for-byte-identical rebuild-and-check cycles should otherwise be
+fully deterministic. This note records that a fresh commit was pushed
+specifically to test that hypothesis (no direct pipeline rerun was
+available: the Woodpecker API's rerun endpoint returned `401`
+unauthorized), and the honest outcome will be recorded here once that
+run completes -- this is not being reported as green until it is
+actually confirmed green on the exact pushed commit.
