@@ -524,6 +524,8 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
 static void task_release_allocations(struct cb_task *task)
 {
     struct cb_task_allocation *allocation = task->allocations;
+    /* Libc alone knows wrapper layout. Never retain a list into reclaimed heap. */
+    task->input_state.input_streams = NULL;
     while (allocation != NULL) {
         struct cb_task_allocation *next = allocation->next;
         cb_release(task->kernel, allocation->pointer);
@@ -706,6 +708,7 @@ static void task_finish_exec(struct cb_task *task)
     task->stdio_state.stderr_error = 0;
     task->input_state.stdin_eof = 0;
     task->input_state.stdin_error = 0;
+    task->input_state.stdin_closed = 0;
     task->pending_program = NULL;
     task->pending_argv = NULL;
     task->pending_owned_argv = NULL;

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern const struct cb_program_v1 cb_file_probe_program, cb_file_compat_program;
 extern const struct cb_program_v1 cb_stdin_probe_program, cb_stdin_compat_program;
 extern const struct cb_program_v1 cb_stdio_state_probe_program;
 extern const struct cb_program_v1 cb_argv_probe_program;
@@ -4160,6 +4161,8 @@ static int register_mac_probes(struct cb_kernel *kernel)
 {
     return cb_kernel_register(kernel, &cb_getopt_arg_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_file_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_file_compat_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdin_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdin_compat_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
@@ -4970,6 +4973,7 @@ static void test_poll_runnable_timeout(void)
     printf("runnable timeout test passed\n");
 }
 
+void cb_test_file(void);
 void cb_test_stdin(void);
 void cb_test_stdio_state(void);
 void cb_test_argv(void);
@@ -5021,6 +5025,10 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--file") == 0) {
+        cb_test_file();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--stdin") == 0) {
         cb_test_stdin();
         return 0;
@@ -5089,6 +5097,7 @@ int main(int argc, char **argv)
         fail("unknown test selection");
     cb_test_getopt_arg();
     cb_test_argv();
+    cb_test_file();
     cb_test_stdin();
     cb_test_stdio_state();
     cb_test_echo_state();
