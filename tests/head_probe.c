@@ -39,6 +39,16 @@ enum head_fault_mode {
  * hanging the whole test run. */
 #define HEAD_FAULT_CALL_LIMIT 64
 
+/* Sentinel for struct head_case's expect_read_calls/expect_read_delivered:
+   "not checked", distinct from a real, assertable value of 0. */
+#define HEAD_FAULT_UNCHECKED (-1)
+
+/* Distinct exit status used only when HEAD_FAULT_CALL_LIMIT actually
+   fires (never expected in any case below); kept apart from any real
+   head exit status (0/1) so a regression that hits this path is never
+   confused with a genuine pass or a genuine head failure. */
+#define HEAD_FAULT_BUDGET_EXIT_STATUS 97
+
 /* These globals are safe only because this whole fixture (headprobe's own
  * run_one loop) spawns one child, waits for it to fully exit, then moves
  * to the next -- never two of these fault-mode children concurrently, and
@@ -59,13 +69,22 @@ static size_t fault_write_calls;
  * cb_libc_start(&copy, ...) to restore anything from. */
 static int fault_restored;
 
+/* Forward-declared so fault_read/fault_write can route a call-count
+   budget overrun through it: a bare -1 return only stops one call, and
+   does not stop a caller that keeps retrying (a hypothetical
+   regression in cb_libc's own retry loop). Only fault_exit's real
+   exit() is a guaranteed, bounded way out -- and it restores the real
+   API binding first, exactly as it does for a genuine head exit(). */
+static void fault_exit(int status);
+
 static cb_ssize_t fault_read(int fd, void *buffer, size_t count)
 {
     cb_ssize_t result;
     int budgeted = fault_mode == HEAD_FAULT_READ || fault_mode == HEAD_FAULT_READ_FIRST;
     if (fd == 0 && budgeted) {
-        if (++fault_read_calls > HEAD_FAULT_CALL_LIMIT ||
-            fault_read_delivered >= fault_read_budget) {
+        if (++fault_read_calls > HEAD_FAULT_CALL_LIMIT)
+            fault_exit(HEAD_FAULT_BUDGET_EXIT_STATUS); /* never returns */
+        if (fault_read_delivered >= fault_read_budget) {
             fault_real_api->set_errno(CB_EIO);
             return -1;
         }
@@ -82,10 +101,8 @@ static cb_ssize_t fault_write(int fd, const void *buffer, size_t count)
 {
     if (fd != 1)
         return fault_real_api->write(fd, buffer, count);
-    if (++fault_write_calls > HEAD_FAULT_CALL_LIMIT) {
-        fault_real_api->set_errno(CB_EIO);
-        return -1;
-    }
+    if (++fault_write_calls > HEAD_FAULT_CALL_LIMIT)
+        fault_exit(HEAD_FAULT_BUDGET_EXIT_STATUS); /* never returns */
     switch (fault_mode) {
     case HEAD_FAULT_WRITE_NEGATIVE:
         fault_real_api->set_errno(CB_EPIPE);
@@ -117,12 +134,18 @@ static int head_fault_noop(int argc, char *argv[])
  * the success and the failure path; restoring cb_libc's internal binding
  * after cb_libc_start(&copy, ...) returns (as an earlier version of this
  * file did) is dead code -- it never executes, on either path, and was
- * wrong to claim as a running restoration. */
+ * wrong to claim as a running restoration. fault_restored is set only
+ * after cb_libc_start(real, ...) actually returns, so the flag reflects
+ * the rebind call having run, not merely this function having been
+ * entered; run_one's own cb_libc_write() probe (below) is the
+ * authoritative, behavioral check that the rebind actually took
+ * effect -- this flag is a secondary, cheaper sanity check alongside
+ * it, not a replacement for it. */
 static void fault_exit(int status)
 {
     const struct cb_api_v1 *real = fault_real_api;
-    fault_restored = 1;
     cb_libc_start(real, 0, NULL, head_fault_noop);
+    fault_restored = 1;
     real->exit(status);
 }
 
@@ -182,30 +205,38 @@ struct head_case {
        case, which C's own aggregate-initialization rules already
        zero-fill without needing to touch any of their lines). */
     int expect_write_calls;
+    /* Exact expected fault_read_calls()/fault_read_delivered for a
+       read-fault-mode case. HEAD_FAULT_UNCHECKED (-1), not 0, means
+       "not checked" here: the HEAD_FAULT_READ_FIRST cases genuinely
+       deliver zero bytes on exactly one call, and that must be
+       asserted, not silently skipped by colliding with a zero
+       sentinel. */
+    int expect_read_calls;
+    int expect_read_delivered;
 };
 
 static const struct head_case cases[] = {
-    {{"head", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n", "", 0, 0, 0, 0},
-    {{"head", "-3", NULL}, "A\nB\nC\nD\n", "A\nB\nC\n", "", 0, 0, 0, 0},
-    {{"head", "-q", "-3", NULL}, "", "", "head: illegal option -- 3\nusage: head [-n lines] [file ...]\n", 1, 0, 0, 0},
-    {{"head", "-3", "-q", "A", NULL}, "", "1\n", "", 0, 0, 0, 0},
-    {{"head", "-n", "1", "-c", "3", NULL}, "abcde", "abc", "", 0, 0, 0, 0},
-    {{"head", "-c", "3", "-n", "1", NULL}, "abcde", "abc", "", 0, 0, 0, 0},
-    {{"head", "-n", "1", "A", "B", NULL}, "", "==> A <==\n1\n\n==> B <==\n3\n", "", 0, 0, 0, 0},
-    {{"head", "miss", "A", NULL}, "", "==> A <==\n1\n", "head: miss: no such file or directory\n", 1, 0, 0, 0},
-    {{"head", "-v", "-q", "A", NULL}, "", "1\n", "", 0, 0, 0, 0},
-    {{"head", "-q", "-v", "A", NULL}, "", "==> A <==\n1\n", "", 0, 0, 0, 0},
-    {{"head", "-", NULL}, "", "", "head: -: no such file or directory\n", 1, 0, 0, 0},
-    {{"head", "-c", "0", NULL}, "", "", "head: illegal byte count -- 0\n", 1, 0, 0, 0},
-    {{"head", "-z", NULL}, "", "", "head: illegal option -- z\nusage: head [-n lines] [file ...]\n", 1, 0, 0, 0},
-    {{"head", "-c", "65538", NULL}, "", "", "", 0, 1, 0, 0},
-    {{"head", "-n", "2", NULL}, "\xff\n\xff", "\xff\n\xff", "", 0, 0, 0, 0},
-    {{"head", "-c", "10", NULL}, "ab", "ab", "", 0, 0, 0, 0},
-    {{"head", NULL}, "", "", "", 0, 0, 0, 0},
-    {{"head", "-n", "1", NULL}, "", "pipe\n", "", 0, 0, 1, 0},
-    {{"head", "-n", "bad", NULL}, "", "", "head: illegal line count -- bad\n", 1, 0, 0, 0},
-    {{"head", "-c", "9223372036854775808", NULL}, "", "", "head: illegal byte count -- 9223372036854775808\n", 1, 0, 0, 0},
-    {{"head", "-n", "-1", NULL}, "", "", "head: illegal line count -- -1\n", 1, 0, 0, 0},
+    {{"head", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-3", NULL}, "A\nB\nC\nD\n", "A\nB\nC\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-q", "-3", NULL}, "", "", "head: illegal option -- 3\nusage: head [-n lines] [file ...]\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-3", "-q", "A", NULL}, "", "1\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-n", "1", "-c", "3", NULL}, "abcde", "abc", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-c", "3", "-n", "1", NULL}, "abcde", "abc", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-n", "1", "A", "B", NULL}, "", "==> A <==\n1\n\n==> B <==\n3\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "miss", "A", NULL}, "", "==> A <==\n1\n", "head: miss: no such file or directory\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-v", "-q", "A", NULL}, "", "1\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-q", "-v", "A", NULL}, "", "==> A <==\n1\n", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-", NULL}, "", "", "head: -: no such file or directory\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-c", "0", NULL}, "", "", "head: illegal byte count -- 0\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-z", NULL}, "", "", "head: illegal option -- z\nusage: head [-n lines] [file ...]\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-c", "65538", NULL}, "", "", "", 0, 1, 0, 0, -1, -1},
+    {{"head", "-n", "2", NULL}, "\xff\n\xff", "\xff\n\xff", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-c", "10", NULL}, "ab", "ab", "", 0, 0, 0, 0, -1, -1},
+    {{"head", NULL}, "", "", "", 0, 0, 0, 0, -1, -1},
+    {{"head", "-n", "1", NULL}, "", "pipe\n", "", 0, 0, 1, 0, -1, -1},
+    {{"head", "-n", "bad", NULL}, "", "", "head: illegal line count -- bad\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-c", "9223372036854775808", NULL}, "", "", "head: illegal byte count -- 9223372036854775808\n", 1, 0, 0, 0, -1, -1},
+    {{"head", "-n", "-1", NULL}, "", "", "head: illegal line count -- -1\n", 1, 0, 0, 0, -1, -1},
     /* Deterministic input read failure, line mode (getc): the pinned
        source's own `while ((ch = getc(fp)) != EOF)` loop cannot tell a
        real read() failure apart from a clean EOF (getc returns EOF
@@ -213,41 +244,41 @@ static const struct head_case cases[] = {
        behavior: head stops with the partial output already produced
        and exit status 0 -- a real read failure is silently equivalent
        to a short file, not an error, for this pinned source. */
-    {{"headpipeproducer", "1", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "1\n2\n", "", 0, 0, 0, 0},
+    {{"headpipeproducer", "1", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "1\n2\n", "", 0, 0, 0, 0, 5, 4},
     /* Same conflation, byte mode (fread): `if (rv == 0) break;` treats a
        failed read exactly like EOF here too. */
-    {{"headpipeproducer", "1", "-c", "20", NULL}, "ABCDEFGHIJKLMNOPQRST", "ABCD", "", 0, 0, 0, 0},
+    {{"headpipeproducer", "1", "-c", "20", NULL}, "ABCDEFGHIJKLMNOPQRST", "ABCD", "", 0, 0, 0, 0, 3, 4},
     /* Same conflation again, but failing on the very first read (zero
        bytes ever delivered), line mode: the boundary case distinct from
        the prefix-then-error cases above. Output is completely empty;
        the observed exit-0 limitation still holds. */
-    {{"headpipeproducer", "5", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "", "", 0, 0, 0, 0},
+    {{"headpipeproducer", "5", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "", "", 0, 0, 0, 0, 1, 0},
     /* Same first-read boundary, byte mode. */
-    {{"headpipeproducer", "5", "-c", "10", NULL}, "1234567890", "", "", 0, 0, 0, 0},
+    {{"headpipeproducer", "5", "-c", "10", NULL}, "1234567890", "", "", 0, 0, 0, 0, 1, 0},
     /* Output write failure (write() returns -1), line mode (putchar):
        `if (putchar(ch) == EOF) err(1, "stdout");` -- exact observed
        message and exit status 1, zero bytes actually written since the
        very first putchar fails. */
-    {{"headpipeproducer", "2", NULL}, "X\n", "", "headpipeproducer: stdout: broken pipe\n", 1, 0, 0, 0},
+    {{"headpipeproducer", "2", NULL}, "X\n", "", "headpipeproducer: stdout: broken pipe\n", 1, 0, 0, 0, -1, -1},
     /* Same fault, byte mode (fwrite): cb_libc_feof(stdout) is always 0
        for an output stream in this project's implementation, so
        head.c's `if (feof(stdout)) errx(1, "EOF on stdout");` branch is
        never reachable here -- it always falls to
        `err(1, "failure writing to stdout")`. */
-    {{"headpipeproducer", "2", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: broken pipe\n", 1, 0, 0, 0},
+    {{"headpipeproducer", "2", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: broken pipe\n", 1, 0, 0, 0, -1, -1},
     /* Repeated invocation immediately after a failure, using the real,
        unmodified "head" program (not "headpipeproducer" in fault mode):
        proves the fault state above does not leak into a sibling task. */
-    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0, 0},
+    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0, 0, -1, -1},
     /* Output write failure (write() returns 0, zero progress, no error
        of its own): cb_libc_fwrite forces its own EIO regardless of
        what the underlying write() did to errno, so the observed
        message differs only in its error text from the negative-failure
        case above. */
-    {{"headpipeproducer", "3", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: input/output error\n", 1, 0, 0, 0},
+    {{"headpipeproducer", "3", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: input/output error\n", 1, 0, 0, 0, -1, -1},
     /* Repeated invocation after this second, differently-shaped
        failure -- same isolation proof, a second time. */
-    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0, 0},
+    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0, 0, -1, -1},
     /* Output write positive partial retry: write() always returns a
        short count (2 bytes) but never zero and never negative.
        cb_libc_fwrite's own retry loop reassembles the full request
@@ -256,7 +287,7 @@ static const struct head_case cases[] = {
        the retry path is correct rather than merely present. Also
        asserts the exact call count: 10 bytes at 2 bytes per write() is
        exactly 5 calls, not merely "eventually reaches 10 bytes". */
-    {{"headpipeproducer", "4", "-c", "10", NULL}, "0123456789", "0123456789", "", 0, 0, 0, 5}
+    {{"headpipeproducer", "4", "-c", "10", NULL}, "0123456789", "0123456789", "", 0, 0, 0, 5, -1, -1}
 };
 
 static int write_bytes(const struct cb_api_v1 *api, int fd,
@@ -404,12 +435,34 @@ done:
        reliably restores cb_libc's internal binding. A zero-check limit
        means "don't check", so every existing, non-fault case (whose
        expect_write_calls defaults to 0 via aggregate initialization) is
-       unaffected. */
+       unaffected. expect_read_calls/expect_read_delivered use
+       HEAD_FAULT_UNCHECKED (-1), not 0, as their "don't check" sentinel,
+       since a real, assertable value of exactly 0 is the whole point of
+       the HEAD_FAULT_READ_FIRST cases. */
     if (result == 0 && child > 0 && strcmp(test->args[0], "headpipeproducer") == 0 &&
         test->args[1] != NULL) {
+        size_t write_calls_before_probe;
         if (!fault_restored) result = -1;
         if (test->expect_write_calls != 0 &&
             fault_write_calls != (size_t)test->expect_write_calls) result = -1;
+        if (test->expect_read_calls != HEAD_FAULT_UNCHECKED &&
+            fault_read_calls != (size_t)test->expect_read_calls) result = -1;
+        if (test->expect_read_delivered != HEAD_FAULT_UNCHECKED &&
+            fault_read_delivered != (size_t)test->expect_read_delivered) result = -1;
+        /* Behavioral proof the real API binding is actually restored,
+           not merely a flag: cb_libc_write() dispatches through
+           cb_libc's own internal binding, opaque to this file. If
+           fault_exit's rebind call had not actually run, that binding
+           would still hold the exited child's task-local copy -- its
+           function pointers are valid code addresses (not stack
+           garbage), so the call would silently route through
+           fault_write and bump this counter, rather than erroring or
+           crashing. A zero-length write to fd 1 is side-effect-free
+           either way it resolves, so this probe is safe to run
+           unconditionally here. */
+        write_calls_before_probe = fault_write_calls;
+        cb_libc_write(1, NULL, 0);
+        if (fault_write_calls != write_calls_before_probe) result = -1;
     }
     if (result == 0 && (verify_file(api, "head-output", test->output, test->large) < 0 ||
                         verify_file(api, "head-error", test->error, 0) < 0)) result = -1;

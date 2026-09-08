@@ -84,19 +84,52 @@ fault-mode case (`args[0] == "headpipeproducer"` with a mode digit in
 `args[1]`), on both the success and the failure path, closing the gap
 the previous, false assertion left open.
 
+**A flag alone does not prove the rebind actually happened** -- a
+review round-3 finding: `fault_restored` is only bookkeeping set by
+`fault_exit` itself, so any bug that reaches the flag-set statement
+without actually completing the rebind (or a bug in `fault_exit`'s own
+call) would still leave the flag true. `run_one()` therefore also runs
+a behavioral probe after every fault-mode case: it snapshots
+`fault_write_calls`, calls `cb_libc_write(1, NULL, 0)` (a zero-length,
+side-effect-free write through `cb_libc`'s own internal, otherwise
+opaque API binding), and asserts the counter is unchanged. If the real
+API were not actually rebound, `cb_libc`'s internal binding would still
+hold the exited child's task-local copy -- whose function pointers are
+valid code addresses, not stack garbage, so the call would silently
+route through `fault_write` and bump the counter, rather than erroring
+or crashing. This is the authoritative check; `fault_restored` remains
+a cheap secondary sanity check alongside it, not a replacement.
+`fault_restored` is now set only *after* `cb_libc_start(real, ...)`
+returns, not before, so it reflects the rebind call having actually run.
+
 ## Bounded callback counts
 
-`fault_read`/`fault_write` each count their own calls and force a
-bounded failure (`-1`, `errno = EIO`, still routed through the real
-`fault_exit` so the API stays correctly restored) past
-`HEAD_FAULT_CALL_LIMIT` (64) -- a defensive cap, not expected to be hit
-by any scenario here, so that a hypothetical regression causing
-unbounded read/write retries fails this fixture with a bounded, real
-exit instead of hanging the whole test run. `struct head_case` gained
-an `expect_write_calls` field (0 = "not checked", matching every
-existing/non-fault case via C's own zero-fill); the
-`HEAD_FAULT_WRITE_PARTIAL` case asserts an exact count of 5 (10 bytes
-at 2 bytes/call), not merely "eventually reaches 10 bytes".
+`fault_read`/`fault_write` each count their own calls. Past
+`HEAD_FAULT_CALL_LIMIT` (64) they now call `fault_exit(HEAD_FAULT_BUDGET_EXIT_STATUS)`
+directly (a dedicated, distinct exit status, 97, never used by any real
+head-invocation case) instead of merely returning `-1` -- a bare `-1`
+only stops one call; a hypothetical regression in cb_libc's own retry
+loop that keeps calling anyway would not be stopped by that. Routing
+through `fault_exit` guarantees a bounded, real process exit with the
+API binding correctly restored first, on this path exactly as on a
+genuine head exit. Not expected to be hit by any scenario here -- this
+is a defensive cap for a regression that does not exist today, not a
+behavior this fixture claims `head` or `cb_libc` actually has.
+
+`struct head_case` gained three fields: `expect_write_calls` (existing;
+`0` = "not checked", matching every existing/non-fault case via C's own
+zero-fill), and new `expect_read_calls`/`expect_read_delivered`, which
+use `HEAD_FAULT_UNCHECKED` (`-1`), not `0`, as their "not checked"
+sentinel -- because a real, assertable value of exactly `0` delivered
+bytes is the entire point of the `HEAD_FAULT_READ_FIRST` cases, and
+colliding it with a "skip this check" sentinel would silently stop
+checking the one thing those cases exist to prove. The
+`HEAD_FAULT_WRITE_PARTIAL` case asserts an exact write-call count of 5
+(10 bytes at 2 bytes/call); the four read-fault cases assert exact
+`fault_read_calls`/`fault_read_delivered` pairs, derived from real
+execution, not by inspection alone (see "Genuine bugs" below --
+inspection got the byte-mode prefix-then-fail count wrong the first
+time).
 
 ## Characterized behavior (observed, not desired)
 
@@ -167,6 +200,19 @@ host Woodpecker's own `ci` check runs on):
    `exit(eval);`, not by a failing test (the old, false assertion
    happened to pass, because it never actually checked anything real).
    Fixed by moving restoration into `copy.exit`.
+3. **Third round**: the first hand-derived `expect_read_calls` for the
+   byte-mode prefix-then-fail case (`"headpipeproducer" "1" -c 20`,
+   4-byte budget) was wrong -- assumed 2 calls, actual is 3.
+   `./build/test_core` failed exactly at that case with the wrong
+   expectation. Re-tracing `head.c`'s own byte-mode loop explains why:
+   its `while (bytecnt)` outer loop only stops on a *zero* `fread`
+   return, not a short one, so a first `fread(..., 20)` that returns 4
+   (not 0) causes a **second** outer-loop iteration requesting the
+   remaining 16 bytes -- which is what actually produces the third
+   `fault_read` call (the second one, inside the first `fread`, already
+   fails with the budget exhausted; the third, in the second outer
+   iteration, fails again and this time yields `fread`'s own `rv == 0`,
+   which is what actually stops `head`). Corrected to 3; verified green.
 
 These are genuine defects found during development, kept here separate
 from the disposable negative control below, per the reviewer's
@@ -189,6 +235,18 @@ deliberately-broken control:
   the first fault-mode case (`headprobe` status 41, the new
   `fault_restored` assertion catching the disabled restoration flag).
   Restored; reran; green again (`all core tests passed`, exit 0).
+- **Third round**: per the reviewer's explicit instruction that a
+  control must omit the *actual rebind call*, not merely the bookkeeping
+  flag -- replaced `cb_libc_start(real, 0, NULL, head_fault_noop)`
+  inside `fault_exit` with a direct, non-rebinding call to
+  `head_fault_noop(0, NULL)` (keeps the function referenced, avoiding an
+  unrelated unused-function warning, while genuinely never touching
+  `cb_libc`'s internal binding), leaving `fault_restored = 1` completely
+  untouched. Rebuilt, reran -- `./build/test_core` failed at the first
+  fault-mode case (status 41), confirming the **new `cb_libc_write`
+  behavioral probe** (not the flag, which was still true and would have
+  passed) is what actually catches this class of regression. Restored
+  the real rebind call; reran; green again.
 
 ## Verified end to end, real execution
 
@@ -202,6 +260,17 @@ deliberately-broken control:
    both exit `0`, `CannedBSD.bin`/`.APPL` produced, `tests/head_probe.c`
    compiles cleanly for that target too. No guest run was attempted --
    that remains the coordinator's own action.
+
+## Solaris 9 SPARC portability policy (informational only)
+
+`origin/main` (`a1c85ba`) has since added a Solaris 9 SPARC portability
+requirement (`AGENTS.md`) for runtime, libc, VFS, shell, command, shared
+ABI, and host-adapter changes. This branch's own change is tests-only,
+confined to `tests/head_probe.c` and this note -- none of those
+categories -- so it does not itself add a new Solaris obligation. Noted
+here per the coordinator's own instruction: Solaris acceptance is
+reported as pending integration elsewhere; this branch does not import
+the Solaris reference or touch its shared rig.
 
 ## Sequential-fixture-only safety, stated explicitly
 
