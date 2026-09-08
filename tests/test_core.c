@@ -5214,7 +5214,7 @@ int main(int argc, char **argv)
     run_case("stdioepipeprobe", "", 0, 1);
     run_case("stdioprobe unsupported", "prefix:", 0, 1);
     run_case("libcallocprobe", "", 0, 1);
-    run_case("yes ok | yesreader", "ok\n", 0, 1);
+    run_case("yes ok | yesreader", "ok\n", 0, FIXTURE_YES);
     run_case("yesprobe", "ok\n", 0, FIXTURE_YES);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);

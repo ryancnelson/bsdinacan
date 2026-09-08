@@ -51,16 +51,43 @@ get wrong silently.
 The one row the original preparation pass explicitly could not write --
 "a forced write failure on one task's stdout, followed by a second,
 independent task's success" -- is now covered natively in
-`tests/test_echo_state.c`, mirroring `tests/test_stdio_state.c`'s own
-write-injection technique: a private kernel calls `cb_netbsdecho_main`
-directly through `cb_libc_start` with a copy of the API whose `write()`
-fails on stdout only for the first task. That proves the pinned source's
-own `if (ferror(stdout) != 0) err(1, "write error");` path fires with
-exact status `1` and exact `err(3)`-formatted stderr
-(`netbsdechofail: write error: broken pipe\n`), then a second,
-independent task's `netbsdecho` invocation with ordinary write()
-succeeds completely normally (`hello world\n`, status `0`, no stderr) --
-proving the error state is genuinely per-task, not a shared/global flag.
+`tests/test_echo_state.c`. The first version of this test used two
+separate top-level kernels (one per case), which only proves each case
+individually works, not that the two tasks' error state is actually
+isolated from one another -- two independent kernels wouldn't share
+state regardless. Reworked, per review, into a single parent task
+(`parent_main`, mirroring `test_stdio_state.c`'s own `lifecycle_main`)
+that `spawn`s the *same* registered `netbsdechofault` program twice
+within *one* kernel, `waitpid`s on each in turn, and only changes the
+injected-write behavior (`fail_stdout_write`) between the two spawns:
+the first spawn, with the fault armed, makes the pinned source's own
+`if (ferror(stdout) != 0) err(1, "write error");` path fire with exact
+status `1` and exact `err(3)`-formatted stderr
+(`netbsdechofault: write error: broken pipe\n`); the second, unarmed
+spawn of the identical program afterward succeeds completely normally
+(`hello world\n`, status `0`, no stderr). This proves the error state
+left behind by the first child does not leak into its sibling, within
+one shared kernel, rather than merely showing two unrelated runs both
+work in isolation.
+
+**A second, real correctness bug found in review, before any CI run:**
+`cb_libc_start` sets `libc/cb_libc.c`'s internal `bound_api` global and
+never restores it -- ordinary programs get away with this because
+their own `CB_LIBC_PROGRAM` wrapper always calls `cb_libc_start` fresh
+at the start of their own dispatch, rebinding it themselves regardless
+of what a previous task left behind. This test's fault child instead
+binds a *stack-local* `copy` (to install the injected `write()`), and
+its failure path exits through `err()` -> `cb_libc_exit()` ->
+`bound_api->exit()`, which never returns control to that child's own
+wrapper -- so nothing in that child ever gets a chance to restore
+anything, and `bound_api` is left pointing at a struct that lived on
+that now-terminated task's own stack. `parent_main` now explicitly
+rebinds `bound_api` back to the kernel's real `api` (via
+`cb_libc_start(api, 0, NULL, noop_main)`, the same rebind-after-mock
+idiom `test_stdio_state.c`'s own `injected_main` already uses) right
+after each `waitpid`, before doing anything else -- covering both the
+child that exited abnormally and, defensively, the one that returned
+normally too.
 
 ### A real capacity conflict, found and fixed, not worked around
 
@@ -77,10 +104,24 @@ project's own established pattern (`FIXTURE_DIRNAME`/
 and `yesprobe_program` out of `FIXTURE_FULL` into a new, minimal
 `FIXTURE_YES` (mirroring `register_basename_probes`), freeing exactly
 the one slot this change costs. `FIXTURE_FULL` is now at 63/64 (13 base
-+ 50 explicit). `CB_MAX_PROGRAMS` itself was not touched. The one
-external call site that referenced `yesprobe`/`yesreader` via the
-literal fixture value `1` (`run_case("yesprobe", "ok\n", 0, 1)`) was
-updated to `FIXTURE_YES`; no other code referenced either program.
++ 50 explicit). `CB_MAX_PROGRAMS` itself was not touched.
+
+**This was incomplete on the first push (`e0802a6`) and caught for real,
+not just in review.** There were actually *two* external call sites
+referencing the literal fixture value `1` for these programs, not one:
+`run_case("yesprobe", "ok\n", 0, 1)` (updated in the first pass) and a
+second, separate `run_case("yes ok | yesreader", "ok\n", 0, 1)` a few
+lines later, spawning `yesreader` through an ordinary shell pipeline.
+The second one was missed initially. Woodpecker's own Linux `ci` log on
+`e0802a6` reported it precisely: expected status/output `0`/`ok`,
+actual `127`/`sh: yesreader: no such file or directory` -- `yesreader`
+was no longer registered in `FIXTURE_FULL` after the scoping change,
+and this call site still asked for it there. `mac-automation` and
+`mac68k` were both still `success` on that same commit; only `ci`
+caught this. This is genuine red evidence from actual execution, not
+regression theater -- it is recorded here exactly because it is real,
+not because it is flattering. Fixed by updating this second call site
+to `FIXTURE_YES` too, in the same follow-up commit as the fixes below.
 
 ### Mac registration and the guest acceptance-case count
 
@@ -117,6 +158,19 @@ explicit correction, this branch's uncommitted `BACKLOG.md` edit was
 reverted -- rollup edits to that file are the coordinator's, not a
 worker's; this note is the sole record of ECHO-01's own evidence.
 
+The coordinator separately reported `origin/main` advancing again to
+`1bb7c9e` (`ARGV-01` accepted, 43 Mac records, plus a `head` plan doc)
+with explicit "no dependency on your ECHO code" and that the
+coordinator will merge that integration later. This branch has
+deliberately *not* fetched/merged that commit: it is unrelated to
+ECHO-01's own dependency chain, and the coordinator asked for it to
+stay that way for now. Once it does land on `main` and gets merged
+here, `platform/mac68k/acceptance_cases.def`'s guest-run total becomes
+47 (43 + this branch's 4), not 46 -- the 46 recorded above is exactly
+this branch's own current merge-base, honestly scoped to what has
+actually been fetched and merged into it so far, not a prediction of
+where `main` will be later.
+
 ### Honest verification status
 
 Docker Desktop on this host is still down (the outage first hit during
@@ -127,12 +181,21 @@ session. Verified locally instead: `clang -fsyntax-only` with each
 file's exact real build flags (echo's object, `commands/echo_module.c`,
 `src/programs.c`, `tests/test_core.c`, `tests/test_echo_state.c`, all
 clean), `bash -n` on both shell scripts, and a standalone `printf`/`xxd`
-byte-level check of the trickiest test case's shell-quoting. **Not yet
-directly executed**: the actual test binary and shell acceptance run.
-Woodpecker is the authoritative gate for that, per this session's
-established fallback, and this note will record its exact result
-honestly once it reports back -- this is not being claimed green before
-then.
+byte-level check of the trickiest test case's shell-quoting. Neither
+`clang -fsyntax-only` nor any other local check available on this host
+can execute code, so no genuine local red/green cycle was possible for
+`tests/test_echo_state.c` specifically -- that gap is real, not glossed
+over.
+
+Woodpecker on the first pushed commit (`e0802a6`) is exactly what
+caught the missed `FIXTURE_YES` call site above: `mac-automation` and
+`mac68k` were `success`, `ci` was not, with an exact, specific failure
+(`yesreader`: expected `0`/`ok`, actual `127`/command not found) that
+would have been invisible to any of this session's local checks. That
+is genuine execution-based red evidence, obtained from real CI, not
+fabricated or assumed. This note will keep recording the exact result
+of each subsequent push honestly -- this is not being claimed green
+before Woodpecker actually says so on the exact pushed commit.
 
 ## Preparation pass (superseded by the above; kept for history)
 
