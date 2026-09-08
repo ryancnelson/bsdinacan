@@ -124,7 +124,9 @@ owns guest input. Require these observable assertions:
    manifest. The nested sentinel must not appear. Empty-directory enumeration
    succeeds with zero callbacks. Do not promise undocumented enumeration order.
 2. Check catalog type, data/resource-fork lengths and returned file/directory
-   IDs (`ioFlNum` for files and `ioDrDirID` for directories). Do not use
+   IDs (the file ID returned by `PBGetCatInfoSync` in `hFileInfo.ioDirID`,
+   overlaying `dirInfo.ioDrDirID`; directory IDs use `dirInfo.ioDrDirID`).
+   Upstream `DirectoryCopy.c` documents the file-ID field reuse. Do not use
    `GetDirectoryID` as a file-ID query: its file case returns the parent ID.
    IDs must be nonzero, distinct for distinct fixture objects, and stable
    over two scans of the same mounted fixture. Match pre-recorded IDs too if
