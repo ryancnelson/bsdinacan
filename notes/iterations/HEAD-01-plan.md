@@ -37,7 +37,7 @@ By auditing the current `main` headers and source, the following `head.c` depend
   - String: Exact bounds probes utilizing surrounding canaries and NUL checks inside a sufficient destination buffer.
 
 ### 4. Input Streams and Files (`STDIN-01`)
-- **Requirement:** `head` reads from files via `fopen()`, `getc()`, and `fread()`, defaulting to `stdin` if no files are supplied. It cleans up via `fclose()`. **Upstream limitation**: `head.c` does NOT call `ferror()` directly and deliberately equates short reads directly with EOF without distinguishing input errors.
+- **Requirement:** `head` reads from files via `fopen()`, `getc()`, and `fread()`, defaulting to `stdin` if no files are supplied. It cleans up via `fclose()`. **Upstream limitation**: `head.c` does NOT call `ferror()` directly and deliberately equates a `0` return directly with EOF without distinguishing input errors (though positive short reads are processed).
 - **Scope:** Define the `cb_libc_stdin_stream` mapping to descriptor `0`. Implement `cb_libc_fopen` (read-only initially), `cb_libc_fclose`, `cb_libc_getc`, and `cb_libc_fread`.
   - Input `EOF`/`error` flags must be *task-owned*, never a mutable singleton `stdin` state, preserving strict task isolation.
   - `fopen` wrapper allocation failure must correctly close the newly-owned file descriptor to prevent leaks.
@@ -53,8 +53,8 @@ By auditing the current `main` headers and source, the following `head.c` depend
   - Record the upstream `head.c` error-conflation honestly in the tests.
 
 ### 5. Output Stream Extensions (`FWRITE-01`)
-- **Requirement:** `head` uses `fwrite()` for high-volume block writes during `-c` operations, subsequently checking `feof(stdout)` and `ferror()`.
-- **Scope:** Implement `cb_libc_fwrite` integrated exactly with the `STDOUT-01` state-tracking to correctly set the sticky `stdout_error` upon partial/failed writes.
+- **Requirement:** `head` uses `fwrite()` for high-volume block writes during `-c` operations, subsequently checking `feof(stdout)`.
+- **Scope:** Implement `cb_libc_fwrite` integrated exactly with the `STDOUT-01` state-tracking to correctly set the sticky `stdout_error` upon actual failure or zero-progress after retries.
   - Like `fread`, `fwrite` must return completed *element* counts, handle `size * nmemb` overflows, and handle zero arguments correctly.
   - Positive short underlying writes *must* be retried (e.g., a 2-byte write followed by a 3-byte write for a 5-byte request yields a full count, no error flag, and preserved `errno`).
   - Partial-then-error must return the completed element count and set the sticky error.
@@ -64,12 +64,12 @@ By auditing the current `main` headers and source, the following `head.c` depend
 
 ### 6. Argv Memory Lifecycle (`ARGV-01`)
 - **Requirement:** `head`'s `obsolete()` function dynamically allocates new strings via `malloc` and overwrites `argv` pointers (e.g., `-10` becomes `-n 10`).
-- **Scope & Status:** **Already assigned to coordinator implementation worker. Do not implement it yourself.** The coordinator has confirmed the double-free + leak static path, and the worker has successfully reproduced `exit 139` (segfault) on `biggie` with an actual ordinary `argv` rewrite.
+- **Scope & Status:** **Already assigned to coordinator implementation worker. Do not implement it yourself.** The coordinator has confirmed the double-free + leak static path, and the worker has successfully reproduced `exit 139` in an isolated Linux regression environment with an actual ordinary `argv` rewrite.
 
 ### 7. The `HEAD-01` Milestone
 - **Requirement:** Assemble the unchanged source into a functional task.
 - **Scope:** Import `usr.bin/head/head.c` untouched. The original source allocates an automatic `char buf[65536];` on the stack inside `head()`.
   - Do NOT raise global stack limits or use dynamic descriptors.
-  - Define the static `CB_LIBC_PROGRAM` descriptor using the existing `requested_stack_size` parameter (e.g., `96 * 1024` or `128 * 1024`).
+  - Define an explicit static `struct cb_program_v1` rather than using the standard `CB_LIBC_PROGRAM` macro (which defaults to 64 KiB), setting its `requested_stack_size` field explicitly (e.g., `96 * 1024` or `128 * 1024`).
   - Quantify and verify the tested stack margin strictly on each target (Linux and Mac).
-- **Acceptance Tests:** Exact command tests comparing `stdout`, `stderr`, and exit statuses for empty input, argument counts (`-n 5`, `-c 100`), invalid options, missing files, obsolete argument rewrites (`-10`), and `q`/`v` headers. Execute block reading tests over large payloads verifying the 64 KiB stream boundaries and confirming the elevated stack parameter prevents corruption.
+- **Acceptance Tests:** Exact command tests comparing `stdout`, `stderr`, and exit statuses for empty input, argument counts (`-n 5`, `-c 100`), invalid options, missing files, obsolete argument rewrites (`-10`), and `q`/`v` headers. Execute block reading tests over large payloads verifying the 64 KiB stream boundaries and confirming the elevated `requested_stack_size` field prevents corruption.
