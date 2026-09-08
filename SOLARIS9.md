@@ -31,12 +31,16 @@ either way, since a 32-bit `size_t` can never actually exceed
 `INT64_MAX`), but it does change Mac68k's compiled object code. A
 corresponding pre-existing test (`tests/test_core.c`'s
 `overflowprobe_main`) assumed a host where `SIZE_MAX > INT64_MAX`
-always holds; it is now split into an `#if`/`#else` pair so its ILP32
-branch exercises a real, safe, still-meaningful boundary (an offset at
-`SIZE_MAX` via the fixed-width 64-bit `cb_off_t`, not an unsafe
-huge-count call against a 1-byte buffer) instead of silently assuming
-LP64. See the iteration note for the full reasoning and the exact
-danger this avoided.
+always holds; on ILP32 the actual, only-reachable effect is a spurious
+early test failure (`return 192`, since an empty file's real `read()`
+cleanly returns `0`, not the assumed `-1`/`EINVAL`) -- not a crash or a
+buffer overrun; an earlier draft of this document overclaimed the
+latter before actually tracing the control flow. Split into an
+`#if`/`#else` pair regardless, as good practice: the ILP32 branch
+exercises a real, safe, still-meaningful boundary (an offset at
+`SIZE_MAX` via the fixed-width 64-bit `cb_off_t`) instead of ever
+depending on the untested write-side path. See the iteration note for
+the full, corrected reasoning.
 
 This intentionally does **not** rename `src/host_linux.c` or
 `cb_linux_host_ops()`, unlike the historical reference branch

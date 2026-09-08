@@ -616,5 +616,12 @@ $(BUILD)/libc_fwrite_probe.o: tests/libc_fwrite_probe.c include/cannedbsd/abi.h 
 $(BUILD)/libc_fwrite_wrapper_probe.o: tests/libc_fwrite_wrapper_probe.c include/cannedbsd/abi.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c tests/libc_fwrite_wrapper_probe.c -o $@
 
+# -fstack-usage (emits a .su report alongside the .o) is GCC-specific
+# and was only introduced in GCC 4.6; the pinned Solaris 9 toolchain is
+# GCC 3.4.6, which does not support it. Overridable so a Solaris build
+# can set HEAD_STACKFLAGS= (empty) without touching the default Linux/
+# Retro68 Mac68k builds, which keep emitting the .su report as before.
+HEAD_STACKFLAGS ?= -fstack-usage
+
 $(HEAD_COMMAND_OBJECT): upstream/netbsd/usr.bin/head/head.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/stdlib.h libc/include/inttypes.h libc/include/ctype.h libc/include/unistd.h libc/include/err.h libc/include/errno.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -fstack-usage -Dmain=cb_head_main -c $< -o $@
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) $(HEAD_STACKFLAGS) -Dmain=cb_head_main -c $< -o $@

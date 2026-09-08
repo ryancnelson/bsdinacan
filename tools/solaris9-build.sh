@@ -51,14 +51,19 @@ export CC CPPFLAGS CFLAGS LDLIBS
 "$MAKE" --version
 
 "$MAKE" SHELL=/bin/ksh clean
-"$MAKE" SHELL=/bin/ksh build/bsdinacan build/test_core
+# HEAD_STACKFLAGS=: GCC 3.4.6 predates -fstack-usage (GCC 4.6+); this
+# guest build has no .su stack-usage report for netbsd_head.o, and does
+# not claim one. Every other build (Linux, Retro68 Mac68k) is
+# unaffected and keeps the default -fstack-usage.
+"$MAKE" SHELL=/bin/ksh HEAD_STACKFLAGS= build/bsdinacan build/test_core
 
 ./build/test_core
 PROGRAM_PATH='build/bsdinacan' /bin/ksh tests/test_launcher.sh
 
 output=$(./build/bsdinacan -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result')
 test "$output" = HELLO || { print -r -- "acceptance output: <$output>"; exit 1; }
-./build/bsdinacan -c 'false; echo $?'
+output=$(./build/bsdinacan -c 'false; echo $?')
+test "$output" = 1 || { print -r -- "exit-status acceptance output: <$output>"; exit 1; }
 output=$(./build/bsdinacan -c 'echo -n hello | wc -c')
 test "$output" = 5 || { print -r -- "libc acceptance output: <$output>"; exit 1; }
 

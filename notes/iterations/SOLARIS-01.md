@@ -104,14 +104,24 @@ passes, and not to be replaced wholesale. Reading its full diff:
    direct trace, not assumed: on an ILP32 host, `count = SIZE_MAX` can
    never actually exceed `INT64_MAX` (true independent of item 3's
    guard -- the comparison already evaluates false there at runtime
-   either way), so the test's `api->read(descriptor, &byte, SIZE_MAX)`/
-   `api->write(descriptor, &byte, SIZE_MAX)` calls would fall through
-   past the intended rejection and reach the *real* syscall with a
-   1-byte buffer and a ~4-billion-byte count. The read side is merely
-   safe-by-accident (the file is empty, so nothing is actually
-   transferred); **the write side is a genuine out-of-bounds read from
-   the `byte` stack variable** -- undefined behavior, not a benign test
-   failure, independent of anything in this branch. Split into an
+   either way), so `api->read(descriptor, &byte, SIZE_MAX)` would fall
+   through past the intended rejection and reach the real `read()`
+   implementation. **Correction to an earlier draft of this note**: that
+   draft additionally claimed the *write* call would then reach the
+   real syscall with a huge count against this 1-byte buffer, calling it
+   a "genuine out-of-bounds read" -- that claim was wrong, caught on
+   review, because it never traced the actual control flow. The file is
+   freshly truncated (empty), so the real `read()` call returns a clean
+   `0` (nothing to transfer, regardless of the requested count); the
+   test's own check is `result != -1`, and `0 != -1` is true, so the
+   test returns `192` immediately -- **the `write()` call is never
+   reached at all** on this exact test as originally written. The
+   actual, only-reachable defect on ILP32 is an invalid, LP64-only test
+   expectation (assuming `EINVAL` where the real, correct behavior is a
+   clean `0`-byte read), not a host syscall buffer overrun. The fix
+   below is kept regardless, as good practice that avoids ever
+   depending on an untested, fragile write-side path -- but that is a
+   design-hygiene reason, not a memory-safety one. Split into an
    `#if SIZE_MAX > INT64_MAX` (unchanged assertion, exercised
    identically on Linux today) / `#else` pair; the new ILP32 branch
    instead seeks to an offset at `SIZE_MAX` (safe and meaningful on any
@@ -198,12 +208,12 @@ ordinary `-Iinclude -Isrc`.
 - **ILP32 offset bounds**: audited every `> INT64_MAX`/`SIZE_MAX`-
   adjacent comparison in `src/core.c`, `libc/cb_libc.c`, and
   `src/ramfs.c`. Found and fixed the two unguarded tautological checks
-  (item 3 above) *and*, more importantly, the latent unsafe test
-  behavior those checks' unreachability exposes on ILP32 (item 4
-  above) -- this second finding is the more significant one: it is a
-  real memory-safety issue (an out-of-bounds stack read), not merely a
-  cosmetic warning, and would only have surfaced the first time this
-  suite actually ran on a genuine ILP32 target. `src/ramfs.c`'s own
+  (item 3 above) and the invalid LP64-only assumption in
+  `overflowprobe_main` those checks' unreachability exposes on ILP32
+  (item 4 above) -- the latter would have surfaced as a genuine test
+  failure (an early `return 192`, not a crash -- see item 4's own
+  correction) the first time this suite actually ran on a genuine ILP32
+  target. `src/ramfs.c`'s own
   overflow check in its seek path (`base > INT64_MAX - offset`/`base <
   INT64_MIN - offset`) operates on `cb_off_t`, a fixed-width 64-bit
   offset type independent of the host's `size_t` width, so it is not in
@@ -221,14 +231,23 @@ ordinary `-Iinclude -Isrc`.
   behavior-preserving on Mac68k -- see item 3 above).
 - The public ABI (`struct cb_api_v1`, `struct cb_host_ops_v1`, etc.):
   no field added, removed, or reordered.
-- All existing tests: `make test`/`make ci` on the pinned Linux
-  toolchain shows identical results to `origin/main` (verified on the
-  CI runner host, `biggie`, via `rsync` + `make test`/`make ci`; the
-  one non-pass, `check-publication`, is a `.git`-less rsync-copy
-  artifact of that verification method, not a real regression -- this
-  worktree's own `git status` is clean apart from the files listed
-  above). The Mac68k build (`platform/mac68k/build.sh`) also still
-  succeeds, and no longer emits the two `-Wtype-limits` warnings
+- All existing tests: on the CI runner host `biggie`, via `rsync` (not
+  a real clone, so precisely stated below rather than glossed as "make
+  ci passed"): `make test` completes fully and shows identical results
+  to `origin/main`. `make ci` runs through `check-linux-write`,
+  `check-acceptance-output`, the Mac guest Python test suite, and (per
+  its own recipe order) architecture/build-mode/clean-test/analyzer
+  checks *before* reaching `check-publication`, which fails there --
+  not from a real regression, but because the `rsync`'d copy used for
+  this verification has no `.git` directory for `tests/test_publication.sh`
+  to inspect. This is a real gap in *how this was verified*, not a
+  claim that the complete `ci` gate passed end to end; this worktree's
+  own `git status` is clean apart from the files listed above, and the
+  actual git-based `check-publication` has not been separately
+  re-confirmed after this round's edits (see the commit-scope check
+  before pushing, which is the equivalent real check for this
+  specific gate). The Mac68k build (`platform/mac68k/build.sh`) also
+  still succeeds, and no longer emits the two `-Wtype-limits` warnings
   previously observed.
 
 ## Not claimed
