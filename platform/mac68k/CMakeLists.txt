@@ -19,6 +19,8 @@ target_compile_definitions(cb_err_probe PRIVATE main=cb_err_probe_main)
 target_compile_definitions(cb_memory_probe PRIVATE main=cb_memory_probe_main)
 target_compile_definitions(cb_getopt_probe PRIVATE main=cb_getoptprobe_main)
 target_compile_definitions(cb_truncate_probe PRIVATE main=cb_truncate_probe_main)
+add_library(cb_poll_probe OBJECT ${ROOT}/tests/libc_poll_source.c)
+target_include_directories(cb_poll_probe PRIVATE ${ROOT}/libc/include)
 add_library(cb_printenv OBJECT
     ${ROOT}/upstream/netbsd/usr.bin/printenv/printenv.c)
 target_include_directories(cb_printenv PRIVATE ${ROOT}/libc/include)
@@ -48,10 +50,11 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/printenv_module.c
     ${ROOT}/libc/cb_libc.c
     ${ROOT}/tests/libc_err_probe_module.c
+    ${ROOT}/tests/libc_poll_probe_module.c
     ${ROOT}/tests/libc_memory_probe_module.c
     ${ROOT}/tests/libc_getopt_probe_module.c
     ${ROOT}/tests/libc_truncate_probe_module.c)
-target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
