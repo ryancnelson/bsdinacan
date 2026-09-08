@@ -1,6 +1,6 @@
 # Current State — cannedBSD
 
-**Last verified:** 2026-09-07
+**Last verified:** 2026-09-08
 **Iteration count:** 27 completed Iterate Bot loops; the prototype predates the loop log
 
 ## What this is
@@ -23,6 +23,21 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
+
+## Latest accepted utility milestone, 2026-09-08
+
+Runtime commit `96d5936d8d5a6327724aead8af33c9bd998ec852` includes unchanged
+NetBSD dirname, its task-owned libc result, and C/POSIX locale support.
+Woodpecker #174 passed ci, mac68k, and mac-automation. Its exact archive SHA256
+is `4c391d5d6a280ba89b755d5eb79010a185c9c49e68d4e03485ca061fbf05001b`.
+Fresh Basilisk II acceptance `run-u4ko4rto` produced twenty-eight PASS records,
+including six dirname command cases, a reviewed screenshot, and verified normal
+shutdown with the guest slot released. The automated cycle took 15.48 seconds.
+
+The next measured milestone is BASENAME-01, assigned to Claude. Antigravity
+is correcting VFS-02 regression coverage; VFS-03 remains in coordinator review.
+Neither VFS branch is merged or claimed as guest-accepted. See BACKLOG.md and
+notes/iterations/BASENAME-01-plan.md for the bounded next utility contract.
 
 ## Verified working
 
