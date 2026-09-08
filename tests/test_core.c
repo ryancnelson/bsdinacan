@@ -312,72 +312,13 @@ static void test_uninitialized_host_memory(void)
     cb_kernel_destroy(kernel);
 }
 
-static void expect_invalid_host(const struct cb_host_ops_v1 *host,
-                                const char *field)
-{
-    struct cb_kernel *kernel = cb_kernel_create(host);
-    if (kernel != NULL) {
-        cb_kernel_destroy(kernel);
-        fprintf(stderr, "host with invalid %s was accepted\n", field);
-        exit(1);
-    }
-}
+
+#include <cannedbsd/harness.h>
 
 static void test_host_contract(void)
 {
-    const struct cb_host_ops_v1 *linux_host = cb_linux_host_ops();
-    struct cb_host_ops_v1 host;
-    uint64_t before;
-    uint64_t after;
-
-    if (linux_host == NULL ||
-        linux_host->abi_version != CB_ABI_VERSION_V1 ||
-        linux_host->struct_size != sizeof(*linux_host) ||
-        linux_host->allocate == NULL || linux_host->resize == NULL ||
-        linux_host->release == NULL || linux_host->context_root == NULL ||
-        linux_host->context_create == NULL ||
-        linux_host->context_switch == NULL ||
-        linux_host->context_destroy == NULL ||
-        linux_host->console_poll == NULL ||
-        linux_host->console_read == NULL ||
-        linux_host->console_write == NULL ||
-        linux_host->monotonic_millis == NULL ||
-        linux_host->wall_clock_millis == NULL ||
-        linux_host->yield_host == NULL || linux_host->fatal == NULL)
-        fail("Linux host operation table");
-    before = linux_host->monotonic_millis();
-    linux_host->yield_host();
-    after = linux_host->monotonic_millis();
-    if (before == 0 || after < before || linux_host->wall_clock_millis() == 0)
-        fail("Linux host clocks");
-
-    expect_invalid_host(NULL, "null table");
-    host = *linux_host;
-    host.abi_version = 0;
-    expect_invalid_host(&host, "version");
-    host = *linux_host;
-    host.struct_size = sizeof(host) - 1;
-    expect_invalid_host(&host, "size");
-#define EXPECT_NULL_HOST_CALLBACK(member) do { \
-    host = *linux_host; \
-    host.member = NULL; \
-    expect_invalid_host(&host, #member); \
-} while (0)
-    EXPECT_NULL_HOST_CALLBACK(allocate);
-    EXPECT_NULL_HOST_CALLBACK(resize);
-    EXPECT_NULL_HOST_CALLBACK(release);
-    EXPECT_NULL_HOST_CALLBACK(context_root);
-    EXPECT_NULL_HOST_CALLBACK(context_create);
-    EXPECT_NULL_HOST_CALLBACK(context_switch);
-    EXPECT_NULL_HOST_CALLBACK(context_destroy);
-    EXPECT_NULL_HOST_CALLBACK(console_poll);
-    EXPECT_NULL_HOST_CALLBACK(console_read);
-    EXPECT_NULL_HOST_CALLBACK(console_write);
-    EXPECT_NULL_HOST_CALLBACK(monotonic_millis);
-    EXPECT_NULL_HOST_CALLBACK(wall_clock_millis);
-    EXPECT_NULL_HOST_CALLBACK(yield_host);
-    EXPECT_NULL_HOST_CALLBACK(fatal);
-#undef EXPECT_NULL_HOST_CALLBACK
+    cb_harness_run_mock_api_validation(cb_kernel_create, cb_kernel_destroy);
+    cb_harness_test_real_conformance_contract(cb_linux_host_ops());
 }
 
 static struct cb_vfs_node *null_mount_root(struct cb_vfs_mount *mount)
