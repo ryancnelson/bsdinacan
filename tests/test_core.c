@@ -2951,6 +2951,184 @@ static void test_netbsd_strchr(void)
         fail("NetBSD strchr semantics");
 }
 
+static void test_vfs_mount_routing(void)
+{
+    struct cb_kernel kernel;
+    struct cb_task task;
+    struct cb_vfs_mount *mount2;
+    struct cb_vfs_node *root2;
+    struct cb_vfs_node *found = NULL;
+    struct cb_vfs_node *mnt_node = NULL;
+    struct cb_kernel wrong_kernel;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    char buffer[256];
+
+    memset(&kernel, 0, sizeof(kernel));
+    memset(&task, 0, sizeof(task));
+    kernel.host = cb_linux_host_ops();
+
+    if (cb_vfs_initialize(&kernel) < 0)
+        fail("VFS initialization");
+
+    task.kernel = &kernel;
+    task.root = kernel.vfs_root;
+    task.cwd = kernel.vfs_root;
+    cb_vfs_node_retain(task.root);
+    cb_vfs_node_retain(task.cwd);
+    task.error_cell = cb_allocate(&kernel, sizeof(int));
+
+    /* Make a directory /mnt in root filesystem */
+    if (cb_vfs_mkdir_path(&task, "/mnt", 0777) < 0)
+        fail("mkdir /mnt failed");
+
+    /* Mount a second RAMFS at /mnt */
+    mount2 = cb_ramfs_mount_create(&kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation");
+    if (cb_vfs_mount_path(&task, "/mnt", mount2) < 0)
+        fail("mount /mnt failed");
+
+    /* Create a file in the second mount */
+    if (cb_vfs_mkdir_path(&task, "/mnt/hello", 0777) < 0)
+        fail("mkdir /mnt/hello failed");
+
+    /* 1. Both-filesystem isolation */
+    root2 = mount2->ops->root(mount2);
+    if (root2->ops->lookup(root2, "hello", 5, &found) != 0)
+        fail("cross-mount mkdir did not route to the second mount");
+
+    if (kernel.vfs_root->ops->lookup(kernel.vfs_root, "mnt", 3, &mnt_node) != 0)
+        fail("root /mnt disappeared");
+
+    if (mnt_node->ops->lookup(mnt_node, "hello", 5, &found) == 0)
+        fail("isolation failed: cross-mount node leaked into underlying mount point");
+
+    /* 2. Lookup/cwd/stat/open and .. at the mount root */
+    if (cb_vfs_chdir_path(&task, "/mnt") < 0)
+        fail("chdir /mnt failed");
+    if (cb_vfs_getcwd_path(&task, buffer, sizeof(buffer)) == NULL || strcmp(buffer, "/mnt") != 0)
+        fail("getcwd in mount point");
+    if (cb_vfs_chdir_path(&task, "..") < 0)
+        fail("chdir .. from mount point failed");
+    if (cb_vfs_getcwd_path(&task, buffer, sizeof(buffer)) == NULL || strcmp(buffer, "/") != 0)
+        fail("getcwd after .. from mount point");
+
+    if (cb_vfs_stat_path(&task, "/mnt", &st) < 0)
+        fail("stat /mnt failed");
+    if (st.type != CB_NODE_DIRECTORY)
+        fail("stat /mnt not a directory");
+
+    file = cb_vfs_open(&task, "/mnt", 0, 0);
+    if (file != NULL)
+        fail("open /mnt succeeded (expected EISDIR)");
+    if (*task.error_cell != CB_EISDIR)
+        fail("open /mnt did not return EISDIR");
+
+    /* 3. Exact EPERM on mount-point unlink */
+    if (cb_vfs_unlink_path(&task, "/mnt") >= 0)
+        fail("unlinking a mount point succeeded");
+    if (*task.error_cell != CB_EPERM)
+        fail("unlinking a mount point did not return EPERM");
+
+    /* 4. duplicate/invalid/wrong-kernel/capacity failures */
+    /* duplicate */
+    struct cb_vfs_mount *extra = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mount_path(&task, "/mnt", extra) != -CB_EEXIST)
+        fail("duplicate mount did not return EEXIST");
+    extra->ops->destroy(extra);
+
+    /* invalid */
+    if (cb_vfs_mount_path(NULL, "/mnt", extra) != -CB_EINVAL)
+        fail("invalid task did not return EINVAL");
+
+    /* wrong-kernel */
+    memset(&wrong_kernel, 0, sizeof(wrong_kernel));
+    wrong_kernel.host = cb_linux_host_ops();
+    struct cb_vfs_mount *wrong_mount = cb_ramfs_mount_create(&wrong_kernel);
+    if (cb_vfs_mount_path(&task, "/mnt/hello", wrong_mount) != -CB_EINVAL)
+        fail("wrong kernel mount did not return EINVAL");
+    wrong_mount->ops->destroy(wrong_mount);
+
+
+    /* Test duplicates and root path */
+    struct cb_vfs_mount *dup_mount = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mount_path(&task, "/mnt", dup_mount) != -CB_EEXIST)
+        fail("duplicate mount target not rejected");
+    if (cb_vfs_mount_path(&task, "/mnt/", dup_mount) != -CB_EEXIST)
+        fail("duplicate routed target not rejected");
+    if (cb_vfs_mount_path(&task, "/", dup_mount) != -CB_EINVAL)
+        fail("root overlay not rejected");
+    dup_mount->ops->destroy(dup_mount);
+
+    struct cb_vfs_mount *reused = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mkdir_path(&task, "/reused", 0777) < 0) fail("mkdir /reused");
+    if (cb_vfs_mount_path(&task, "/reused", kernel.root_mount) != -CB_EINVAL)
+        fail("root mount object reused");
+
+    if (cb_vfs_mount_path(&task, "/reused", task.kernel->mounts[0].mount) != -CB_EINVAL)
+        fail("existing mount object reused");
+
+    reused->ops->destroy(reused);
+
+    /* Test file overlay (not a directory) */
+    struct cb_vfs_mount *file_mount = cb_ramfs_mount_create(&kernel);
+    struct cb_open_file *tmp_file = cb_vfs_open(&task, "/reused/file", CB_O_CREAT | CB_O_WRONLY, 0666);
+    if (tmp_file == NULL)
+        fail("file create failed");
+    cb_open_file_release(tmp_file);
+    if (cb_vfs_mount_path(&task, "/reused/file", file_mount) != -CB_ENOTDIR)
+        fail("mounting over file not ENOTDIR");
+    file_mount->ops->destroy(file_mount);
+
+    /* Test malformed candidate root */
+    struct cb_vfs_mount malformed_mount;
+    malformed_mount.kernel = &kernel;
+    malformed_mount.ops = NULL;
+    if (cb_vfs_mount_path(&task, "/reused", &malformed_mount) != -CB_EINVAL)
+        fail("missing mount ops not rejected");
+
+    struct cb_vfs_mount_ops malformed_ops;
+    malformed_ops.abi_version = CB_ABI_VERSION_V1;
+    malformed_ops.struct_size = sizeof(malformed_ops);
+    malformed_ops.root = NULL; /* NULL root */
+    malformed_ops.destroy = NULL;
+    malformed_mount.ops = &malformed_ops;
+    if (cb_vfs_mount_path(&task, "/reused", &malformed_mount) != -CB_EINVAL)
+        fail("invalid mount ops not rejected");
+
+    /* capacity */
+    struct cb_vfs_mount *m3 = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mkdir_path(&task, "/mnt3", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt3", m3) < 0)
+        fail("mount 3 failed");
+    struct cb_vfs_mount *m4 = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mkdir_path(&task, "/mnt3/nested", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt3/nested", m4) < 0)
+        fail("mount 4 (nested) failed");
+    struct cb_vfs_mount *m5 = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mkdir_path(&task, "/mnt5", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt5", m5) < 0)
+        fail("mount 5 failed");
+
+    /* Should now be at capacity (4 extra mounts). */
+    struct cb_vfs_mount *m6 = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mount_path(&task, "/mnt/hello", m6) != -CB_ENOMEM)
+        fail("capacity limit did not return ENOMEM");
+    m6->ops->destroy(m6);
+
+    /* 5. retain/release plus failed-install cleanup */
+    /* Check error on nonexistent path without leaking retain */
+    struct cb_vfs_mount *m7 = cb_ramfs_mount_create(&kernel);
+    kernel.mount_count--; /* temp decrement */
+    if (cb_vfs_mount_path(&task, "/nonexistent", m7) != -CB_ENOENT)
+        fail("mounting on nonexistent path failed");
+    kernel.mount_count++;
+    m7->ops->destroy(m7);
+
+    cb_release(&kernel, task.error_cell);
+    cb_vfs_node_release(task.cwd);
+    cb_vfs_node_release(task.root);
+    cb_vfs_destroy(&kernel);
+}
+
 static void test_mac_acceptance(void)
 {
 #define CB_MAC_CASE(command, expected, status) run_case(command, expected, status, 1);
@@ -2989,6 +3167,7 @@ int main(int argc, char **argv)
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
+    test_vfs_mount_routing();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
