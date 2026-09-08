@@ -56,3 +56,37 @@ passed. Independent review requested complete stderr capture in archived build
 logs, which is now included. The local package was explicitly a smoke artifact,
 not used for guest acceptance; only the exact Woodpecker archive will be handed
 to the coordinator.
+
+## First exact guest falsifier and correction
+
+Feature `a66308b78846bac4250e091bf7f54dbebc3b448a`, Woodpecker #129, passed
+all three workflows. Probe archive SHA256:
+`950e5c31fb56c8fb113c1bb2ab4491d9a42211ba57477793478b6ec4f3aade2e`.
+The coordinator's run `run-ydc_zxsz` produced 12 PASS and one FAIL, with successful
+fresh evidence writing: file-as-directory returned native `fnfErr` (-43), while
+the test incorrectly expected `dirNFErr` (-120). No successful acceptance was
+claimed. Result SHA256:
+`ac3a330ccd3f15bf26a725552ba5189cfee229ec383a1703c3b278c24e68e20b`;
+`automation-20260907-194550/failure.png` SHA256:
+`55f71affe2dbfd7996ca79d698612de4c6dec663c947ed7d31b766f7ca202044`.
+The coordinator verified Return closure, normal Finder shutdown, PID exit,
+closed handles for all three disks, and the unchanged original fixture hash
+`072129060a85379fb701ec07988dcfb900998c6541f4a5315dba6f0d54f6835f`.
+
+The source/doc explanation is in `PROVENANCE.md`: negative PBGetCatInfo index
+selects directory IDs only; our interface does not perform MoreFiles's original
+named-file type check. The corrected assertion first verifies Eight is a regular
+file by name, independently submits its CNID as a negative-index native query,
+requires the observed System 7 `fnfErr`, then requires the wrapper to preserve
+that exact error with zero callbacks. The wrapper implementation is unchanged.
+This corrects the test's path-vs-ID assumption; it does not whitelist errors.
+
+That run also exposed Finder's desktop-rebuild warning on protected media without
+Desktop Manager files. The coordinator dismissed it explicitly before launching
+the probe. A bounded host-only adaptation of the pinned GPL cdrtools initializer
+now builds invisible Desktop DB/DF metadata and includes both in fixture/guest
+expectations. Two independent builds produced identical new fixture bytes:
+`5adc9b2bb9cb9d1d7119ad45dc2d8470e221aee776a6b653d9e788e445e56f58`.
+The original six object IDs remain 16–22 (including nested Sentinel); desktop
+metadata IDs are 23/24. New exact CI and guest must establish warning-free boot,
+all 13 checks, successful evidence writing and unchanged protected image hash.

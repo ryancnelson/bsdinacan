@@ -52,7 +52,7 @@ static int same_entry(const struct cb_catalog_entry *a, const struct cb_catalog_
 static int matches_fixture(const struct capture *c)
 {
     unsigned int i, j, found = 0;
-    if (!valid_capture(c) || c->count != 6) return 0;
+    if (!valid_capture(c) || c->count != FIXTURE_ROOT_COUNT) return 0;
     for (i = 0; i < c->count; ++i) {
         unsigned int mask = 0;
         for (j = 0; j < sizeof(fixture_entries) / sizeof(fixture_entries[0]); ++j)
@@ -129,8 +129,24 @@ static void run_probe(void)
     error = cb_catalog_lookup(volume, 2, (ConstStr255Param)"\pMissing", &entry);
     record("missing-child", error == fnfErr, error, 0);
     error = cb_catalog_lookup(volume, 2, (ConstStr255Param)"\pEight", &entry);
-    if (error == noErr) error = cb_catalog_scan(volume, entry.id, 32, capture, &second);
-    record("file-as-directory", error == dirNFErr, error, 0);
+    {
+        CInfoPBRec pb;
+        Str63 name;
+        int named_file = error == noErr && !entry.directory;
+        initialize_capture(&second, 0);
+        memset(&pb, 0, sizeof(pb));
+        name[0] = 0;
+        pb.dirInfo.ioNamePtr = name;
+        pb.dirInfo.ioVRefNum = volume;
+        pb.dirInfo.ioDrDirID = named_file ? entry.id : 0;
+        pb.dirInfo.ioFDirIndex = -1;
+        /* Negative index selects DIRECTORY IDs, not arbitrary file CNIDs.
+         * Compare actual native failure with propagation through the wrapper. */
+        second_error = named_file ? PBGetCatInfoSync(&pb) : paramErr;
+        if (named_file) error = cb_catalog_scan(volume, entry.id, 32, capture, &second);
+        record("file-id-not-directory", named_file && second_error == fnfErr &&
+               error == second_error && !second.count, error, second.count);
+    }
     error = cb_catalog_scan(volume, 2, 32, NULL, &second);
     record("null-callback", error == paramErr, error, 0);
     query_calls = 0;

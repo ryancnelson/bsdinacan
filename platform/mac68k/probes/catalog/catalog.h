@@ -10,7 +10,9 @@ struct cb_catalog_entry {
 };
 typedef Boolean (*cb_catalog_callback)(const struct cb_catalog_entry *, void *);
 typedef OSErr (*cb_catalog_query)(CInfoPBPtr);
-/* Maximum one-directory entries, no recursion. Caller copies callback records. */
+/* Maximum one-directory entries, no recursion. Caller copies callback records.
+ * directory must be a directory ID, not an arbitrary file CNID. ID lookup
+ * errors propagate unchanged; this API does not impose pathname/ENOTDIR policy. */
 OSErr cb_catalog_scan(short volume, long directory, unsigned short limit,
                       cb_catalog_callback callback, void *data);
 /* Explicit query seam for native-error/index-boundary tests using real SDK PBs. */

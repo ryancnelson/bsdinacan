@@ -45,3 +45,36 @@ The host-only fixture generator uses the pinned image's libhfs, Copyright
 compatible. The linked generator is temporary, excluded from published probe
 archives, and never linked into the Mac app. Time is fixed only inside that
 fixture generator to make creation/modification timestamps reproducible.
+
+## Protected-fixture desktop initialization
+
+The host-only `fixture_builder.c` additionally adapts the empty Desktop DB/DF
+initialization in cdrtools `mkisofs/desktop.c`, SCCS version 1.10 (2009-07-09).
+Inspected pinned source mirror:
+<https://github.com/Distrotech/cdrtools/blob/8adb0d06e070464f13d017b1de7187bf23dacd87/mkisofs/desktop.c>.
+Source SHA256: `ae26130a602c979ab60d4e7b15c268590d12d2e7035d7807019bca73064b39ad`.
+Original copyright James Pearson 1997–2000 and J. Schilling 2000–2009,
+GPL-2.0-or-later; attribution and license are retained in the already GPL-compatible
+host generator. No code or licensing from this initializer enters the Mac app.
+
+The source initializes invisible `Desktop DB` (BTFL/DMGR) with an empty database
+header in one volume clump and `Desktop DF` (DTFL/DMGR) as an empty file, intended
+for read-only HFS media. The adaptation uses actual libhfs create/write/stat/setattr
+APIs rather than mkisofs's private output buffer. Big-endian disk bytes are
+written explicitly, the clump size is bounded, and every allocation/write/close
+is checked. This adds two explicit manifest entries without moving the six
+original fixture objects or changing their IDs. It remains a candidate pending guest verification,
+not a substitute for checking warning-free boot and post-shutdown fixture hash.
+
+## Directory ID error contract
+
+Apple's *Inside Macintosh: Files*, File Manager pp. 2-191–2-192,
+[PBGetCatInfo](https://leopard-adc.pepas.com/documentation/mac/pdf/Files/File_Manager.pdf),
+distinguishes index 0 named file/directory lookup from negative-index directory-ID
+lookup. Negative index ignores the name and selects only a directory. This is
+why a regular file's CNID cannot be passed as though it were a directory ID.
+Original MoreFiles `IterateDirectory` first used named lookup and imposed
+`dirNFErr` after seeing a file; this ID-only derivative instead preserves the
+native lookup error. The System 7 fixture returned `fnfErr` (-43) for its file
+CNID. Its test checks that exact native behavior against an independent raw
+PBGetCatInfo call, plus zero callbacks; no error whitelist was introduced.

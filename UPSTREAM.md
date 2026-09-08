@@ -248,3 +248,9 @@ error-handling differences, and the existing SDK types it uses. No imported
 source byte or cannedBSD runtime ABI changed. The GPL-compatible host fixture
 builder uses only the pinned toolchain image's libhfs; it is not a Mac runtime
 dependency and its linked binary is excluded from the artifacts.
+
+REUSE-03's host-only fixture generator also includes an explicitly attributed
+GPL-2.0-or-later adaptation of cdrtools `mkisofs/desktop.c` 1.10 (James Pearson /
+J. Schilling). `platform/mac68k/probes/catalog/PROVENANCE.md` pins the exact
+source revision and hash. It builds empty Desktop Manager metadata for the
+protected HFS fixture; this code is not linked into the Mac probe or runtime.

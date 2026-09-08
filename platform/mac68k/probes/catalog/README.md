@@ -19,6 +19,11 @@ produce exact names, IDs, data/resource lengths in `fixture.json`; generated
 expectations are compiled into the probe. The fixture is chmod 0444 before
 publication. Root contains Empty, Subdir, Zero, Eight (`fixture\n`), Forked
 (10 data / 17 resource bytes), and a 31-byte name. Subdir contains Sentinel.
+Two explicit hidden metadata files, Desktop DB (2048 data bytes) and Desktop DF
+(empty), follow the pinned cdrtools initialization for read-only HFS media.
+They are included in the eight root entries checked by the probe. Guest boot
+must verify that they prevent the earlier desktop-rebuild warning; protection
+and full-image hash checks remain mandatory.
 
 ## Coordinator guest procedure
 
@@ -73,9 +78,10 @@ Preserve result/screenshot hashes and exact commit/pipeline/archive hash. Do not
 run the ordinary CannedBSD result validator against these different cases or
 claim acceptance merely because the app archive staged successfully.
 
-The six root objects, fork lengths and exact manifest IDs must match unordered;
+The eight root entries, fork lengths and exact manifest IDs must match unordered;
 the nested sentinel must be absent. Other checks cover empty directories,
 independent copied scans, early stop followed by full scan, missing child,
-file-as-directory, null callback, access error propagation, capacity and signed
+file-CNID rejection matching raw native directory-ID lookup, null callback,
+access error propagation, capacity and signed
 index/nonzero-volume bounds. A failed check or evidence write leaves the window
 visible for diagnosis; there is no automated pass marker or forced shutdown.
