@@ -34,15 +34,14 @@ Fresh Basilisk II acceptance `run-u4ko4rto` produced twenty-eight PASS records,
 including six dirname command cases, a reviewed screenshot, and verified normal
 shutdown with the guest slot released. The automated cycle took 15.48 seconds.
 
-The next measured milestone is BASENAME-01, assigned to Claude. Antigravity
-is correcting VFS-02 regression coverage. VFS-03 is accepted as recorded below;
-VFS-02 remains outside that acceptance. See BACKLOG.md and
-notes/iterations/BASENAME-01-plan.md for the bounded next utility contract.
-The measured next utility after basename is echo: ECHO-01-design is ready,
-implementation is blocked on reviewed task-owned stream-error and program-name
-groundwork. Head is deferred on observed stream-input, numeric-conversion,
-getopt-argument and stack-size blockers; see
-notes/iterations/utility-roadmap-20260908.md.
+BASENAME-01 is in final review, with Claude preparing ECHO-01 next.
+Antigravity owns STDOUT-01; Codex owns PROGNAME-01. VFS-02 is now accepted at
+`56e79e1dc1f26ef0e2ed6ecd581f8ffe419e6655`: Woodpecker #203 passed all three
+workflows, and fresh guest run `run-0t8ymt4d` passed thirty records in a
+18.96-second cold cycle. The screenshot was reviewed; app and guest disks
+closed normally and the slot was released. Exact archive SHA256:
+`cf9e30caf83f0432896de86cfc0e3ebdbe377cb3fad95a05034d3f35503086f3`.
+See the integration note for executable-node error and lifetime coverage.
 
 ## Accepted directory iteration integration, 2026-09-08
 

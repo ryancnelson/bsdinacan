@@ -7,6 +7,7 @@
 
 extern const struct cb_program_v1 cb_exitprobe_program;
 extern const struct cb_program_v1 cb_progname_probe_program;
+extern const struct cb_program_v1 cb_vfs_executable_probe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
@@ -99,6 +100,10 @@ static int lifecycle_prepare(struct cb_kernel *kernel,
 static struct cb_execution *lifecycle_instance_create(
     struct cb_task *task, const struct cb_program *program)
 {
+    struct cb_vfs_node *node;
+    if (cb_vfs_lookup_node(task, "/bin/sh", &node) == 0) {
+        node->ops->unlink(node);
+    }
     ++executor_create_count;
     return executor_delegate->instance_create(task, program);
 }
@@ -620,6 +625,113 @@ static void expect_invalid_executor(struct cb_kernel *kernel,
         fprintf(stderr, "executor with invalid %s was accepted\n", field);
         exit(1);
     }
+}
+
+
+
+static unsigned exec_early_destroy_count;
+static void exec_early_program_destroy(struct cb_kernel *kernel,
+                                       struct cb_program *program)
+{
+    exec_early_destroy_count++;
+    cb_native_executor()->program_destroy(kernel, program);
+}
+
+static int exec_early_fail_countdown = -1;
+static int exec_early_fail_target;
+static struct cb_kernel *exec_early_kernel;
+
+static void *exec_early_allocate(size_t size)
+{
+    if (exec_early_fail_countdown == 0) {
+        exec_early_fail_countdown = -1;
+        struct cb_vfs_node *node;
+
+        if (cb_vfs_lookup_node(exec_early_kernel->current, "/bin/early_target", &node) != 0)
+            fail("lookup early_target during allocation");
+
+        if (node->ops->unlink(node) != 0)
+            fail("unlink early_target during allocation");
+
+        if (exec_early_destroy_count != 0)
+            fail("executable destroyed during allocation (not retained early)");
+
+        return NULL;
+    }
+    if (exec_early_fail_countdown > 0)
+        exec_early_fail_countdown--;
+    return base_allocate(size);
+}
+
+static int early_caller_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    char *exec_argv[] = {(char *)"early_target", NULL};
+    char *exec_envp[] = {(char *)"FOO=bar", NULL};
+    (void)argc; (void)argv; (void)envp;
+
+    exec_early_fail_countdown = exec_early_fail_target;
+
+    if (api->exec("early_target", exec_argv, exec_envp) >= 0)
+        return 1;
+    if (api->get_errno() != CB_ENOMEM)
+        return 2;
+    if (exec_early_destroy_count != 1)
+        return 3;
+    return 0;
+}
+
+static const struct cb_program_v1 early_caller_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "early_caller", 0,
+    64 * 1024, early_caller_main
+};
+
+static void test_exec_early_retain_case(int fail_countdown)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    base_allocate = host.allocate;
+    host.allocate = exec_early_allocate;
+
+    exec_early_fail_countdown = -1;
+    exec_early_fail_target = fail_countdown;
+    exec_early_destroy_count = 0;
+
+    struct cb_kernel *kernel = cb_kernel_create(&host);
+    if (kernel == NULL) fail("kernel creation");
+
+    exec_early_kernel = kernel;
+    if (cb_kernel_register(kernel, &early_caller_program) < 0)
+        fail("register early_caller");
+    cb_register_base_programs(kernel);
+
+    struct cb_executor_ops executor = *cb_native_executor();
+    executor.program_destroy = exec_early_program_destroy;
+    struct cb_program_v1 target_source = {
+        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "early_target", 0,
+        64 * 1024, early_caller_main
+    };
+
+    if (cb_kernel_register_executor(kernel, &executor, &target_source) < 0)
+        fail("register early_target");
+
+    if (cb_kernel_boot(kernel, "early_caller") != 0)
+        fail("boot early_caller");
+
+    int status = cb_kernel_run(kernel);
+    if (status != 0) {
+        fprintf(stderr, "early_caller failed with %d (countdown %d)\n", status, fail_countdown);
+        fail("early_caller run failed");
+    }
+
+    cb_kernel_destroy(kernel);
+}
+
+static void test_exec_early_retain(void)
+{
+    test_exec_early_retain_case(0);
+    test_exec_early_retain_case(1);
+    test_exec_early_retain_case(2);
+    test_exec_early_retain_case(3);
 }
 
 static void test_executor_contract(void)
@@ -2595,7 +2707,7 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
                          char *const argv[], char *const envp[])
 {
     static const int errors[] = {
-        0, CB_EPERM, CB_ENOENT, CB_EINTR, CB_EIO, CB_EBADF, CB_ECHILD,
+        0, CB_EPERM, CB_ENOENT, CB_ENOEXEC, CB_EINTR, CB_EIO, CB_EBADF, CB_ECHILD,
         CB_ENOMEM, CB_EACCES, CB_EEXIST, CB_ENOTDIR, CB_EISDIR, CB_EINVAL,
         CB_ENFILE, CB_EMFILE, CB_ENOSPC, CB_ESPIPE, CB_EPIPE,
         CB_ENAMETOOLONG, CB_ENOSYS, CB_ENOTEMPTY
@@ -3928,7 +4040,8 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
-           cb_kernel_register(kernel, &cb_direntprobe_program) == 0 ?
+           cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_vfs_executable_probe_program) == 0 ?
            0 : -1;
 }
 
@@ -4059,6 +4172,26 @@ static void test_dir_reclaim_contract(void)
     cb_kernel_destroy(kernel);
 }
 
+
+static int execearlyretain_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    char *replacement_argv[] = {(char *)"true", NULL};
+    (void)argc;
+    (void)argv;
+    allocation_failure_countdown = 0;
+    if (api->exec("true", replacement_argv, envp) >= 0)
+        return 222;
+    if (api->get_errno() != CB_ENOMEM)
+        return 223;
+    return 0;
+}
+
+static const struct cb_program_v1 execearlyretain_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "execearlyretain", 0,
+    64 * 1024, execearlyretain_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, enum test_fixture fixture)
 {
@@ -4129,6 +4262,7 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &errnochild_program) < 0 ||
             cb_kernel_register(kernel, &abiprobe_program) < 0 ||
             cb_kernel_register(kernel, &overflowprobe_program) < 0 ||
+            cb_kernel_register(kernel, &execearlyretain_program) < 0 ||
             cb_kernel_register(kernel, &allocationchild_program) < 0 ||
             cb_kernel_register(kernel, &allocationafterexec_program) < 0 ||
             cb_kernel_register(kernel, &allocationexec_program) < 0 ||
@@ -4295,6 +4429,68 @@ static void test_netbsd_strchr(void)
         cb_libc_strchr(text, 'z') != NULL ||
         cb_libc_strchr(text, 0x161) != text + 0)
         fail("NetBSD strchr semantics");
+}
+
+
+static void test_nullboot(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+
+    if (cb_kernel_boot(NULL, "sh") != -1)
+        fail("null kernel boot did not return -1");
+
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console("exit\n");
+
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL) fail("kernel creation");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_boot(kernel, NULL) < 0)
+        fail("null boot rejected");
+    if (cb_kernel_run(kernel) != 0)
+        fail("null boot run");
+    cb_kernel_destroy(kernel);
+}
+
+static void test_vfs_executable_nodes(void)
+{
+    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    extern const struct cb_program_v1 cb_shell_program;
+    struct cb_stat_v1 st;
+    struct cb_task task;
+
+    if (kernel == NULL)
+        fail("test kernel creation");
+    if (cb_kernel_register(kernel, &cb_vfs_executable_probe_program) < 0)
+        fail("register test_vfs_exec");
+    if (cb_kernel_register(kernel, &cb_shell_program) < 0)
+        fail("register shell");
+
+    memset(&task, 0, sizeof(task));
+    task.kernel = kernel;
+    task.root = kernel->vfs_root;
+    task.cwd = kernel->vfs_root;
+
+    if (cb_vfs_stat_path(&task, "/bin/vfsexecprobe", &st) != 0)
+        fail("stat executable failed");
+    if (st.type != CB_NODE_EXECUTABLE || st.size != 0)
+        fail("stat executable metadata wrong");
+
+    if (cb_kernel_boot(kernel, "vfsexecprobe") != 0)
+        fail("boot failed");
+    int status = cb_kernel_run(kernel);
+    if (status != 0) {
+        fprintf(stderr, "run failed with %d\n", status);
+        fail("run failed");
+    }
+
+    if (cb_vfs_stat_path(&task, "/missing/sh", &st) == 0)
+        fail("stat missing succeeded");
+
+    cb_kernel_destroy(kernel);
 }
 
 static void test_vfs_mount_routing(void)
@@ -4699,9 +4895,12 @@ int main(int argc, char **argv)
     test_truncate_vfs_contract();
     test_dir_reclaim_contract();
     test_registration_contract();
+    test_exec_early_retain();
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
+    test_nullboot();
+    test_vfs_executable_nodes();
     test_vfs_mount_routing();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
@@ -4832,6 +5031,7 @@ int main(int argc, char **argv)
     run_case("dirnameisolationprobe", "", 0, FIXTURE_DIRNAME);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
+    run_case("execearlyretain", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);
     run_case("allocationprobe", "", 0, 1);
     capture_write_limit = 2;

@@ -13,11 +13,10 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns BASENAME-01. Antigravity owns VFS-02
-regression corrections. Codex owns serialized guest acceptance and the measured
-utility roadmap. VFS-03 is accepted at `6e83f00`: all three Woodpecker workflows
-(#182) and twenty-nine fresh Mac checks passed. The next measured utility
-milestone is unchanged NetBSD basename; the reviewed echo prerequisites are ready in parallel.
+**Current assignments:** Claude is finishing BASENAME-01 review and preparing
+ECHO-01. Antigravity owns STDOUT-01 in its isolated worktree. Codex owns
+PROGNAME-01, integration and serialized guest acceptance. VFS-02 is merged at
+`56e79e1`, with all three Woodpecker #203 checks and thirty fresh Mac records.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -227,7 +226,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### VFS-02 — runtime-visible executable nodes
 
-- **Status:** Design claimed by Antigravity on `work/VFS-02-design`
+- **Status:** Done at `56e79e1`; thirty actual Mac checks accepted
 - **Base:** main
 - **Hypothesis:** registered programs can appear as executable VFS objects and
   shell lookup can resolve those objects instead of a hidden path registry.
@@ -947,7 +946,7 @@ review or to satisfy this measured command's dependencies.
 
 ### PROGNAME-01 — startup-initialized public program identity
 
-- **Status:** Ready; reserved for Codex
+- **Status:** Claimed by Codex on `work/PROGNAME-01`
 - **Base:** main
 - **Depends on:** ECHO-01-design (Done)
 - **Scope:** implement the reviewed program-identity section of
@@ -961,7 +960,7 @@ review or to satisfy this measured command's dependencies.
 
 ### STDOUT-01 — task-owned standard-stream errors
 
-- **Status:** Ready; coordinator assignment required
+- **Status:** Claimed by Antigravity on `work/STDOUT-01`
 - **Base:** main
 - **Depends on:** ECHO-01-design (Done)
 - **Scope:** implement reviewed optional versioned stream-state accessor and

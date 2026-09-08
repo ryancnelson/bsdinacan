@@ -8,6 +8,7 @@ static const struct cb_mac_autorun_ops autorun_ops = {
     cb_mac_write_result, cb_mac_capture_screen, cb_mac_write_done
 };
 extern const struct cb_program_v1 cb_progname_probe_program;
+extern const struct cb_program_v1 cb_vfs_executable_probe_program;
 extern const struct cb_program_v1 cb_direntprobe_program;
 extern const struct cb_program_v1 cb_dirname_probe_program;
 extern const struct cb_program_v1 cb_locale_probe_program;
@@ -50,6 +51,7 @@ int main(void)
         if (kernel != NULL) {
             cb_register_base_programs(kernel);
             if (cb_kernel_register(kernel, &cb_progname_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_vfs_executable_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&

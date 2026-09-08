@@ -14,7 +14,7 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
-foreach(probe memory getopt truncate err terminal locale dirname dirent progname)
+foreach(probe memory getopt truncate err terminal locale dirname dirent progname exec_errno)
     add_library(cb_${probe}_probe OBJECT ${ROOT}/tests/libc_${probe}_probe.c)
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
@@ -27,6 +27,7 @@ target_compile_definitions(cb_getopt_probe PRIVATE main=cb_getoptprobe_main)
 target_compile_definitions(cb_truncate_probe PRIVATE main=cb_truncate_probe_main)
 target_compile_definitions(cb_dirname_probe PRIVATE main=cb_dirname_probe_main)
 target_compile_definitions(cb_dirent_probe PRIVATE main=cb_direntprobe_main)
+target_compile_definitions(cb_exec_errno_probe PRIVATE main=cb_exec_errno_probe_main)
 add_library(cb_poll_probe OBJECT ${ROOT}/tests/libc_poll_source.c)
 target_include_directories(cb_poll_probe PRIVATE ${ROOT}/libc/include)
 add_library(cb_printenv OBJECT
@@ -70,9 +71,10 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_truncate_probe_module.c
     ${ROOT}/tests/libc_dirname_probe_module.c
     ${ROOT}/tests/libc_dirent_probe_module.c
-    ${ROOT}/tests/libc_progname_probe_module.c)
+    ${ROOT}/tests/libc_progname_probe_module.c
+    ${ROOT}/tests/vfs_executable_probe.c)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
-    $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe>)
+    $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
