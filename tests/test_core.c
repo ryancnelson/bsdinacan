@@ -2894,6 +2894,8 @@ extern int clocklossprobe_main(int argc, char **argv);
 CB_LIBC_PROGRAM(clocklossprobe_program, "clocklossprobe",
                 clocklossprobe_main);
 
+extern const struct cb_program_v1 cb_locale_probe_program;
+extern const struct cb_program_v1 cb_locale_env_probe_program;
 extern const struct cb_program_v1 cb_terminal_probe_program;
 extern int normalpollprobe_main(int argc, char **argv);
 extern int oldpollprobe_main(int argc, char **argv);
@@ -2999,7 +3001,9 @@ enum test_fixture {
  * Every new shared probe must be explicitly registered here and in Mac main. */
 static int register_mac_probes(struct cb_kernel *kernel)
 {
-    return cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
+    return cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_locale_env_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
@@ -3518,6 +3522,7 @@ static void test_poll_runnable_timeout(void)
     printf("runnable timeout test passed\n");
 }
 
+void cb_test_locale(void);
 void cb_test_terminal(void);
 
 int main(int argc, char **argv)
@@ -3530,6 +3535,11 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--mac-acceptance") == 0) {
         test_mac_acceptance();
         puts("Mac acceptance command probes passed");
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--locale") == 0) {
+        cb_test_locale();
+        puts("locale tests passed");
         return 0;
     }
     if (argc == 2 && strcmp(argv[1], "--terminal") == 0) {
@@ -3677,6 +3687,7 @@ int main(int argc, char **argv)
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
     run_case("libctruncateprobe", "", 0, 1);
+    cb_test_locale();
     cb_test_terminal();
     run_case("normalpollprobe", "", 0, 1);
     run_case("oldpollprobe", "", 0, 1);

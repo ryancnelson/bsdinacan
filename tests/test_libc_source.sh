@@ -283,4 +283,13 @@ for symbol in isatty tcgetattr tcsetattr; do
     fi
 done
 
+locale_source=tests/libc_locale_probe.c
+locale_object=$build_path/libc_locale_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$locale_source" ||
+        nm -u "$locale_object" | matches '[[:space:]]U[[:space:]]+setlocale$' ||
+        ! nm -u "$locale_object" | matches '[[:space:]]U[[:space:]]+cb_libc_setlocale$'; then
+    echo 'FAIL: ordinary locale probe does not use the private veneer' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'
