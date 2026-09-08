@@ -298,10 +298,20 @@ static cb_ssize_t console_write(struct cb_open_file *file,
                                 struct cb_task *task, const void *buffer,
                                 size_t count)
 {
-    cb_ssize_t result = task->kernel->host->console_write(
+    cb_ssize_t result;
+    /* Descriptor validation precedes this boundary. Empty writes preserve errno
+       without calling the host; nonempty results must make bounded progress. */
+    if (count == 0)
+        return 0;
+    result = task->kernel->host->console_write(
         file->object.console_stream, buffer, count);
     if (result < 0) {
-        cb_task_set_error(task, (int)-result);
+        /* Check before negation/narrowing, including malformed INT64_MIN. */
+        cb_task_set_error(task, result < -(cb_ssize_t)INT_MAX ? CB_EIO : (int)-result);
+        return -1;
+    }
+    if (result == 0 || (uint64_t)result > (uint64_t)count) {
+        cb_task_set_error(task, CB_EIO);
         return -1;
     }
     return result;
