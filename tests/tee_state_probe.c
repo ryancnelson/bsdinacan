@@ -214,6 +214,7 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 {
     struct cb_kernel *kernel;
     struct cb_host_ops_v1 copy = *host;
+    int r1, r2;
     
     base_host = host;
     copy.allocate = test_allocate;
@@ -235,22 +236,24 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
     cb_tee_main = 0;
     if (cb_kernel_register_executor(kernel, cb_native_executor(), &mock_tee) != 0) return -10;
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -11;
-    if (cb_kernel_run(kernel) != 0) return -12;
-    if (cb_tee_main != 0) return 99;
+    r1 = cb_kernel_run(kernel);
+    /* In shared state, child sees leaked head, returns 1, parent sees child failure, returns 4 */
+    if (r1 != 4 || cb_tee_main != 4) { cb_kernel_destroy(kernel); return 99; }
     
     cb_kernel_destroy(kernel);
     if (live_allocs != 0) return 101; 
 
-    /* Second run using same host global but new kernel */
+    /* Second run using same host global but new kernel (Sequential leak) */
     cb_tee_main = 0;
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
     if (cb_kernel_register_executor(kernel, cb_native_executor(), &mock_tee) != 0) return -12;
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -13;
-    if (cb_kernel_run(kernel) != 0) return -14;
+    r2 = cb_kernel_run(kernel); 
     cb_kernel_destroy(kernel);
     
-    if (cb_tee_main != 1) return 100; /* Expected to fail with 1 */
+    /* Sequential leak: parent starts and immediately sees cb_tee_head != NULL, returns 1 */
+    if (r2 != 1 || cb_tee_main != 1) return 100;
     
     /* Clean up dangling pointer for next tests */
     cb_tee_head = NULL; 
