@@ -91,8 +91,27 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   a durability guarantee. Invalid stream pointers produce `EINVAL`; unsupported
   optional stream state produces `ENOSYS` before new-interface output. `ferror`
   reports nonzero on either rejection path. Existing output APIs still operate
-  on old runtimes without the optional state. No general input streams or
-  `fopen`/`fclose` subsystem is implied by these standard-output interfaces.
+  on old runtimes without the optional state.
+- `stdio.h`: `stdin`, `getc`, `feof`, and input `ferror` use independent
+  task-owned EOF/error indicators. Bytes are returned unsigned; read failure
+  and EOF both return `EOF`, with distinct indicators. Successful reads preserve
+  incoming errno. Optional input state is version/size guarded.
+- `stdio.h`: read-only `fopen`/`fclose` own dynamic input wrappers and descriptors.
+  Acquisition failures roll back immediately; successful close, exec and task
+  exit reclaim owned wrappers. Stream identity is checked before dereferencing
+  caller pointers. Writable fopen modes and buffered streams remain absent.
+- `stdio.h`: `fread` accumulates positive short reads and returns complete element
+  counts. Bytes from a final partial element remain consumed on EOF/error.
+  Zero size/count returns before callbacks; multiplication overflow reports
+  `EOVERFLOW` without I/O. Transfers are bounded before signed-size conversion,
+  and malformed oversized read returns become sticky `EIO` before narrowing.
+  Native and actual Mac probes cover byte prefixes, canaries, dynamic stream
+  offsets, partial EOF/error and old capability layouts.
+- `inttypes.h`: unchanged pinned NetBSD `strtoimax` uses private link names;
+  base zero and bases 2 through 36, endptr, signed limits and `ERANGE` are tested.
+  Invalid bases report `EINVAL`. `ctype.h` supplies bounded C-locale `isdigit`
+  and `isspace`, tested across unsigned bytes and EOF. Other locale-sensitive
+  character classification is not implemented.
 - `err.h`: a non-returning `errx`, declared `__dead`, reusing the bounded
   formatter and `exit`. Writes the task's saved full startup name, `": "`,
   the formatted message, and a newline to `stderr` only, then exits with the
