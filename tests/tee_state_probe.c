@@ -274,30 +274,46 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 
     if (cb_tee_main != 0) return 201; /* Should not fail */
     if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 202; }
+    
+    cb_kernel_destroy(kernel);
 
     /* Phase 3: Creation failures */
-    /* Create a dummy task that yields, keeping its state saved */
-    /* We'll use a modified boot logic: boot mock_tee, but wait, mock_tee spawns a child! */
-    /* Let's just boot mock_peer, which exits immediately. That doesn't help us test saved state. */
+    kernel = cb_kernel_create(&copy);
+    cb_register_base_programs(kernel);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
     
-    /* We can boot mock_tee_exec and make it yield? No, mock_tee_exec doesn't yield. */
-    /* Let's just test allocation failures on boot */
     target_alloc_fail = alloc_count + 1;
     if (cb_kernel_boot(kernel, "mock_peer") == 0) return 300;
     if (cb_tee_head != NULL) return 301;
+    cb_kernel_destroy(kernel);
+    
+    kernel = cb_kernel_create(&copy);
+    cb_register_base_programs(kernel);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
     
     target_alloc_fail = alloc_count + 2;
     if (cb_kernel_boot(kernel, "mock_peer") == 0) return 302;
     if (cb_tee_head != NULL) return 303;
+    cb_kernel_destroy(kernel);
     
     target_alloc_fail = 0;
+    
+    kernel = cb_kernel_create(&copy);
+    cb_register_base_programs(kernel);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
     
     target_context_fail = context_count + 1;
     if (cb_kernel_boot(kernel, "mock_peer") == 0) return 304;
     if (cb_tee_head != NULL) return 305;
     target_context_fail = 0;
+    cb_kernel_destroy(kernel);
     
     /* Phase 4: Exec tests */
+    kernel = cb_kernel_create(&copy);
+    cb_register_base_programs(kernel);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee_exec);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
+    
     if (cb_kernel_boot(kernel, "mock_tee_exec") != 0) return -30;
     if (cb_kernel_run(kernel) != 0) return 400;
 
