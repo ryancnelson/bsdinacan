@@ -18,7 +18,7 @@ class Rejection(Exception):
 
 def expected_result():
     """Use the same command list compiled into the guest and Linux tests."""
-    lines = ['cannedBSD System 7 / Retro68', 'PASS contexts', 'PASS consolewrite']
+    lines = ['cannedBSD System 7 / Retro68', 'PASS contexts', 'PASS consolewrite', 'PASS teestate']
     for case in Path(__file__).with_name('acceptance_cases.def').read_text().splitlines():
         match = re.fullmatch(r'CB_MAC_CASE\(("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), [0-9]+\)', case)
         if match is None:
