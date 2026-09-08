@@ -4,6 +4,18 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted synthetic tee-state proof, 2026-09-08
+
+Integration `1f906a876998567cbe686eeadc454eb31e24c3e9` passed independent review
+and exact Woodpecker #376 ci, mac68k and mac-automation. Fresh Basilisk II
+`run-on2elfqu` passed all 67 records, retaining the prior 66. The full transcript
+and screenshot were inspected; normal application/guest shutdown and slot
+release completed in 25.87 seconds. Archive SHA256:
+`a6ec2bca4d2e53d5bb2bb78c0d75cf361c32dde222aeff2cd3cc08cf0a740745`.
+The synthetic fixture verifies execution-local list state, exact creation
+failure cleanup, immediate exit cleanup, exec and live-task teardown. It does
+not import tee or implement signals. Solaris qualification remains pending.
+
 ## Accepted head fault characterization, 2026-09-08
 
 Integration `70bedbbe86c9a09d5a39667c3532407c7d104204` passed independent review
@@ -47,10 +59,10 @@ terminal fault or complete nonblocking/signal support is claimed.
 ## Active work after head acceptance
 
 HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
-SOLARIS-01. Reviewed synthetic tee-state replacement df00ae8 is pending combined CI and
-fresh 67-record Mac acceptance; a Codex worker completed its repair. Antigravity
+SOLARIS-01. The synthetic tee-state replacement is accepted on Linux/Mac. A Codex
+worker reviews TERM-05-design against the accepted write contract. Antigravity
 audits import provenance. The reviewed next-utility audit identifies tee as a
-candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
+candidate, blocked on real signal disposition and actual command integration. Resetting a global or adding a signal stub is not
 acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
 The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
 the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
@@ -115,7 +127,8 @@ The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
-on Linux and Mac, with Solaris qualification pending. A Codex worker repairs TEE-STATE-01 in a separate worktree; Antigravity
+on Linux and Mac, with Solaris qualification pending. TEE-STATE-01 is accepted on Linux/Mac. A Codex worker reviews the older
+TERM-05 design against current contracts; Antigravity
 audits imported-source provenance after completing the lifecycle trace. Codex
 coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`

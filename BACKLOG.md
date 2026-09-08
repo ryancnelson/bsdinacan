@@ -14,8 +14,8 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
-A Codex worker repairs the synthetic TEE-STATE-01 fixture in an isolated
-review worktree; Antigravity audits imported-source provenance.
+TEE-STATE-01 is accepted on Linux/Mac. A Codex worker reviews TERM-05-design
+against current write contracts; Antigravity audits imported-source provenance.
 Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
@@ -946,7 +946,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-05-design — bounded host output service
 
-- **Status:** Ready for design only
+- **Status:** Claimed by Codex on `work/TERM-05-design-review`; review of the
+  preserved older design against current WRITE-02, documentation only
 - **Base:** main
 - **Scope:** resolve the explicitly open output progress, completion and
   cancellation contract before scheduler or raw-adapter implementation.
@@ -1428,10 +1429,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-STATE-01 — synthetic proof of isolated module state
 
-- **Status:** Repair assigned to Codex on `work/TEE-STATE-01-review`; original
-  Antigravity branch frozen after repeated fixture setup failures. Antigravity
-  completed a read-only lifecycle audit. Reviewed replacement df00ae8 is
-  pending exact integration CI and fresh 67-record Mac acceptance.
+- **Status:** Done on Linux/Mac; reviewed replacement integrated as 1f906a8,
+  exact #376 all three checks and fresh run-on2elfqu 67-record acceptance.
+  Solaris qualification pending; original faulty worker branch preserved.
 - **Base:** main
 - **Depends on:** TEE-STATE-01-design
 - **Scope:** implement only the reviewed executor wrapper with a synthetic
