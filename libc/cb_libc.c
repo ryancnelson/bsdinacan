@@ -23,7 +23,7 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->strerror != NULL && api->allocate != NULL &&
            api->resize != NULL && api->release != NULL &&
            api->errno_location != NULL && api->environ_location != NULL &&
-           api->exit != NULL;
+           api->exit != NULL && api->getopt_state_location != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -138,6 +138,58 @@ int *cb_libc_errno_location(void)
 char ***cb_libc_environ_location(void)
 {
     return bound_api->environ_location();
+}
+
+struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void)
+{
+    return bound_api->getopt_state_location();
+}
+
+static void getopt_diagnostic(const char *program, int character)
+{
+    static const char middle[] = ": illegal option -- ";
+    char letter = (char)character;
+    bound_api->write(2, program, cb_libc_strlen(program));
+    bound_api->write(2, middle, sizeof(middle) - 1);
+    bound_api->write(2, &letter, 1);
+    bound_api->write(2, "\n", 1);
+}
+
+/*
+ * Supports flag-only optstrings (any set of single-character flags with no
+ * argument), which is everything the commissioned empty-optstring use case
+ * (pinned printenv) needs. Deliberately does NOT implement the ':'
+ * required-argument convention: that branch had no consumer and no test
+ * coverage, so per AGENTS.md's "no speculative surface" rule it does not
+ * belong here. A future caller that needs required-argument options is a
+ * separate, independently red/green-tested extension, not a silent
+ * broadening of this one.
+ */
+int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
+{
+    struct cb_getopt_state_v1 *state = bound_api->getopt_state_location();
+
+    if (*state->place == '\0') {
+        if (state->optind >= argc || argv[state->optind][0] != '-' ||
+            argv[state->optind][1] == '\0')
+            return -1;
+        if (argv[state->optind][1] == '-' && argv[state->optind][2] == '\0') {
+            ++state->optind;
+            return -1;
+        }
+        state->place = argv[state->optind] + 1;
+    }
+
+    state->optopt = (int)*state->place++;
+    if (*state->place == '\0')
+        ++state->optind;
+    if (cb_libc_strchr(optstring, state->optopt) == NULL) {
+        if (state->opterr)
+            getopt_diagnostic(argv[0], state->optopt);
+        return (int)'?';
+    }
+    state->optarg = NULL;
+    return state->optopt;
 }
 
 char *cb_libc_strerror(int error)

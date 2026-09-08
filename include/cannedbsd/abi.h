@@ -100,6 +100,21 @@ struct cb_capabilities_v1 {
     uint32_t x11;
 };
 
+/*
+ * Task-local getopt(3) state, owned by the runtime and returned by address
+ * so the libc veneer's optind/optarg/opterr/optopt lvalues, and getopt's own
+ * private scan cursor, are isolated per task under cooperative interleaving
+ * and reset on a successful exec. Not a public POSIX structure; ordinary
+ * source only ever sees the individual fields through macros.
+ */
+struct cb_getopt_state_v1 {
+    int optind;
+    int opterr;
+    int optopt;
+    char *optarg;
+    char *place;
+};
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -145,6 +160,7 @@ struct cb_api_v1 {
     void (*release)(void *pointer);
     int *(*errno_location)(void);
     char ***(*environ_location)(void);
+    struct cb_getopt_state_v1 *(*getopt_state_location)(void);
 };
 
 struct cb_program_v1 {

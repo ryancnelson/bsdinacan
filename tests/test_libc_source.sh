@@ -23,6 +23,8 @@ exit_object=$build_path/exitprobe_command.o
 exit_header=libc/include/stdlib.h
 stdio_source=tests/libc_stdio_source.c
 stdio_object=$build_path/libc_stdio_source.o
+getopt_source=tests/libc_getopt_probe.c
+getopt_object=$build_path/getoptprobe_command.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -176,6 +178,23 @@ for stream in stdout stderr; do
         exit 1
     fi
 done
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$getopt_source"; then
+    echo 'FAIL: getopt source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! matches '\bgetopt[[:space:]]*\(' "$getopt_source"; then
+    echo 'FAIL: getopt source probe does not call getopt()' >&2
+    exit 1
+fi
+if nm -u "$getopt_object" | matches '[[:space:]]U[[:space:]]+getopt$'; then
+    echo 'FAIL: getopt probe imports a host-facing getopt symbol' >&2
+    exit 1
+fi
+if ! nm -u "$getopt_object" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_getopt$'; then
+    echo 'FAIL: getopt probe does not use the private veneer function' >&2
+    exit 1
+fi
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then
     echo 'FAIL: allocation source probe uses cannedBSD-specific names' >&2
     exit 1

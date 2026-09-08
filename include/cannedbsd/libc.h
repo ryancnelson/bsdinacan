@@ -31,6 +31,8 @@ void *cb_libc_realloc(void *pointer, size_t size);
 void cb_libc_free(void *pointer);
 int *cb_libc_errno_location(void);
 char ***cb_libc_environ_location(void);
+struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void);
+int cb_libc_getopt(int argc, char *const argv[], const char *optstring);
 char *cb_libc_strerror(int error);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
