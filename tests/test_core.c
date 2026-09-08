@@ -896,7 +896,7 @@ static int pipeedgepeer_main(const struct cb_api_v1 *api, int argc,
     if (count != 0)
         return 70;
     if (cb_test_current_descriptor_poll(pipe_edge_read_fd, CB_POLL_READ) !=
-        CB_POLL_READ)
+        (CB_POLL_READ | CB_POLL_HUP))
         return 201;
     if (cb_test_current_wake_reason() != CB_WAKE_PIPE_CHANGED)
         return 82;
@@ -925,7 +925,7 @@ static int pipeedgeprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->close(descriptors[0]) < 0)
         return 72;
     if (cb_test_current_descriptor_poll(descriptors[1], CB_POLL_WRITE) !=
-        CB_POLL_WRITE)
+        (CB_POLL_WRITE | CB_POLL_ERR))
         return 197;
     if (api->write(descriptors[1], &byte, 1) != -1 ||
         api->get_errno() != CB_EPIPE)
@@ -2735,6 +2735,27 @@ static int truncateinterleave_main(const struct cb_api_v1 *api, int argc,
 }
 #undef TRUNCATE_CHECK
 
+
+extern int normalpollprobe_main(int argc, char **argv);
+extern int oldpollprobe_main(int argc, char **argv);
+
+CB_LIBC_PROGRAM(normalpollprobe_program, "normalpollprobe",
+                normalpollprobe_main);
+
+static int oldpollprobe_start(const struct cb_api_v1 *api, int argc, char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 old_api = *api;
+    old_api.struct_size = offsetof(struct cb_api_v1, poll);
+    old_api.poll = NULL;
+    (void)envp;
+    return cb_libc_start(&old_api, argc, argv, oldpollprobe_main);
+}
+
+static const struct cb_program_v1 oldpollprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "oldpollprobe", 0,
+    64 * 1024, oldpollprobe_start
+};
+
 static const struct cb_program_v1 truncateprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "truncateprobe", 0,
     64 * 1024, truncateprobe_main
@@ -2770,7 +2791,9 @@ static void run_case(const char *command, const char *expected_output,
     cb_register_base_programs(kernel);
     truncate_test_kernel = kernel;
     if (register_test_programs) {
-        if (cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
+        if (cb_kernel_register(kernel, &normalpollprobe_program) < 0 ||
+            cb_kernel_register(kernel, &oldpollprobe_program) < 0 ||
+            cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
             cb_kernel_register(kernel, &truncateinterleave_program) < 0 ||
             cb_kernel_register(kernel, &cb_truncate_probe_program) < 0 ||
@@ -2954,6 +2977,8 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--truncate") == 0) {
         test_truncate_vfs_contract();
         run_case("libctruncateprobe", "", 0, 1);
+        run_case("normalpollprobe", "", 0, 1);
+        run_case("oldpollprobe", "", 0, 1);
         run_case("truncateprobe", "", 0, 1);
         run_case("truncateinterleave", "", 0, 1);
         puts("truncate tests passed");
@@ -3078,7 +3103,9 @@ int main(int argc, char **argv)
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
     run_case("libctruncateprobe", "", 0, 1);
-    run_case("truncateprobe", "", 0, 1);
+    run_case("normalpollprobe", "", 0, 1);
+        run_case("oldpollprobe", "", 0, 1);
+        run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);

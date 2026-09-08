@@ -27,6 +27,8 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
+int cb_libc_pipe(int fds[2]);
+int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout);
 void *cb_libc_malloc(size_t size);
 void *cb_libc_calloc(size_t count, size_t size);
 void *cb_libc_realloc(void *pointer, size_t size);
