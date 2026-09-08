@@ -10,6 +10,9 @@ extern const struct cb_program_v1 cb_fread_probe_program, cb_fread_compat_progra
 extern const struct cb_program_v1 cb_file_probe_program, cb_file_compat_program;
 extern const struct cb_program_v1 cb_stdin_probe_program, cb_stdin_compat_program;
 extern const struct cb_program_v1 cb_stdio_state_probe_program;
+extern const struct cb_program_v1 cb_fwrite_probe_program;
+extern const struct cb_program_v1 cb_fwrite_compat_program;
+extern const struct cb_program_v1 cb_fwrite_wrapper_program;
 extern const struct cb_program_v1 cb_argv_probe_program;
 extern const struct cb_program_v1 cb_stdio_oldtable_program;
 extern const struct cb_program_v1 cb_exitprobe_program;
@@ -4174,6 +4177,9 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_stdin_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdin_compat_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_fwrite_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_fwrite_compat_program) == 0 &&
+           cb_kernel_register(kernel, &cb_fwrite_wrapper_program) == 0 &&
            cb_kernel_register(kernel, &cb_stdio_oldtable_program) == 0 &&
            cb_kernel_register(kernel, &cb_progname_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
@@ -5002,6 +5008,7 @@ void cb_test_fread(void);
 void cb_test_file(void);
 void cb_test_stdin(void);
 void cb_test_stdio_state(void);
+void cb_test_fwrite(void);
 void cb_test_argv(void);
 void cb_test_echo_state(void);
 void cb_test_getopt_arg(void);
@@ -5055,6 +5062,10 @@ int main(int argc, char **argv)
         cb_test_fread();
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--fwrite") == 0) {
+        cb_test_fwrite();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--file") == 0) {
         cb_test_file();
         return 0;
@@ -5073,6 +5084,7 @@ int main(int argc, char **argv)
     }
     if (argc == 2 && strcmp(argv[1], "--stdio-state") == 0) {
         cb_test_stdio_state();
+    cb_test_fwrite();
         puts("stdio state tests passed");
         return 0;
     }
@@ -5131,6 +5143,7 @@ int main(int argc, char **argv)
     cb_test_file();
     cb_test_stdin();
     cb_test_stdio_state();
+    cb_test_fwrite();
     cb_test_echo_state();
     test_mac_acceptance();
     test_err();

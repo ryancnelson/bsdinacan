@@ -18,6 +18,7 @@ int cb_libc_fflush(FILE *stream);
 int cb_libc_ferror(FILE *stream);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(FILE *stream, const char *format, ...);
+size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, FILE *stream);
 
 #define fopen cb_libc_fopen
 #define fclose cb_libc_fclose
@@ -31,6 +32,7 @@ int cb_libc_fprintf(FILE *stream, const char *format, ...);
 #define ferror cb_libc_ferror
 #define printf cb_libc_printf
 #define fprintf cb_libc_fprintf
+#define fwrite cb_libc_fwrite
 #define stdout cb_libc_stdout_stream
 #define stderr cb_libc_stderr_stream
 

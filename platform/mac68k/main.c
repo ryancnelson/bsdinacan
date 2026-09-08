@@ -26,6 +26,9 @@ extern const struct cb_program_v1 cb_stdin_probe_program, cb_stdin_compat_progra
 extern const struct cb_program_v1 cb_stdio_state_probe_program;
 extern const struct cb_program_v1 cb_argv_probe_program;
 extern const struct cb_program_v1 cb_stdio_oldtable_program;
+extern const struct cb_program_v1 cb_fwrite_probe_program;
+extern const struct cb_program_v1 cb_fwrite_compat_program;
+extern const struct cb_program_v1 cb_fwrite_wrapper_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_truncate_probe_program;
@@ -85,6 +88,9 @@ int main(void)
                 cb_kernel_register(kernel, &cb_stdin_compat_program) == 0 &&
                 cb_kernel_register(kernel, &cb_stdio_state_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_stdio_oldtable_program) == 0 &&
+                cb_kernel_register(kernel, &cb_fwrite_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_fwrite_compat_program) == 0 &&
+                cb_kernel_register(kernel, &cb_fwrite_wrapper_program) == 0 &&
                 cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
                 cb_kernel_boot(kernel, cases[index].command) == 0)
