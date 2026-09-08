@@ -366,7 +366,7 @@ protected HFS fixture; this code is not linked into the Mac probe or runtime.
 
 The imported file is byte-for-byte unchanged. The build renames `main` to `cb_dirname_main`. It depends on a C-only locale boundary (`setlocale`) and a libc `dirname` implementation.
 
-## NetBSD `echo` (preparation only, not yet compiled or linked)
+## NetBSD `echo`
 
 - Repository: `https://github.com/NetBSD/src`
 - Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
@@ -377,19 +377,19 @@ The imported file is byte-for-byte unchanged. The build renames `main` to `cb_di
 - License: file-specific three-clause Regents of the University of California license, retained verbatim.
 
 The imported file is byte-for-byte unchanged, matching the hash already
-measured in `notes/iterations/utility-roadmap-20260908.md`. It is
-vendored here as ECHO-01 preparation only, per
-`notes/iterations/ECHO-01-design.md` and the coordinator's explicit
-authorization to prepare while prerequisites integrate. **It is not yet
-compiled, linked, or registered anywhere in the build** -- it calls
-`setprogname`, `putchar`, `fflush`, and `ferror`, none of which this
-worktree's base (fresh `origin/main`, without `PROGNAME-01` or
-`STDOUT-01` merged) currently declares or implements as private
-veneers. Wiring it into the Makefile now would either fail to compile
-(reproducing the roadmap's own diagnostic) or require fake stub
-declarations, which this preparation explicitly does not do. See
-`notes/iterations/ECHO-01.md` for the prepared, not-yet-executable test
-matrix and the exact remaining steps once both prerequisites land. The
-eventual command will register under the distinct name `netbsdecho`
-for acceptance, per the design's item 3, rather than replacing the
-existing shell builtin `echo`.
+measured in `notes/iterations/utility-roadmap-20260908.md`. It is compiled
+as its own command object (`netbsd_echo.o`, private link name
+`cb_netbsdecho_main`) once `PROGNAME-01` and `STDOUT-01` landed on `main`
+and were merged into this branch, exactly as `dirname`/`basename`/`yes`
+already do: `setprogname`, `setlocale`, `strcmp`, `printf`, `putchar`,
+`fflush`, `ferror`, and `err` all resolve to this project's private
+`cb_libc_*` veneers, never the host's. It registers under the distinct
+command name `netbsdecho`, per the design's item 3, rather than replacing
+the existing shell builtin `echo`. See `notes/iterations/ECHO-01.md` for
+the full integration record, including the executable exact-output/status
+test matrix and the write-failure/task-isolation coverage.
+
+The pinned source's `main` never reads `argc` (marked `/* ARGSUSED */`,
+a lint-only annotation with no effect on GCC/Clang warnings), so its
+build rule alone carries `-Wno-unused-parameter`; no other imported
+source loses that coverage.

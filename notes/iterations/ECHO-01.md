@@ -1,4 +1,145 @@
-# ECHO-01: preparation only (prerequisites not yet integrated)
+# ECHO-01
+
+## Real integration (this pass)
+
+- Status: implementation, not preparation. `PROGNAME-01`/`STDOUT-01` are
+  merged on `origin/main` at `00bf923` and `work/STDOUT-01-integration`
+  (`7e7f28a`, independently confirmed as Woodpecker pipeline #226, all
+  three checks `success`, before merging). Both were fetched and merged
+  into this branch from fresh, per the coordinator's explicit direction,
+  rather than assumed from memory.
+- `netbsdecho` now builds as its own command object (`netbsd_echo.o`,
+  private link name `cb_netbsdecho_main`), following the exact
+  `dirname`/`basename`/`yes` pattern: `commands/echo_module.c` (new),
+  a `CB_LIBC_PROGRAM` registration under the distinct name `netbsdecho`,
+  wired into `src/programs.c`'s `cb_register_base_programs` (the shell
+  builtin `echo` is untouched -- both now coexist under different
+  names), the Makefile, and `platform/mac68k/CMakeLists.txt` (mirroring
+  `cb_yes`/`cb_printenv`'s shape, since echo needs no separate NetBSD
+  "gen" library object the way dirname/basename do).
+- The pinned source is unchanged (still hash
+  `06d241a7305b4631b5154fe2ba72b433199e945f573dea46b9b0f17a4eeaed04`,
+  revision `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`); its own build
+  rule carries a documented `-Wno-unused-parameter` (only that one file)
+  because `main` never reads `argc`, historically marked `/* ARGSUSED */`
+  -- a lint-only annotation that has no effect on GCC/Clang warnings.
+  `tests/test_netbsd_source.sh` now pins echo's hash/provenance and
+  asserts its object imports only `cb_libc_*` veneers
+  (`cb_libc_setprogname`, `cb_libc_setlocale`, `cb_libc_strcmp`,
+  `cb_libc_printf`, `cb_libc_putchar`, `cb_libc_fflush`,
+  `cb_libc_ferror`, `cb_libc_err`), never the host-facing names.
+
+### Executable exact-output/status tests (from the design's own matrix)
+
+`tests/test_echo_behavior.sh` runs the prepared matrix from this note's
+earlier preparation pass against the real command through the shell,
+exactly like `test_dirname_behavior.sh`/`test_basename_behavior.sh`:
+no arguments, an empty argument, a single-space argument, `-n`
+suppressing the trailing newline, `--` and `-e` as ordinary operands
+(never special), multiple space-joined operands, and a literal
+backslash-`n` operand proven NOT to be interpreted (only this test's
+own trailing `\n` becomes a real newline; the two source characters
+backslash-n inside the operand reach argv, and echo's output, completely
+literally). That last case's shell-quoting was independently verified
+byte-for-byte with a standalone `printf`/`xxd` check before being
+written into the script, since this project's own inner shell escapes
+backslashes even inside double quotes (unlike POSIX), which is easy to
+get wrong silently.
+
+### Write-failure / task-isolation coverage (needed STDOUT-01; now exists)
+
+The one row the original preparation pass explicitly could not write --
+"a forced write failure on one task's stdout, followed by a second,
+independent task's success" -- is now covered natively in
+`tests/test_echo_state.c`, mirroring `tests/test_stdio_state.c`'s own
+write-injection technique: a private kernel calls `cb_netbsdecho_main`
+directly through `cb_libc_start` with a copy of the API whose `write()`
+fails on stdout only for the first task. That proves the pinned source's
+own `if (ferror(stdout) != 0) err(1, "write error");` path fires with
+exact status `1` and exact `err(3)`-formatted stderr
+(`netbsdechofail: write error: broken pipe\n`), then a second,
+independent task's `netbsdecho` invocation with ordinary write()
+succeeds completely normally (`hello world\n`, status `0`, no stderr) --
+proving the error state is genuinely per-task, not a shared/global flag.
+
+### A real capacity conflict, found and fixed, not worked around
+
+Adding `netbsdecho` as a 13th command to `cb_register_base_programs`
+(shared, unconditional, by every `test_core.c` fixture) would have
+pushed `FIXTURE_FULL` -- already documented as sitting exactly at
+`CB_MAX_PROGRAMS`'s 64-slot ceiling (12 base programs before this
+change, plus its own 52 explicit registrations) -- to 65, overflowing
+the production capacity constant on the 65th `cb_kernel_register` call.
+This was caught by actually counting both lists directly against the
+merged source, not assumed from the design or prior notes. Per this
+project's own established pattern (`FIXTURE_DIRNAME`/
+`FIXTURE_DIRENT`/`FIXTURE_BASENAME`), the fix scopes `yesreader_program`
+and `yesprobe_program` out of `FIXTURE_FULL` into a new, minimal
+`FIXTURE_YES` (mirroring `register_basename_probes`), freeing exactly
+the one slot this change costs. `FIXTURE_FULL` is now at 63/64 (13 base
++ 50 explicit). `CB_MAX_PROGRAMS` itself was not touched. The one
+external call site that referenced `yesprobe`/`yesreader` via the
+literal fixture value `1` (`run_case("yesprobe", "ok\n", 0, 1)`) was
+updated to `FIXTURE_YES`; no other code referenced either program.
+
+### Mac registration and the guest acceptance-case count
+
+`netbsdecho` is registered exactly like `dirname`/`basename`: through
+`cb_register_base_programs` (shared by the real Mac app and the Linux
+native tests), so no separate `platform/mac68k/main.c` change was
+needed for the command itself (that file only lists native *probe*
+programs, not base commands). `platform/mac68k/acceptance_cases.def`
+gets four new plain shell-invocable cases covering no-arguments,
+`-n`, `--` as an ordinary operand, and multiple operands -- the
+subset of the design's matrix reachable without STDOUT-01's
+fault-injection surface (the write-failure/task-isolation case stays
+Linux-native-only, exactly like `test_stdio_state.c`'s own
+`stdioinject`/`stdiolifecycle` cases, which also have no Mac
+equivalent in this file). `platform/mac68k/guest.py`'s
+`expected_result()` derives one `PASS <command>` line per
+`acceptance_cases.def` entry plus a fixed `PASS contexts` line, so
+`tests/test_mac_guest.py`'s hardcoded expected total moved from 42
+(the count already accepted at `894b753`, per the coordinator's
+status) to 46. Verified directly with `python3 tests/test_mac_guest.py`
+(all 18 cases pass on this host, no Docker or Mac toolchain needed for
+this particular check) rather than assumed from the arithmetic alone.
+Running the actual case list against a real Mac guest is the
+coordinator's, tracked in MAC-12.
+
+### Coordinator status incorporated into this base
+
+Re-fetched `origin/main` after the coordinator reported `STDOUT-01`/
+`MAC-12` accepted and merged (`894b753`, 42-PASS cold guest run,
+`16bfaea` docs) and merged it into this branch (clean, no conflicts) on
+top of the earlier merge of `origin/main` at `00bf923` and
+`origin/work/STDOUT-01-integration` at `7e7f28a`. Per the coordinator's
+explicit correction, this branch's uncommitted `BACKLOG.md` edit was
+reverted -- rollup edits to that file are the coordinator's, not a
+worker's; this note is the sole record of ECHO-01's own evidence.
+
+### Honest verification status
+
+Docker Desktop on this host is still down (the outage first hit during
+`BASENAME-01`), and this project's runtime backend needs `ucontext(3)`,
+which is deprecated/removed on this host's macOS SDK -- so a full local
+`make ci` is not possible here, exactly as in every prior iteration this
+session. Verified locally instead: `clang -fsyntax-only` with each
+file's exact real build flags (echo's object, `commands/echo_module.c`,
+`src/programs.c`, `tests/test_core.c`, `tests/test_echo_state.c`, all
+clean), `bash -n` on both shell scripts, and a standalone `printf`/`xxd`
+byte-level check of the trickiest test case's shell-quoting. **Not yet
+directly executed**: the actual test binary and shell acceptance run.
+Woodpecker is the authoritative gate for that, per this session's
+established fallback, and this note will record its exact result
+honestly once it reports back -- this is not being claimed green before
+then.
+
+## Preparation pass (superseded by the above; kept for history)
+
+The section below is the original preparation-only record from before
+`PROGNAME-01`/`STDOUT-01` were merged. It is kept verbatim for history;
+the "Remaining steps" and "not-yet-executable" framing it describes has
+now been carried out, as recorded above.
 
 - Status: preparation, explicitly not implementation. `PROGNAME-01`
   (`work/PROGNAME-01`, two commits, not yet merged) and `STDOUT-01`

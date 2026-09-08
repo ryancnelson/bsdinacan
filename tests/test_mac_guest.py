@@ -57,7 +57,7 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 42)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 46)
         self.assertIn('PASS normalpollprobe\n', expected)
         for probe in ['libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
                       'libcerrprobe', 'export GUEST=mac; printenv GUEST',
