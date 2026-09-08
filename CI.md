@@ -12,14 +12,15 @@ secret-dependent steps.
 
 ## What the gate runs
 
-1. Publication-hygiene checks for email addresses, likely credentials, private
+1. Host-only Mac guest-runner protocol tests (checksum, fresh evidence, and slot ownership).
+2. Publication-hygiene checks for email addresses, likely credentials, private
    network addresses and service URLs, and personal host home paths.
-2. A clean optimized build and the complete test suite.
-3. A clean ASan/UBSan build and the same suite.
-4. The build-mode regression proving ordinary tests do not reuse sanitizer
+3. A clean optimized build and the complete test suite.
+4. A clean ASan/UBSan build and the same suite.
+5. The build-mode regression proving ordinary tests do not reuse sanitizer
    artifacts.
-5. A second clean optimized suite.
-6. GCC's static analyzer and the architecture boundary scan.
+6. A second clean optimized suite.
+7. GCC's static analyzer and the architecture boundary scan.
 
 The complete suite includes a Linux `/proc` integration: it holds an internal
 three-task shell pipeline open, then proves the running `bsdinacan` application
