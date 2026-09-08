@@ -417,3 +417,9 @@ and partial-write tests. All three #102 workflows passed; the exact artifact
 passed sixteen System 7 checks in 13.46 seconds with fresh screenshot and
 normal shutdown. MoreFiles feasibility work has found missing SDK types and
 headers; a diagnostic result is under review, not a working host adapter.
+
+Main `819a964` adds reviewed poll/pipe support and direct Mac readiness/error
+acceptance. All three #118 workflows passed; seventeen fresh guest checks
+completed in 15.31 seconds with screenshot and normal shutdown. The MoreFiles
+compile diagnostic is a negative feasibility result. A smaller wrapper using
+real SDK catalog records is the next isolated host experiment.

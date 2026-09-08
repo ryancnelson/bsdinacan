@@ -229,7 +229,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### IO-01 — public descriptor polling
 
-- **Status:** Claimed by Antigravity; errno/deadline regressions under correction
+- **Status:** Done; reviewed and merged at `819a964` with all three #118 gates and direct Mac polling acceptance
 - **Base:** main
 - **Hypothesis:** the existing readiness seam can implement poll without host
   descriptors or busy waiting.
@@ -727,7 +727,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### REUSE-02 — MoreFiles read-only catalog feasibility probe
 
-- **Status:** Claimed by Codex on `work/REUSE-02`; missing SDK dependencies under feasibility review
+- **Status:** Done as a negative feasibility result; reviewed and merged at `819a964`; no host backend claimed
 - **Base:** main
 - **Depends on:** REUSE-01 (Done)
 - **Hypothesis:** a small pinned MoreFiles catalog subset compiles under our
@@ -749,7 +749,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-10 — direct polling and pipe guest acceptance
 
-- **Status:** Reviewed; integration CI and guest pending
+- **Status:** Done; merged at `819a964`, seventeen fresh guest records in 15.31 seconds
 - **Base:** reviewed IO-01 integration `6b71813`
 - **Accept:** compile and execute unchanged ordinary normalpollprobe in System 7,
   covering pipe readiness, hangup, descriptor exhaustion and errno. Seventeen
@@ -769,3 +769,18 @@ with an ID, dependencies, red test, and acceptance boundary above.
 - **Accept:** actual Mac canonical-buffer and Linux inherited-tty inventory;
   shared core terminal owner, optional raw capability, readiness/EOF/overflow
   semantics and deterministic tests before implementation.
+
+### REUSE-03 — bounded catalog wrapper using existing SDK records
+
+- **Status:** Claimed by Codex on `work/REUSE-03`
+- **Base:** main
+- **Depends on:** REUSE-02 (Done)
+- **Hypothesis:** a clearly marked derivative of the pinned MoreFiles
+  single-directory catalog loop can use existing PBGetCatInfoSync records
+  without the unsupported broad helper headers.
+- **Accept:** retain notices and extraction provenance; accept explicit volume
+  reference/directory ID, copy callback metadata, bound index/count, propagate
+  access errors, and use only real SDK layouts. Compile a separate probe,
+  verify a protected HFS fixture and exact CI artifact in the guest; no core
+  mount or resumable directory-stream claims. A concrete compile blocker is
+  a useful negative result, not permission to invent ABI types.
