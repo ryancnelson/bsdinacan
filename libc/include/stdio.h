@@ -7,6 +7,8 @@
 
 typedef struct cb_libc_file FILE;
 
+int cb_libc_getc(FILE *stream);
+int cb_libc_feof(FILE *stream);
 int cb_libc_puts(const char *text);
 int cb_libc_putchar(int character);
 int cb_libc_fflush(FILE *stream);
@@ -14,6 +16,9 @@ int cb_libc_ferror(FILE *stream);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(FILE *stream, const char *format, ...);
 
+#define getc cb_libc_getc
+#define feof cb_libc_feof
+#define stdin cb_libc_stdin_stream
 #define puts cb_libc_puts
 #define putchar cb_libc_putchar
 #define fflush cb_libc_fflush

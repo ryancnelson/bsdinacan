@@ -442,4 +442,23 @@ for symbol in warn write close errno_location; do
     fi
 done
 
+
+stdin_source=tests/libc_stdin_probe.c
+stdin_object=$build_path/libc_stdin_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$stdin_source"; then
+    echo 'FAIL: stdin source uses private names' >&2
+    exit 1
+fi
+for symbol in getc feof ferror stdin_stream errno_location; do
+    if nm -u "$stdin_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$stdin_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: stdin probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+if nm -u "$stdin_object" | matches '[[:space:]]U[[:space:]]+(stdin|stdout|stderr|getc|feof|ferror)$'; then
+    echo 'FAIL: stdin probe imports host stdio' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

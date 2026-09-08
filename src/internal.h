@@ -214,6 +214,7 @@ struct cb_task {
     struct cb_getopt_state_v1 getopt_state;
     char dirname_buffer[CB_PATH_MAX];
     struct cb_stdio_state_v1 stdio_state;
+    struct cb_input_state_v1 input_state;
     struct cb_fd_entry descriptors[CB_MAX_FDS];
     struct cb_dir_handle directories[CB_MAX_DIRS];
     char basename_buffer[CB_PATH_MAX];
