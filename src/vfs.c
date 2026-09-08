@@ -436,7 +436,7 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     cand_root = mount->ops->root(mount);
     if (cand_root == NULL || !node_ops_valid(cand_root->ops) || cand_root->mount != mount)
         return -CB_EINVAL;
-        
+
     if (cand_root->ops->stat(cand_root, &statbuf) < 0 || statbuf.type != CB_NODE_DIRECTORY)
         return -CB_ENOTDIR;
 

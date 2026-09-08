@@ -17,7 +17,7 @@
 - Full command: `make ci`
 - Linux Woodpecker: success
 - mac68k Woodpecker: success
-- Guest acceptance, when required: N/A
+- Guest acceptance, when required: guest acceptance pending coordinator
 
 ## Change and review
 

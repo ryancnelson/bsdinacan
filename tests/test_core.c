@@ -2265,10 +2265,10 @@ static void test_vfs_mount_routing(void)
     root2 = mount2->ops->root(mount2);
     if (root2->ops->lookup(root2, "hello", 5, &found) != 0)
         fail("cross-mount mkdir did not route to the second mount");
-    
+
     if (kernel.vfs_root->ops->lookup(kernel.vfs_root, "mnt", 3, &mnt_node) != 0)
         fail("root /mnt disappeared");
-    
+
     if (mnt_node->ops->lookup(mnt_node, "hello", 5, &found) == 0)
         fail("isolation failed: cross-mount node leaked into underlying mount point");
 
@@ -2281,12 +2281,12 @@ static void test_vfs_mount_routing(void)
         fail("chdir .. from mount point failed");
     if (cb_vfs_getcwd_path(&task, buffer, sizeof(buffer)) == NULL || strcmp(buffer, "/") != 0)
         fail("getcwd after .. from mount point");
-    
+
     if (cb_vfs_stat_path(&task, "/mnt", &st) < 0)
         fail("stat /mnt failed");
     if (st.type != CB_NODE_DIRECTORY)
         fail("stat /mnt not a directory");
-        
+
     file = cb_vfs_open(&task, "/mnt", 0, 0);
     if (file != NULL)
         fail("open /mnt succeeded (expected EISDIR)");
@@ -2333,10 +2333,10 @@ static void test_vfs_mount_routing(void)
     if (cb_vfs_mkdir_path(&task, "/reused", 0777) < 0) fail("mkdir /reused");
     if (cb_vfs_mount_path(&task, "/reused", kernel.root_mount) != -CB_EINVAL)
         fail("root mount object reused");
-    
+
     if (cb_vfs_mount_path(&task, "/reused", task.kernel->mounts[0].mount) != -CB_EINVAL)
         fail("existing mount object reused");
-    
+
     reused->ops->destroy(reused);
 
     /* Test file overlay (not a directory) */
@@ -2349,13 +2349,29 @@ static void test_vfs_mount_routing(void)
         fail("mounting over file not ENOTDIR");
     file_mount->ops->destroy(file_mount);
 
+    /* Test malformed candidate root */
+    struct cb_vfs_mount malformed_mount;
+    malformed_mount.kernel = &kernel;
+    malformed_mount.ops = NULL;
+    if (cb_vfs_mount_path(&task, "/reused", &malformed_mount) != -CB_EINVAL)
+        fail("missing mount ops not rejected");
+
+    struct cb_vfs_mount_ops malformed_ops;
+    malformed_ops.abi_version = CB_ABI_VERSION_V1;
+    malformed_ops.struct_size = sizeof(malformed_ops);
+    malformed_ops.root = NULL; /* NULL root */
+    malformed_ops.destroy = NULL;
+    malformed_mount.ops = &malformed_ops;
+    if (cb_vfs_mount_path(&task, "/reused", &malformed_mount) != -CB_EINVAL)
+        fail("invalid mount ops not rejected");
+
     /* capacity */
     struct cb_vfs_mount *m3 = cb_ramfs_mount_create(&kernel);
     if (cb_vfs_mkdir_path(&task, "/mnt3", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt3", m3) < 0)
         fail("mount 3 failed");
     struct cb_vfs_mount *m4 = cb_ramfs_mount_create(&kernel);
-    if (cb_vfs_mkdir_path(&task, "/mnt4", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt4", m4) < 0)
-        fail("mount 4 failed");
+    if (cb_vfs_mkdir_path(&task, "/mnt3/nested", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt3/nested", m4) < 0)
+        fail("mount 4 (nested) failed");
     struct cb_vfs_mount *m5 = cb_ramfs_mount_create(&kernel);
     if (cb_vfs_mkdir_path(&task, "/mnt5", 0777) < 0 || cb_vfs_mount_path(&task, "/mnt5", m5) < 0)
         fail("mount 5 failed");
