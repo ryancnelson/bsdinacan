@@ -116,8 +116,11 @@ void cb_executor_instance_destroy(struct cb_execution *execution)
 void cb_executor_program_destroy(struct cb_kernel *kernel,
                                  struct cb_program *program)
 {
-    if (program != NULL)
+    if (program != NULL) {
         program->executor->program_destroy(kernel, program);
+        if (kernel->program_count > 0)
+            kernel->program_count--;
+    }
 }
 
 static int native_prepare(struct cb_kernel *kernel,

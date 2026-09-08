@@ -141,6 +141,9 @@ static void node_destroy(struct cb_ramfs_node *node)
         ramfs_node_release(&child->common);
         child = next;
     }
+    if (node->common.executable != NULL) {
+        cb_executor_program_destroy(kernel, node->common.executable);
+    }
     cb_release(kernel, node->data);
     cb_release(kernel, node->name);
     cb_release(kernel, node);
@@ -203,7 +206,7 @@ static int ramfs_create(struct cb_vfs_node *common, const char *name,
     struct cb_ramfs_node *node;
     if (directory->type != CB_NODE_DIRECTORY)
         return -CB_ENOTDIR;
-    if (type != CB_NODE_REGULAR && type != CB_NODE_DIRECTORY)
+    if (type != CB_NODE_REGULAR && type != CB_NODE_DIRECTORY && type != CB_NODE_EXECUTABLE)
         return -CB_EINVAL;
     if (name == NULL || name[0] == '\0' || strchr(name, '/') != NULL)
         return -CB_EINVAL;
@@ -243,6 +246,8 @@ static int ramfs_open(struct cb_vfs_node *common, struct cb_task *task,
     struct cb_open_file *file;
     if (node->type == CB_NODE_DIRECTORY)
         return -CB_EISDIR;
+    if (node->type == CB_NODE_EXECUTABLE && (flags & CB_O_TRUNC))
+        return -CB_EINVAL;
     if ((flags & CB_O_TRUNC) && (flags & CB_O_ACCMODE) != CB_O_RDONLY)
         node->size = 0;
     file = cb_open_file_create(task->kernel, &node_file_ops, flags);
@@ -261,6 +266,8 @@ static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length)
     size_t needed, capacity;
     unsigned char *data;
     if (length < 0 || (uint64_t)length > SIZE_MAX)
+        return -CB_EINVAL;
+    if (node->type == CB_NODE_EXECUTABLE)
         return -CB_EINVAL;
     if (node->type != CB_NODE_REGULAR)
         return node->type == CB_NODE_DIRECTORY ? -CB_EISDIR : -CB_ESPIPE;
@@ -316,7 +323,7 @@ static int ramfs_stat(struct cb_vfs_node *common,
     stat_buffer->struct_size = sizeof(*stat_buffer);
     stat_buffer->inode = node->inode;
     stat_buffer->size = node->size;
-    stat_buffer->mode = node->mode;
+    stat_buffer->mode = node->type == CB_NODE_EXECUTABLE ? 0555 : node->mode;
     stat_buffer->type = node->type;
     return 0;
 }
@@ -389,6 +396,8 @@ static cb_ssize_t node_read(struct cb_open_file *file, struct cb_task *task,
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+    if (node->type == CB_NODE_EXECUTABLE)
+        return 0;
     if ((size_t)file->offset >= node->size)
         return 0;
     available = node->size - (size_t)file->offset;
@@ -410,6 +419,10 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
     unsigned char *new_data;
     if ((file->flags & CB_O_ACCMODE) == CB_O_RDONLY) {
         cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (node->type == CB_NODE_EXECUTABLE) {
+        cb_task_set_error(task, CB_EPERM);
         return -1;
     }
     if (count == 0) {

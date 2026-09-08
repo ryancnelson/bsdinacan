@@ -68,7 +68,8 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_getopt_probe_module.c
     ${ROOT}/tests/libc_truncate_probe_module.c
     ${ROOT}/tests/libc_dirname_probe_module.c
-    ${ROOT}/tests/libc_dirent_probe_module.c)
+    ${ROOT}/tests/libc_dirent_probe_module.c
+    ${ROOT}/tests/vfs_executable_probe.c)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe>)
 target_sources(CannedBSD PRIVATE
