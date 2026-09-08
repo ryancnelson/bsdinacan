@@ -1,7 +1,8 @@
 # Woodpecker verification and failure diagnosis
 
-The project server is http://biggie.lynx-eagle.ts.net:8110 and the repository
-ID is 8. These are the observed project coordinates, not portable requirements.
+Discover the CI server URL and repository ID from the GitHub commit status
+links. Set `ci_url` and `repo_id` for those coordinates; do not publish private
+service addresses in tracked documentation.
 `ci`, `mac68k`, and `mac-automation` must succeed for the exact candidate SHA.
 A successful local build does not establish that its pushed commit passed CI.
 
