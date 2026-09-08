@@ -65,6 +65,25 @@ int normalpollprobe_main(int argc, char **argv)
     if (!(pfds[0].revents & POLLHUP))
         return 20;
 
+        /* Test cb_libc_pipe error translation */
+    if (pipe(NULL) != -1 || errno != EINVAL)
+        return 23;
+    
+    /* Test EMFILE by opening pipes until failure */
+    int pipes[200][2];
+    int count = 0;
+    while (count < 200 && pipe(pipes[count]) == 0) {
+        count++;
+    }
+    if (errno != EMFILE)
+        return 24;
+        
+    /* Clean up so the rest of the test can run */
+    for (int i = 0; i < count; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+
     if (poll(NULL, 1, 0) != -1 || errno != EFAULT)
         return 21;
     if (poll(pfds, -1, 0) != -1 || errno != EINVAL)
@@ -87,34 +106,7 @@ int clocklossprobe_main(int argc, char **argv)
     return 0;
 }
 
-int runnabletimeoutprobe_main(int argc, char **argv)
-{
-    (void)argc;
-    (void)argv;
-    struct pollfd pfd;
-    pfd.fd = 0;
-    pfd.events = POLLIN;
-    /* This poll should block for 50ms and return 0 (timeout) */
-    int res = poll(&pfd, 1, 50);
-    if (res != 0) {
-        return 100 + pfd.revents; 
-    }
-    return 0;
-}
 
-int yieldingspinner_main(int argc, char **argv)
-{
-    (void)argc;
-    (void)argv;
-    for (int i = 0; i < 100; i++) {
-        /* Just spin yielding */
-    }
-    /* Wait, I can't just spin yielding because there's no libc yield. But I can call something that yields, or just loop. But a tight loop without yield blocks the engine? No, CannedBSD is cooperative! If I don't yield, the kernel runs forever. I must call an API that yields! Wait, read() on non-blocking? No, wait(NULL) with WNOHANG? No, we can just do poll(NULL, 0, 0)! */
-    for (int i = 0; i < 200; i++) {
-        poll(NULL, 0, 0); /* This just yields effectively */
-    }
-    return 0;
-}
 
 int pollwakepeer_main(int argc, char **argv)
 {

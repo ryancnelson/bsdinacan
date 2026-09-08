@@ -708,12 +708,12 @@ static int get_poll_timeout(struct cb_kernel *kernel)
     uint64_t elapsed;
     
     current = kernel->host->monotonic_millis();
-    if (current == 0) return -1; /* Degrade to infinite if clock vanishes */
 
     for (task = kernel->tasks; task != NULL; task = task->next) {
         if (task->state == CB_TASK_BLOCKED_POLL) {
             has_poll = 1;
             if (task->wake_timeout > 0) {
+                if (current == 0) return 0; /* Wake immediately to report ENOSYS on lost clock */
                 elapsed = current - task->wake_start;
                 if (elapsed >= (uint64_t)task->wake_timeout)
                     return 0; /* Already expired */

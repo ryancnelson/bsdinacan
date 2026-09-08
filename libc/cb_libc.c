@@ -323,12 +323,7 @@ void cb_libc_errx(int eval, const char *fmt, ...)
 
 int cb_libc_pipe(int fds[2])
 {
-    int result = bound_api->pipe(fds);
-    if (result < 0) {
-        bound_api->set_errno(-result);
-        return -1;
-    }
-    return result;
+    return bound_api->pipe(fds);
 }
 
 int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout)

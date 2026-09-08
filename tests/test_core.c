@@ -2799,18 +2799,73 @@ static int truncateinterleave_main(const struct cb_api_v1 *api, int argc,
 
 
 extern int clocklossprobe_main(int argc, char **argv);
-extern int runnabletimeoutprobe_main(int argc, char **argv);
-extern int yieldingspinner_main(int argc, char **argv);
 
 CB_LIBC_PROGRAM(clocklossprobe_program, "clocklossprobe",
                 clocklossprobe_main);
-CB_LIBC_PROGRAM(runnabletimeoutprobe_program, "runnabletimeoutprobe",
-                runnabletimeoutprobe_main);
-CB_LIBC_PROGRAM(yieldingspinner_program, "yieldingspinner",
-                yieldingspinner_main);
 
 extern int normalpollprobe_main(int argc, char **argv);
 extern int oldpollprobe_main(int argc, char **argv);
+
+static volatile int spinner_entered = 0;
+static volatile int spinner_completed = 0;
+
+static int yieldingspinner_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    int i;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    spinner_entered = 1;
+    for (i = 0; i < 200; i++) {
+        api->yield();
+    }
+    spinner_completed = 1;
+    return 0;
+}
+
+static int runnabletimeoutprobe_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    char *peer_argv[] = {(char *)"yieldingspinner", NULL};
+    cb_pid_t peer;
+    struct cb_pollfd pfd;
+    int status;
+    (void)argc;
+    (void)argv;
+    
+    spinner_entered = 0;
+    spinner_completed = 0;
+    
+    if (api->spawn("yieldingspinner", peer_argv, envp, NULL, 0, &peer) < 0) return 31;
+    
+    while (!spinner_entered) {
+        api->yield();
+    }
+    
+    pfd.fd = 0;
+    pfd.events = CB_POLLIN;
+    if (api->poll(&pfd, 1, 50) != 0)
+        return 32;
+        
+    if (spinner_completed)
+        return 40;
+        
+    if (api->waitpid(peer, &status) != peer || status != 0)
+        return 34;
+        
+    return 0;
+}
+
+static const struct cb_program_v1 yieldingspinner_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "yieldingspinner", 0,
+    64 * 1024, yieldingspinner_main
+};
+
+static const struct cb_program_v1 runnabletimeoutprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "runnabletimeoutprobe", 0,
+    64 * 1024, runnabletimeoutprobe_main
+};
 
 CB_LIBC_PROGRAM(normalpollprobe_program, "normalpollprobe",
                 normalpollprobe_main);
@@ -3052,24 +3107,37 @@ static void test_netbsd_strchr(void)
 
 
 static uint64_t mock_clock_time = 1000;
-static int mock_clock_calls = 0;
+
+
 static int console_poll_negative_one_seen = 0;
+static int clockloss_trigger = 0;
+static struct cb_kernel *clockloss_kernel = NULL;
 
 static uint64_t clockloss_monotonic(void)
 {
-    mock_clock_calls++;
-    if (mock_clock_calls > 1) {
-        return 0; /* Clock vanishes! */
-    }
+    if (clockloss_trigger) return 0;
     return mock_clock_time;
 }
 
 static int clockloss_console_poll(int timeout)
 {
-    if (timeout == -1) {
+    struct cb_task *pt;
+    int has_finite = 0;
+    
+    if (timeout < 0)
         console_poll_negative_one_seen = 1;
+        
+    if (clockloss_kernel != NULL) {
+        for (pt = clockloss_kernel->tasks; pt != NULL; pt = pt->next) {
+            if (pt->state == CB_TASK_BLOCKED_POLL && pt->wake_timeout > 0)
+                has_finite = 1;
+        }
     }
-    return 0; 
+    
+    if (has_finite && clockloss_trigger == 0) {
+        clockloss_trigger = 1;
+    }
+    return 0;
 }
 
 static void test_poll_clockloss(void)
@@ -3078,7 +3146,7 @@ static void test_poll_clockloss(void)
     struct cb_kernel *kernel;
     int status;
     
-    mock_clock_calls = 0;
+    
     console_poll_negative_one_seen = 0;
     host.monotonic_millis = clockloss_monotonic;
     host.console_poll = clockloss_console_poll;
@@ -3088,6 +3156,10 @@ static void test_poll_clockloss(void)
     
     kernel = cb_kernel_create(&host);
     if (!kernel) fail("clockloss kernel");
+    clockloss_kernel = kernel;
+    clockloss_trigger = 0;
+    clockloss_kernel = kernel;
+    clockloss_trigger = 0;
     cb_register_base_programs(kernel);
     cb_kernel_register(kernel, &clocklossprobe_program);
     
@@ -3112,13 +3184,13 @@ static void test_poll_runnable_timeout(void)
     int status;
     
     mock_clock_time = 1000;
-    console_poll_ready = 0;
     
     host.monotonic_millis = advancing_clock_monotonic;
     host.console_poll = controlled_console_poll;
     host.console_read = controlled_console_read;
     host.console_write = capture_write;
     reset_console(NULL);
+    console_poll_ready = 0;
     
     kernel = cb_kernel_create(&host);
     if (!kernel) fail("runnabletimeout kernel");
@@ -3126,9 +3198,9 @@ static void test_poll_runnable_timeout(void)
     cb_kernel_register(kernel, &runnabletimeoutprobe_program);
     cb_kernel_register(kernel, &yieldingspinner_program);
     
-    if (cb_kernel_boot(kernel, "yieldingspinner & runnabletimeoutprobe") < 0) fail("runnabletimeout boot");
+    if (cb_kernel_boot(kernel, "runnabletimeoutprobe") < 0) fail("runnabletimeout boot");
     status = cb_kernel_run(kernel);
-    if (status != 0) { printf("runnabletimeout status: %d\n", status); fail("runnabletimeout failed"); }
+    if (status != 0) { printf("runnabletimeout status: %d (0x%x)\n", status, status); fail("runnabletimeout failed"); }
     cb_kernel_destroy(kernel);
     printf("runnable timeout test passed\n");
 }
