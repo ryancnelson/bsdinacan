@@ -178,11 +178,43 @@ failed, so this was the only defect the real gate found in this
 iteration. `mac-automation` and `mac68k` were already `success` on
 `4e97b9f` and are unaffected by this ordinary-libc-only fix.
 
+## Second Woodpecker attempt found a second real bug
+
+Commit `0f473c9` (the `check_repeated_calls` fix)'s `ci` check failed
+differently: `sh: basename: no such file or directory` on the very
+first command test case. Root cause: `commands/basename_module.c`
+defines `cb_basename_program`, but nothing ever registered it with the
+shell -- `src/programs.c`'s `cb_register_base_programs` (the actual
+base-program table every shell instance, native and Mac, is built from)
+was never updated to include it, unlike `cb_dirname_program`, which
+*is* in that table. The `mac68k` and `mac-automation` checks stayed
+green through both failures because they only build/compile
+(`mac68k`) or check the image-matcher tooling (`mac-automation`); this
+class of registration bug is a boot-time behavior gap, invisible to a
+compile-only check. While fixing this, also found and fixed the same
+gap for the *test probe* (not just the command): `platform/mac68k/
+main.c`'s acceptance-case runner registers `cb_dirname_probe_program`
+for every case but never registered `cb_basename_probe_program`, so the
+Mac guest's own `libcbasenameprobe` case would have failed identically
+whenever guest acceptance eventually runs. Fixed both: `cb_basename_
+program` added to `cb_register_base_programs`'s table, and
+`cb_basename_probe_program` added to `main.c`'s per-case registration
+list, in both cases at the exact same position as their `dirname`
+counterparts. Verified by exhaustive grep: every file referencing
+`cb_dirname_program`/`cb_dirname_probe_program` now has an exact
+`cb_basename_program`/`cb_basename_probe_program` counterpart, and vice
+versa -- no remaining asymmetry between the two commands' wiring.
+
 ## Woodpecker results
 
-- `4e97b9f`: `ci` failed (`libcbasenameprobe` exit `12`, see above);
-  `mac-automation` and `mac68k` both `success`.
-- (Fill in the fixed commit's exact three results here once observed --
+- `4e97b9f`: `ci` failed (`libcbasenameprobe` exit `12`, a wrong
+  expected value in this iteration's own test); `mac-automation` and
+  `mac68k` both `success`.
+- `0f473c9`: `ci` failed differently (`sh: basename: no such file or
+  directory` -- `cb_basename_program` was never registered with the
+  shell); `mac-automation` and `mac68k` both `success` again (a
+  boot-time registration gap is invisible to a compile-only check).
+- (Fill in the next commit's exact three results here once observed --
   do not claim green before seeing it.)
 
 ## Remaining risk or follow-up
