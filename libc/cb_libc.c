@@ -242,6 +242,26 @@ int cb_libc_getopt(int argc, char *const argv[], const char *optstring)
     return state->optopt;
 }
 
+const char *cb_libc_getprogname(void)
+{
+    const char *name = bound_api->getprogname();
+    const char *component = name;
+    if (name == NULL)
+        return NULL;
+    for (; *name != '\0'; ++name) {
+        if (*name == '/')
+            component = name + 1;
+    }
+    return component;
+}
+
+void cb_libc_setprogname(const char *name)
+{
+    /* Startup established the identity before main, as in NetBSD crt0.
+       A later portable main's setprogname call cannot rename that task. */
+    (void)name;
+}
+
 char *cb_libc_strerror(int error)
 {
     return (char *)bound_api->strerror(error);

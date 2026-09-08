@@ -67,6 +67,8 @@ char ***cb_libc_environ_location(void);
 struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void);
 int cb_libc_getopt(int argc, char *const argv[], const char *optstring);
 char *cb_libc_strerror(int error);
+const char *cb_libc_getprogname(void);
+void cb_libc_setprogname(const char *name);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);

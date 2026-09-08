@@ -6,6 +6,7 @@
 #include <string.h>
 
 extern const struct cb_program_v1 cb_exitprobe_program;
+extern const struct cb_program_v1 cb_progname_probe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
@@ -3917,7 +3918,8 @@ enum test_fixture {
  * Every new shared probe must be explicitly registered here and in Mac main. */
 static int register_mac_probes(struct cb_kernel *kernel)
 {
-    return cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
+    return cb_kernel_register(kernel, &cb_progname_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_locale_env_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
@@ -4640,6 +4642,11 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--progname") == 0) {
+        run_case("libcprognameprobe", "", 0, FIXTURE_MAC);
+        puts("program-name tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--err") == 0) {
         test_err();
         puts("err diagnostic tests passed");

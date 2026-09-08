@@ -15,4 +15,9 @@
 void cb_libc_exit(int status) __dead;
 #define exit cb_libc_exit
 
+const char *cb_libc_getprogname(void);
+void cb_libc_setprogname(const char *name);
+#define getprogname cb_libc_getprogname
+#define setprogname cb_libc_setprogname
+
 #endif

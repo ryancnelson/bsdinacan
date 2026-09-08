@@ -334,4 +334,19 @@ if ! nm -u "$dirname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_dirname$
     exit 1
 fi
 
+progname_source=tests/libc_progname_probe.c
+progname_object=$build_path/prognameprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$progname_source"; then
+    echo 'FAIL: program-name source probe uses private names' >&2
+    exit 1
+fi
+for symbol in getprogname setprogname; do
+    if ! matches "\\b${symbol}[[:space:]]*\\(" "$progname_source" ||
+            nm -u "$progname_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$progname_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary program-name probe does not use private %s\n' "$symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'

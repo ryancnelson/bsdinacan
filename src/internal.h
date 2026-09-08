@@ -204,6 +204,7 @@ struct cb_task {
     struct cb_execution *execution;
     const struct cb_program *program;
     char **argv;
+    const char *startup_name;
     int argc;
     char **environment;
     struct cb_getopt_state_v1 getopt_state;

@@ -599,6 +599,7 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         envp != NULL ? envp : (parent != NULL ? parent->environment : NULL));
     if (task->argv == NULL || task->environment == NULL)
         goto fail;
+    task->startup_name = task->argv[0];
     task->getopt_state.optind = 1;
     task->getopt_state.opterr = 1;
     task->getopt_state.optopt = 0;
@@ -668,6 +669,7 @@ static void task_finish_exec(struct cb_task *task)
     string_vector_destroy(kernel, task->environment);
     task->program = task->pending_program;
     task->argv = task->pending_argv;
+    task->startup_name = task->argv[0];
     task->argc = task->pending_argc;
     task->environment = task->pending_environment;
     task->pending_program = NULL;
@@ -1456,7 +1458,7 @@ static struct cb_getopt_state_v1 *api_getopt_state_location(void)
 
 static const char *api_getprogname(void)
 {
-    return active_kernel->current->argv[0];
+    return active_kernel->current->startup_name;
 }
 
 static char *api_dirname_buffer_location(void)
