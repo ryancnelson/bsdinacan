@@ -4899,6 +4899,15 @@ static void test_err(void)
     capture_write_limit = (size_t)-1;
 }
 
+int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
+static void test_tee_state(void)
+{
+    int result = cb_tee_state_probe(cb_linux_host_ops());
+    if (result != 0) {
+        fprintf(stderr, "FAIL: tee state probe status %d\n", result);
+        exit(1);
+    }
+}
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 static void test_console_write(void)
 {
@@ -4911,6 +4920,7 @@ static void test_console_write(void)
 
 static void test_mac_acceptance(void)
 {
+    test_tee_state();
     test_console_write();
 #define CB_MAC_CASE(command, expected, status) \
     run_case(command, expected, status, FIXTURE_MAC);
@@ -5071,6 +5081,11 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--tee-state") == 0) {
+        test_tee_state();
+        puts("tee state tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--console-write") == 0) {
         test_console_write();
         puts("portable console write tests passed");
