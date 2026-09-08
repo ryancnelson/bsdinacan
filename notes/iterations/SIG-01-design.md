@@ -75,8 +75,25 @@ its suspended executor. At that point, pending default delivery clears the bit
 and invokes the normal task exit operation. Do not terminate from within an
 allocation, descriptor transaction, host callback or scheduler stack. A task
 running without yielding cannot be preempted; this is a stated cooperative
-limitation. Non-native executors must provide an equivalent checked boundary
-before they can claim this capability.
+limitation. Support must be an explicit executor opt-in, not inferred from structure casts
+or delegation. Proposed: append a capabilities word to the versioned internal
+cb_executor_ops table, with one cooperative-interrupt-delivery bit. Guard its
+actual struct_size before reading the word; a short table or unset bit is
+unsupported. Native opts in only when both delivery boundaries are implemented;
+a native wrapper must explicitly opt in after tests prove it retains them.
+Unknown bits do not establish this particular capability.
+
+The disposition setter and kernel request reject unsupported target executors
+with ENOSYS, without changing disposition/pending state or waking a task. For
+EXEC_PENDING, request validation must cover BOTH current and pending program
+executors; validating only the old image is insufficient. Before api_exec commits
+a new image with unsupported delivery, reject ENOSYS if the task has a pending
+interrupt or ignored disposition, preserving its old image and signal state.
+With default disposition and no pending bit, ordinary exec to an unsupported
+executor remains allowed; later requests to it fail ENOSYS. This is an explicit
+capability restriction, not unrestricted POSIX exec behavior. Test the check
+before every allocation/state-publication boundary that could otherwise leave
+partial exec state.
 
 Blocked delivery must close owned descriptors and allocations once, wake peers
 through existing close/exit logic, and wake the waiting parent. Review actual
@@ -94,7 +111,9 @@ there is no attempt to resume a dead task to report a signal.
    then resume with unchanged data/state. Repeated requests must not duplicate
    cleanup. Include before-first-entry, yield, all blocked states, exec-pending,
    missing/dead PID, spawn inheritance, failed/successful exec and active peer
-   isolation. Every mock has a finite call/step budget.
+   isolation. Include actual short executor tables, unset capability, supported
+   and unsupported cross-executor exec, and a request during EXEC_PENDING with
+   an unsupported pending target; rejection must preserve all state and wakeups. Every mock has a finite call/step budget.
 2. Private signal() mapping and actual short-ABI allocations. Test previous
    dispositions, ignored pending discard, preserved errno and rejection without
    mutation. Never compare host signal numbers or call host signal/kill.
@@ -106,3 +125,11 @@ there is no attempt to resume a dead task to report a signal.
 
 This design does not authorize general signals, handler delivery, host keyboard
 wiring, preemption, umask, permissions, process groups or an unreviewed tee import.
+
+## Priority and transition
+
+The subsequently published Solaris policy at `a1c85ba` takes priority for new
+implementation. This existing assigned task completes only the design review;
+no signal implementation is assigned before the Solaris integration priority
+is handled. Future runtime work must carry the required Solaris gate alongside
+Linux and System 7 according to `notes/CI.md`.
