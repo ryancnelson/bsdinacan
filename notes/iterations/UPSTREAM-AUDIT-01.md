@@ -4,7 +4,7 @@
 Inventory actually imported NetBSD source files from `UPSTREAM.md` and build wiring. Verify each local SHA against the declared pinned source, retained license notice, and compile-time symbol renaming. Map to existing source fence tests and distinguish `cannedBSD`-owned commands from imports.
 
 ## Context
-- **Base SHA (worktree origin):** `2bc2008`
+- **Base SHA (worktree origin):** `2bc2008c9018ad522f30efec51920de9d2aca6cc`
 - **Pinned Upstream Revision:** `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c` (NetBSD)
 
 ## Import Inventory & Verification (Read-Only)
@@ -69,7 +69,7 @@ This local failure is due to the macOS `nm` utility prepending an underscore `_`
    - **Verification:** All local SHAs EXACTLY match their declared pins. `bcopy.c` retains the required copyright block (covering `memcpy` and `memmove` which act purely as wrappers defining `MEMCOPY`/`MEMMOVE`). All other files explicitly include 3-clause Regents or 2-clause Foundation notices.
    - **Renaming:** 
      - `strchr.c` is correctly renamed via namespace compatibility: the standard `<string.h>` header simply `#define`s `strchr` to `cb_libc_strchr`, and `compat/netbsd/include/namespace.h` shields NetBSD's internal aliases from being exposed. This relies on clean header inclusion rather than a blanket `-D/CANNEDBSD` flag.
-     - Other string functions use `-DCANNEDBSD_BUILDING_LIBC_*` macro defenses to avoid host conflicts.
+     - `strlen` uses direct `-Dstrlen=cb_libc_strlen`; strcmp, strcpy, memcpy, memmove and memcmp use their explicit `CANNEDBSD_BUILDING_LIBC_*` flags.
 
 8. **`strtoimax` & `_strtol.h`**
    - **Paths:** `upstream/netbsd/common/lib/libc/stdlib/strtoimax.c` (`c2476abb39e6ab8dd1fe2d745aeef66309d6cc90adb10f4beee64ae38c1f1ae5`) and `upstream/netbsd/common/lib/libc/stdlib/_strtol.h` (`f6ad43531aab239f6bb1c669e01b9df9ebc0c3e0a035cc27a89b74d404dbb74c`)
@@ -77,4 +77,16 @@ This local failure is due to the macOS `nm` utility prepending an underscore `_`
    - **Renaming:** `-Dstrtoimax=cb_libc_strtoimax`
 
 ## Concrete Mismatches
-- **NO concrete source mismatches found.** Every file in the upstream hierarchy precisely matches its declared `UPSTREAM.md` configuration and all automated Linux source-fence tests assert boundary safety.
+- **NO concrete source mismatches found.** All 18 tracked files under `upstream/netbsd/` match their declared `UPSTREAM.md` configuration and all automated Linux source-fence tests assert boundary safety.
+
+## Coordinator verification
+
+The coordinator independently enumerated all 18 tracked `upstream/netbsd/`
+files with `git ls-files`, calculated each SHA256 with Python hashlib, and
+required both its full local path and digest in the same `UPSTREAM.md` section.
+All 18 matched, including the included bcopy implementation and _strtol header;
+no first-path-only selection was used. This checks declared provenance, not a
+new download of every upstream revision. Exact #378 on
+`715d15710769370105523d964aae698cbf757b72` has all three workflows successful;
+its source is identical to this documentation-corrected audit's base sources.
+MoreFiles feasibility/derivative material is outside this NetBSD-only inventory.

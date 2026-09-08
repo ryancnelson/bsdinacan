@@ -14,8 +14,8 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
-TEE-STATE-01 is accepted on Linux/Mac. A Codex worker reviews TERM-05-design
-against current write contracts; Antigravity audits imported-source provenance.
+TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements isolated TERM-03
+from the accepted terminal design; Antigravity audits imported-source provenance.
 Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
@@ -336,7 +336,8 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### NET-01 — mock connect-only byte stream
 
-- **Status:** Blocked on IO-01
+- **Status:** Deferred behind current portability and utility milestones;
+  IO-01 is accepted, so polling is no longer a dependency blocker
 - **Base:** integrated dependency
 - **Hypothesis:** a socket-like descriptor over a mock transport can establish
   portable stream semantics before any real host network adapter exists.
@@ -744,7 +745,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### IO-01-design — polling and deadline contract
 
-- **Status:** Claimed by Antigravity; review corrections in progress
+- **Status:** Superseded historical proposal; accepted IO-01 at 819a964
+  supplies the polling contract. The unmerged old design is not itself accepted.
 - **Base:** main
 - **Hypothesis:** explicit readiness and unavailable-clock behavior can unblock
   deterministic descriptor polling without host descriptors or busy waiting.
@@ -928,7 +930,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-03 — isolated canonical engine
 
-- **Status:** Blocked on TERM-02
+- **Status:** Claimed by Codex on `work/TERM-03`; TERM-02 is accepted.
+  Isolated engine only; current host routing remains unchanged.
 - **Base:** integrated dependency
 - **Scope:** deterministic queue/record/erase/EOF transitions without live host
   routing, following the accepted terminal design's fixed storage bounds.
@@ -946,8 +949,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-05-design — bounded host output service
 
-- **Status:** Claimed by Codex on `work/TERM-05-design-review`; review of the
-  preserved older design against current WRITE-02, documentation only
+- **Status:** Design review complete at a283eef; exact #380 all three checks
+  passed. See TERM-05-design-review note; implementation remains separately gated.
 - **Base:** main
 - **Scope:** resolve the explicitly open output progress, completion and
   cancellation contract before scheduler or raw-adapter implementation.
@@ -1524,7 +1527,8 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### UPSTREAM-AUDIT-01 — verify imported-source provenance and wiring
 
-- **Status:** Claimed by Antigravity on `work/UPSTREAM-AUDIT-01`; documentation only
+- **Status:** Reviewed audit integrated; 18 declared NetBSD source hashes
+  independently verified, no source mismatch found; documentation only
 - **Base:** freshly fetched main
 - **Scope:** inventory actual imported files versus cannedBSD-owned commands,
   local hashes and pinned revisions, retained license notices, symbol renaming,

@@ -165,3 +165,13 @@ stage still needs independent review, exact Linux/Mac CI and fresh Mac artifact
 acceptance, plus the current Solaris transition/qualification policy. This
 review has source inspection and publication/diff checks only; documentation
 requires no guest run. It makes no claim that asynchronous service exists.
+
+## Independent review follow-up
+
+The later bounded scheduler tests must include a clock stuck at a positive
+value while finite waits keep reporting timeout. Shutdown must not become an
+endless deadline loop: account for bounded wait expiry or diagnose stalled
+time, while allowing normal coarse clock resolution. This is a proposed test
+requirement, not a newly implemented clock API. Independent review and exact
+feature #380 ci, mac68k and mac-automation passed for a283eef; no guest rerun is
+required for this documentation-only correction.

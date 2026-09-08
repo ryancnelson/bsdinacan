@@ -60,7 +60,8 @@ terminal fault or complete nonblocking/signal support is claimed.
 
 HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
 SOLARIS-01. The synthetic tee-state replacement is accepted on Linux/Mac. A Codex
-worker reviews TERM-05-design against the accepted write contract. Antigravity
+worker implements the isolated TERM-03 engine after the reviewed TERM-05
+contract correction. Antigravity
 audits import provenance. The reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition and actual command integration. Resetting a global or adding a signal stub is not
 acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
@@ -94,7 +95,7 @@ it is not done.
 ## Solaris portability priority, 2026-09-08
 
 The user requires the Solaris 9 SPARC rig for ongoing testing and CI. SOLARIS-01
-is the highest-priority unassigned task; SOLARIS-02 follows with serialized CI.
+is claimed by Claude as the highest-priority portability task; SOLARIS-02 follows with serialized CI.
 The earlier local port is preserved as reference, but current-main Solaris
 acceptance is pending integration. Existing assigned workers continue their IDs
 and report that outstanding gate under `notes/CI.md`; Linux and Mac requirements
@@ -127,8 +128,7 @@ The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
-on Linux and Mac, with Solaris qualification pending. TEE-STATE-01 is accepted on Linux/Mac. A Codex worker reviews the older
-TERM-05 design against current contracts; Antigravity
+on Linux and Mac, with Solaris qualification pending. TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements the isolated TERM-03 engine; Antigravity
 audits imported-source provenance after completing the lifecycle trace. Codex
 coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
