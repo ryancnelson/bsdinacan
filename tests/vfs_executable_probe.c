@@ -54,5 +54,3 @@ static int vfs_executable_probe_main(const struct cb_api_v1 *api, int argc,
 const struct cb_program_v1 cb_vfs_executable_probe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "vfsexecprobe", 0, 64 * 1024, vfs_executable_probe_main
 };
-
-
