@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude prepares ECHO-01; Antigravity owns STDOUT-01
-in its isolated worktree. Codex owns MAC-12 calibration next, integration and
-serialized guest acceptance. PROGNAME-01 and BASENAME-01 are merged and accepted
-at `a7acb54` (31 Mac records) and `5906b9c` (38 Mac records), respectively.
-VFS-02 remains accepted at `56e79e1` with its executable-node lifetime tests.
+**Current assignments:** Claude implements ECHO-01 with its prerequisites now
+accepted. Antigravity prepares the bounded HEAD-01 dependency plan in an isolated
+worktree; implementation remains deferred. Codex reviews, integrates and owns
+serialized guest acceptance. STDOUT-01 and MAC-12 are accepted at `894b753`
+with 42 fresh Mac records and a 16.09-second cold automated cycle.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -820,7 +820,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-12 — optional pre-match window and cursor calibration
 
-- **Status:** Ready; reserved for the Codex coordinator next
+- **Status:** Done at `894b753`; exact Woodpecker #230 and fresh calibrated guest accepted
 - **Base:** main after accepted BASENAME-01 `5906b9c`
 - **Depends on:** MAC-06, MAC-09, MAC-11 (Done)
 - **Hypothesis:** optional placement of the verified emulator window and parking
@@ -943,8 +943,7 @@ review or to satisfy this measured command's dependencies.
 
 ### ECHO-01 — unchanged NetBSD echo after measured prerequisites
 
-- **Status:** Preparation by Claude; runtime acceptance blocked on STDOUT-01
-  (PROGNAME-01 is accepted)
+- **Status:** Implementation by Claude; PROGNAME-01 and STDOUT-01 are accepted
 - **Base:** integrated dependencies
 - **Depends on:** PROGNAME-01, STDOUT-01
 - **Hypothesis:** unchanged pinned bin/echo/echo.c will correctly report output
@@ -990,7 +989,8 @@ review or to satisfy this measured command's dependencies.
 
 ### STDOUT-01 — task-owned standard-stream errors
 
-- **Status:** Claimed by Antigravity on `work/STDOUT-01`
+- **Status:** Done at `894b753`; coordinator integration, exact Woodpecker #230
+  and guest `run-mraq4k0o` with 42 PASS records accepted
 - **Base:** main
 - **Depends on:** ECHO-01-design (Done)
 - **Scope:** implement reviewed optional versioned stream-state accessor and
