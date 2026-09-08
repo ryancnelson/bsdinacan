@@ -4146,7 +4146,8 @@ enum test_fixture {
     FIXTURE_MAC = 2,
     FIXTURE_DIRNAME = 3,
     FIXTURE_DIRENT = 4,
-    FIXTURE_BASENAME = 5
+    FIXTURE_BASENAME = 5,
+    FIXTURE_YES = 6
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -4194,6 +4195,18 @@ static int register_basename_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &basenamenulltableprobe_program) == 0 &&
            cb_kernel_register(kernel, &basenameisolationpeer_program) == 0 &&
            cb_kernel_register(kernel, &basenameisolationprobe_program) == 0 ?
+           0 : -1;
+}
+
+/* Adding netbsdecho as a 13th base command (cb_register_base_programs)
+ * would have pushed FIXTURE_FULL's shared baseline plus its own explicit
+ * list past CB_MAX_PROGRAMS's 64-slot ceiling. Scoping yesreader/yesprobe
+ * out of FIXTURE_FULL and into their own fixture frees exactly the one
+ * slot that costs, rather than growing that production capacity. */
+static int register_yes_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &yesreader_program) == 0 &&
+           cb_kernel_register(kernel, &yesprobe_program) == 0 ?
            0 : -1;
 }
 
@@ -4408,9 +4421,7 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &allocationprobe_program) < 0 ||
             cb_kernel_register(kernel, &stdioprobe_program) < 0 ||
             cb_kernel_register(kernel, &stdioepipeprobe_program) < 0 ||
-            cb_kernel_register(kernel, &libcallocprobe_program) < 0 ||
-            cb_kernel_register(kernel, &yesreader_program) < 0 ||
-            cb_kernel_register(kernel, &yesprobe_program) < 0)
+            cb_kernel_register(kernel, &libcallocprobe_program) < 0)
             fail("test program registration");
     } else if (fixture == FIXTURE_DIRENT) {
         /* Scoped fixture for the dirent probes, mirroring this project's
@@ -4438,6 +4449,9 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
+    } else if (fixture == FIXTURE_YES) {
+        if (register_yes_probes(kernel) != 0)
+            fail("yes probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -4936,6 +4950,7 @@ static void test_poll_runnable_timeout(void)
 
 void cb_test_stdio_state(void);
 void cb_test_argv(void);
+void cb_test_echo_state(void);
 void cb_test_locale(void);
 void cb_test_terminal(void);
 
@@ -4991,6 +5006,11 @@ int main(int argc, char **argv)
         puts("stdio state tests passed");
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--echo-state") == 0) {
+        cb_test_echo_state();
+        puts("echo state tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--progname") == 0) {
         run_case("libcprognameprobe", "", 0, FIXTURE_MAC);
         puts("program-name tests passed");
@@ -5037,6 +5057,7 @@ int main(int argc, char **argv)
         fail("unknown test selection");
     cb_test_argv();
     cb_test_stdio_state();
+    cb_test_echo_state();
     test_mac_acceptance();
     test_err();
     test_netbsd_strlen();
@@ -5201,8 +5222,8 @@ int main(int argc, char **argv)
     run_case("stdioepipeprobe", "", 0, 1);
     run_case("stdioprobe unsupported", "prefix:", 0, 1);
     run_case("libcallocprobe", "", 0, 1);
-    run_case("yes ok | yesreader", "ok\n", 0, 1);
-    run_case("yesprobe", "ok\n", 0, 1);
+    run_case("yes ok | yesreader", "ok\n", 0, FIXTURE_YES);
+    run_case("yesprobe", "ok\n", 0, FIXTURE_YES);
     run_case("missing-command", "sh: missing-command: no such file or directory\n",
              127, 0);
     if (captured_streams[1][0] != '\0' ||

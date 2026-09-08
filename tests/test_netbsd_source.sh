@@ -184,4 +184,50 @@ for private_symbol in cb_libc_basename cb_libc_setlocale cb_libc_getopt \
     fi
 done
 
+echo_source=upstream/netbsd/bin/echo/echo.c
+echo_object=$build_path/netbsd_echo.o
+echo_hash=06d241a7305b4631b5154fe2ba72b433199e945f573dea46b9b0f17a4eeaed04
+
+if [[ ! -f $echo_source ]]; then
+    echo "FAIL: pinned NetBSD echo source is missing: $echo_source" >&2
+    exit 1
+fi
+actual_echo_hash=$(sha256sum "$echo_source" | awk '{print $1}')
+if [[ $actual_echo_hash != "$echo_hash" ]]; then
+    printf 'FAIL: NetBSD echo source changed: expected %s, found %s\n'         "$echo_hash" "$actual_echo_hash" >&2
+    exit 1
+fi
+if [[ ! -f $provenance_file ]] ||
+        ! matches "$echo_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD echo provenance is absent or does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $echo_object ]] ||
+        ! nm "$echo_object" |
+            matches '[[:space:]]T[[:space:]]+cb_netbsdecho_main$'; then
+    echo "FAIL: pinned NetBSD echo was not compiled as a command object" >&2
+    exit 1
+fi
+if nm "$echo_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: NetBSD echo exports the enclosing application main' >&2
+    exit 1
+fi
+for host_symbol in setprogname setlocale strcmp printf putchar fflush \
+        ferror err; do
+    if nm -u "$echo_object" |
+            matches "[[:space:]]U[[:space:]]+${host_symbol}\$"; then
+        printf 'FAIL: NetBSD echo imports host-facing %s\n'             "$host_symbol" >&2
+        exit 1
+    fi
+done
+for private_symbol in cb_libc_setprogname cb_libc_setlocale cb_libc_strcmp \
+        cb_libc_printf cb_libc_putchar cb_libc_fflush cb_libc_ferror \
+        cb_libc_err; do
+    if ! nm -u "$echo_object" |
+            matches "[[:space:]]U[[:space:]]+${private_symbol}\$"; then
+        printf 'FAIL: NetBSD echo does not import %s\n'             "$private_symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'
