@@ -598,8 +598,8 @@ $(BUILD)/libc_getopt_arg_probe.o: tests/libc_getopt_arg_probe.c include/cannedbs
 $(BUILD)/libc_stdin_probe.o: tests/libc_stdin_probe.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/errno.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_stdin_probe_main -c $< -o $@
 
-$(BUILD)/libc_file_probe.o: tests/libc_file_probe.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/errno.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_file_probe_main -c $< -o $@
+$(BUILD)/libc_file_probe.o: tests/libc_file_probe.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/errno.h libc/include/fcntl.h libc/include/unistd.h libc/include/sys/stat.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -MMD -MF $(@:.o=.d) -Dmain=cb_file_probe_main -c $< -o $@
 
 $(BUILD)/libc_fread_probe.o: tests/libc_fread_probe.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/errno.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_fread_probe_main -c $< -o $@

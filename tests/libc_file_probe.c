@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 
@@ -10,6 +13,11 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "default-mode") == 0) {
+        int fd = open("/tmp/default-mode", O_CREAT | O_WRONLY, DEFFILEMODE);
+        if (fd != 3) { if (fd >= 0) close(fd); return 34; }
+        return close(fd) == 0 ? 0 : 35;
+    }
     if (strcmp(mode, "open-one") == 0 || strcmp(mode, "open-two") == 0) {
         errno = EPIPE;
         first = fopen("/tmp/stream-input", "r");

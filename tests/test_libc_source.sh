@@ -495,7 +495,12 @@ if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$file_source"; then
     echo 'FAIL: file source uses private names' >&2
     exit 1
 fi
-for symbol in fopen fclose getc feof ferror errno_location; do
+if ! matches 'libc/include/sys/stat\.h' "$build_path/libc_file_probe.d" ||
+   ! matches '^#include <sys/stat\.h>$' "$file_source"; then
+    echo 'FAIL: file probe did not compile against private sys/stat.h' >&2
+    exit 1
+fi
+for symbol in open close fopen fclose getc feof ferror errno_location; do
     if nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
        ! nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
         echo "FAIL: file probe lacks private $symbol boundary" >&2
