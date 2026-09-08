@@ -8,6 +8,8 @@
 extern const struct cb_program_v1 cb_exitprobe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
+extern const struct cb_program_v1 cb_err_probe_program;
+extern int cb_err_probe_main(int argc, char **argv);
 
 static char captured[32768];
 static size_t captured_size;
@@ -1539,6 +1541,94 @@ static int errxprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+/* One shared test API keeps the binding alive across both real task stacks. */
+static struct cb_api_v1 err_test_api;
+static const struct cb_api_v1 *err_delegate;
+static cb_pid_t err_children[2], err_last_writer;
+static char err_diagnostics[2][128];
+static size_t err_lengths[2];
+static unsigned err_switches;
+
+static cb_ssize_t err_short_write(int descriptor, const void *buffer, size_t count)
+{
+    cb_pid_t pid = err_delegate->getpid();
+    size_t index = pid == err_children[0] ? 0 : 1;
+    cb_ssize_t result;
+    if (descriptor != 2 || pid != err_children[index])
+        fail("err wrote outside the child's stderr");
+    if (count > 2)
+        count = 2;
+    result = err_delegate->write(descriptor, buffer, count);
+    if (result <= 0 || (size_t)result >= sizeof(err_diagnostics[index]) - err_lengths[index])
+        fail("err short-write test capture");
+    memcpy(err_diagnostics[index] + err_lengths[index], buffer, (size_t)result);
+    err_lengths[index] += (size_t)result;
+    err_diagnostics[index][err_lengths[index]] = '\0';
+    if (err_last_writer != 0 && err_last_writer != pid)
+        ++err_switches;
+    err_last_writer = pid;
+    /* Successful I/O is allowed to change errno. Do so before actually
+       yielding to the other ordinary-source diagnostic mid-message. */
+    err_delegate->set_errno(CB_EIO);
+    err_delegate->yield();
+    return result;
+}
+
+static int err_short_start(const struct cb_api_v1 *api, int argc,
+                            char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)envp;
+    return cb_libc_start(&err_test_api, argc, argv, cb_err_probe_main);
+}
+
+static const struct cb_program_v1 err_short_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "errshort", 0,
+    64 * 1024, err_short_start
+};
+
+static int err_interleave_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    char *alpha[] = {(char *)"err-alpha", NULL};
+    char *beta[] = {(char *)"err-beta", (char *)"beta", NULL};
+    int status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    err_delegate = api;
+    err_test_api = *api;
+    err_test_api.write = err_short_write;
+    memset(err_diagnostics, 0, sizeof(err_diagnostics));
+    memset(err_lengths, 0, sizeof(err_lengths));
+    err_last_writer = 0;
+    err_switches = 0;
+    if (api->spawn("errshort", alpha, NULL, NULL, 0, &err_children[0]) < 0 ||
+        api->spawn("errshort", beta, NULL, NULL, 0, &err_children[1]) < 0)
+        return 401;
+    if (api->waitpid(err_children[0], &status) != err_children[0] || status != 7 ||
+        api->waitpid(err_children[1], &status) != err_children[1] || status != 8)
+        return 402;
+    if (err_switches < 2 ||
+        strcmp(err_diagnostics[0], "err-alpha: path alpha %: no such file or directory\n") != 0 ||
+        strcmp(err_diagnostics[1], "err-beta: beta: bad file descriptor\n") != 0)
+        return 403;
+    if (captured_stream_sizes[1] != 0)
+        return 404;
+    /* Each actual stderr byte was checked above per originating task; the
+       merged stream's order is deliberately controlled by the scheduler. */
+    captured_size = 0;
+    captured[0] = '\0';
+    captured_stream_sizes[2] = 0;
+    captured_streams[2][0] = '\0';
+    return 0;
+}
+
+static const struct cb_program_v1 err_interleave_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "errinterleave", 0,
+    64 * 1024, err_interleave_main
+};
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -2771,7 +2861,10 @@ static void run_case(const char *command, const char *expected_output,
     cb_register_base_programs(kernel);
     truncate_test_kernel = kernel;
     if (register_test_programs) {
-        if (cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
+        if (cb_kernel_register(kernel, &cb_err_probe_program) < 0 ||
+            cb_kernel_register(kernel, &err_short_program) < 0 ||
+            cb_kernel_register(kernel, &err_interleave_program) < 0 ||
+            cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
             cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
             cb_kernel_register(kernel, &truncateinterleave_program) < 0 ||
@@ -3129,6 +3222,20 @@ static void test_vfs_mount_routing(void)
     cb_vfs_destroy(&kernel);
 }
 
+static void test_err(void)
+{
+    run_case("errinterleave", "", 0, 1);
+    run_case("libcerrprobe", "libcerrprobe: path alpha %: no such file or directory\n", 7, 1);
+    expect_streams("", "libcerrprobe: path alpha %: no such file or directory\n");
+    run_case("libcerrprobe null", "libcerrprobe: no such file or directory\n", 7, 1);
+    run_case("libcerrprobe empty", "libcerrprobe: : no such file or directory\n", 7, 1);
+    run_case("libcerrprobe closed", "", 7, 1);
+    /* A zero-progress writer must not trap err in an infinite retry loop. */
+    capture_write_limit = 0;
+    run_case("libcerrprobe", "", 7, 1);
+    capture_write_limit = (size_t)-1;
+}
+
 static void test_mac_acceptance(void)
 {
 #define CB_MAC_CASE(command, expected, status) run_case(command, expected, status, 1);
@@ -3138,6 +3245,11 @@ static void test_mac_acceptance(void)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--err") == 0) {
+        test_err();
+        puts("err diagnostic tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--mac-acceptance") == 0) {
         test_mac_acceptance();
         puts("Mac acceptance command probes passed");
@@ -3154,6 +3266,7 @@ int main(int argc, char **argv)
     if (argc != 1)
         fail("unknown test selection");
     test_mac_acceptance();
+    test_err();
     test_netbsd_strlen();
     test_netbsd_strcmp();
     test_netbsd_memcpy();

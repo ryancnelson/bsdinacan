@@ -68,6 +68,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   formatter and `exit`. Writes the task's own program name (`argv[0]`), `": "`,
   the formatted message, and a newline to `stderr` only, then exits with the
   caller's status.
+- `err.h`: `err` snapshots task errno before diagnostic output and adds its
+  `strerror` text before the newline. It uses the same literal/`%%`/`%s`
+  formatter and exits with the requested status even if stderr fails. A null
+  format omits the message and its separator; an empty format does not.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, and `strchr` under private link names; the copy routines use the
   size-optimized shared implementation.

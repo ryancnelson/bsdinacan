@@ -5,6 +5,11 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 program=${PROGRAM_PATH:-$(make -s print-program)}
 
+# Local Woodpecker workflows share /tmp; each invocation owns its captures.
+case_dir=$(mktemp -d "${TMPDIR:-/tmp}/cannedbsd-printenv.XXXXXX")
+trap 'rm -rf "$case_dir"' EXIT
+trap 'exit 1' HUP INT TERM
+
 fail() {
     echo "FAIL: $1" >&2
     exit 1
@@ -39,11 +44,11 @@ esac
 
 # '=' in the requested name is a fatal diagnostic, not a lookup.
 set +e
-stdout_output=$("$program" -c 'printenv FOO=bar' 2>/tmp/printenv_test_stderr_eq)
+stdout_output=$("$program" -c 'printenv FOO=bar' 2>"$case_dir/stderr-eq")
 status=$?
 set -e
-stderr_output=$(cat /tmp/printenv_test_stderr_eq)
-rm -f /tmp/printenv_test_stderr_eq
+stderr_output=$(cat "$case_dir/stderr-eq")
+rm -f "$case_dir/stderr-eq"
 [ -z "$stdout_output" ] || fail "'=' case produced stdout <$stdout_output>"
 # A substring check, not exact equality: an ASan sanitizer build prints its
 # own benign, non-deterministic (memory addresses vary per run) banner to
@@ -58,11 +63,11 @@ esac
 # Too many arguments: usage diagnostic, no program-name prefix (a bare
 # fprintf in the pinned source, not errx).
 set +e
-stdout_output=$("$program" -c 'printenv a b' 2>/tmp/printenv_test_stderr_usage)
+stdout_output=$("$program" -c 'printenv a b' 2>"$case_dir/stderr-usage")
 status=$?
 set -e
-stderr_output=$(cat /tmp/printenv_test_stderr_usage)
-rm -f /tmp/printenv_test_stderr_usage
+stderr_output=$(cat "$case_dir/stderr-usage")
+rm -f "$case_dir/stderr-usage"
 [ -z "$stdout_output" ] || fail "usage case produced stdout <$stdout_output>"
 case "$stderr_output" in
 *"Usage: printenv [name]"*) ;;
