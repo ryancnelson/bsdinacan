@@ -204,19 +204,26 @@ blocking stdin poll, even if no further input ever arrives. Other runnable
 tasks and deadline checks still get a turn between sweeps. Current input-only
 `console_poll` is never used as a proxy for output readiness.
 
-TERM-01 deliberately does not implement waiting for writable output. Zero
-progress, `-CB_EAGAIN`, another negative result, or an impossible count greater
-than the requested suffix latches a terminal I/O failure. Stop draining input,
-preserve accepted input and the unwritten suffix for inspection, wake blocked
-terminal readers with `-1`/`CB_EIO`, and report `CB_POLLERR` rather than spinning
-or claiming echo completion. Later reads fail without consuming queued data;
-changing attributes does not clear this terminal fault. Before reporting run
-completion, the scheduler services any pending suffix using the same bounded
-sweeps even if the boot task has exited; a latched terminal fault makes
-`cb_kernel_run` return failure, not a successful run with silently lost echo.
-Teardown still restores the host. This fail-fast backpressure policy is a stated limitation; supporting
-recovery from temporarily unwritable output needs a separately designed host
-output-wait capability. Do not advertise such support through this interface.
+Zero progress or `-CB_EAGAIN` is backpressure, **not permanent terminal
+failure**. Preserve the exact suffix, accepted input, and offsets, suspend input
+draining, and resume output servicing when progress can be made. Do not turn
+ordinary output congestion into read errors, discard echo, or retry in a tight
+loop. A genuine non-backpressure host error must be reported without claiming
+successful echo delivery; no byte count larger than the request is valid.
+
+**Unresolved prerequisite; scheduler integration is blocked:** current host
+`console_poll` reports input readiness only, and Linux `console_write` loops
+until all bytes are written (including spinning if write returns zero). Neither
+supplies the bounded output-service contract this design needs. Before enabling
+live core echo, approve a contract that provides an output wake/retry independent
+of incoming stdin, bounds each write and wait, preserves IO-01 deadlines and
+input/suffix state through backpressure, and defines completion/cancellation
+while output remains blocked. It must distinguish backpressure from a real
+failure. No output-wait ABI is selected or advertised by this document.
+Successful run completion with pending echo and orderly shutdown treatment of
+that echo are part of this unresolved prerequisite; do not pretend stdin poll
+or a zero-byte retry loop solves it. The engine can test progress acknowledgments
+and preservation independently, but live scheduler/adapter stages stay blocked.
 
 ## One drain owner, readiness, and EOF
 
@@ -347,9 +354,12 @@ all existing console/IO tests. The bounded acceptance matrix is:
    reads; do not equate transient EAGAIN with physical EOF.
 5. A three-byte erase echo with successive one-byte host writes drains fully
    without any additional stdin event; no input read occurs between partial
-   writes. Zero/EAGAIN/hard-error/invalid-count writes latch the explicit I/O
-   failure without retry spins. Existing Linux write-all behavior must not be
-   used to satisfy this mock contract by assumption.
+   writes. Zero/EAGAIN preserves bytes and offsets without permanent failure
+   or retry spins, and later positive progress completes the original suffix.
+   Separately inject genuine host errors and invalid counts. The standalone
+   engine can test these transitions; actual output wake/wait and pending-echo
+   completion tests await the blocked stage's approved service contract.
+   Existing Linux write-all behavior is not evidence that this contract exists.
 6. Raw `VMIN=0/1`, literal control bytes, empty/readable poll, and two readers
    consuming one ready line. Count host reads to prove only root drains and
    count scheduling/wakeup events to reject repeated incomplete-line wakeups,
@@ -381,25 +391,26 @@ implement all stages in one branch:
 2. **Isolated canonical engine.** Pure bounded queue/record/erase/VEOF/echo
    state transitions, exercised with deterministic byte inputs and no host
    calls. Prove the 2048-byte input and three-byte echo limits, delimiters at
-   capacity, and error states. Depends on stage 1's owner/layout; does not
-   change live console input routing.
+   capacity, and progress/backpressure preservation. Depends on stage 1's
+   owner/layout; does not change live console input routing. This isolated
+   stage is ready once stage 1 is accepted, without solving host output waits.
 3. **Attributes and mode transitions.** Add validation and the supported
    attribute model using the engine, sharing and atomic-rejection tests.
    Demonstrate repeated transitions preserve the storage invariant. Depends
    on stages 1 and 2; real hosts still take legacy fallback.
-4. **Scheduler and mock lease.** Integrate the single root drain owner, pending
-   echo service independent of stdin, readiness, and restore-or-fatal lifecycle
-   using deterministic mocks. Preserve IO-01 deadline behavior. Depends on
-   stages 2/3 and accepted IO-01; prove the documented bounded/nonblocking host
-   writer and fail-fast output policy before any real adapter is enabled.
-5. **Linux adapter.** Implement exclusive acquisition, saved state, bounded
-   nonblocking reads/writes, exact restoration and injected failure tests on
-   isolated fixtures. Remove the leased writer's write-all/zero-progress loop;
-   this is a prerequisite, not assumed current behavior. Depends on stage 4.
-   Raw acquisition must remain disabled until all callback/restoration promises
-   are satisfied. A proposal to support output EAGAIN recovery instead of this
-   design's fail-fast policy blocks that part of the stage pending a separate
-   output-wait interface decision; do not quietly add an output API here.
+4. **Scheduler and mock lease — blocked.** Requires stages 2/3, accepted IO-01,
+   and an independently reviewed bounded output-service contract described
+   above. Only then integrate the single root drain owner, echo progress
+   independent of stdin, readiness, and restore-or-fatal lifecycle using
+   deterministic mocks. Prove recovery from output backpressure without lost
+   input, false terminal failure or deadline starvation. Do not assign this
+   as live runtime work before its output-service prerequisite is resolved.
+5. **Linux adapter — blocked by stage 4.** Implement exclusive acquisition,
+   saved state, the approved bounded input/output service, exact restoration
+   and injected failure tests on isolated fixtures. Remove the leased writer's
+   write-all/zero-progress loop; this is a prerequisite, not assumed current
+   behavior. Raw acquisition remains disabled until the output-service and
+   restoration promises are satisfied. No speculative output API belongs here.
 6. **Mac adapter, later.** Inventory and implement bounded root-stack keyboard
    delivery without host edit/echo, plus exact UI-mode restoration. Depends on
    stage 4 and a separate reviewed Mac buffer/event contract; remains **blocked
@@ -407,8 +418,10 @@ implement all stages in one branch:
    exist. Mac legacy ENOSYS/pass-through remains supported in all earlier stages.
 
 Prior design commit `50b6093` passed all three exact Woodpecker workflows.
-This revision makes the output failure policy, cleanup boundary, raw-storage
-invariant, and staging dependencies explicit; its own exact checks are pending.
+This revision makes the cleanup boundary, raw-storage invariant, and staging
+dependencies explicit. Output backpressure preserves data; its live servicing
+interface is unresolved and blocks the integration/adapter stages, not the
+standalone engine. This revision's own exact checks are pending.
 
 This branch has no runtime red/green claim and needs no guest execution.
 Validation for the revised design: source inventory above, design consistency
