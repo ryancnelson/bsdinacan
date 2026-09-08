@@ -17,7 +17,7 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
-foreach(probe stdin memory getopt truncate err warn terminal locale dirname dirent progname exec_errno basename stdio_state stdio_oldtable argv getopt_arg)
+foreach(probe stdin memory getopt truncate err warn strcpy terminal locale dirname dirent progname exec_errno basename stdio_state stdio_oldtable argv getopt_arg)
     add_library(cb_${probe}_probe OBJECT ${ROOT}/tests/libc_${probe}_probe.c)
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
@@ -27,6 +27,7 @@ target_compile_definitions(cb_locale_probe PRIVATE main=cb_locale_probe_main)
 target_compile_definitions(cb_terminal_probe PRIVATE main=cb_terminal_probe_main)
 target_compile_definitions(cb_err_probe PRIVATE main=cb_err_probe_main)
 target_compile_definitions(cb_warn_probe PRIVATE main=cb_warn_probe_main)
+target_compile_definitions(cb_strcpy_probe PRIVATE main=cb_strcpy_probe_main)
 target_compile_definitions(cb_memory_probe PRIVATE main=cb_memory_probe_main)
 target_compile_definitions(cb_getopt_arg_probe PRIVATE main=cb_getopt_arg_probe_main)
 target_compile_definitions(cb_getopt_probe PRIVATE main=cb_getoptprobe_main)
@@ -55,7 +56,7 @@ target_compile_definitions(cb_printenv PRIVATE main=cb_printenv_main)
 # accessor macro, into a declarator this toolchain's GCC also parses as an
 # unprototyped redeclaration of cb_libc_environ_location.
 target_compile_options(cb_printenv PRIVATE -Wno-strict-prototypes)
-foreach(routine strlen strcmp memcpy memmove memcmp strchr)
+foreach(routine strlen strcmp strcpy memcpy memmove memcmp strchr)
     add_library(cb_${routine} OBJECT
         ${ROOT}/upstream/netbsd/common/lib/libc/string/${routine}.c)
     target_include_directories(cb_${routine} PRIVATE
@@ -63,6 +64,7 @@ foreach(routine strlen strcmp memcpy memmove memcmp strchr)
 endforeach()
 target_compile_definitions(cb_strlen PRIVATE strlen=cb_libc_strlen)
 target_compile_definitions(cb_strcmp PRIVATE CANNEDBSD_BUILDING_LIBC_STRCMP)
+target_compile_definitions(cb_strcpy PRIVATE CANNEDBSD_BUILDING_LIBC_STRCPY)
 target_compile_definitions(cb_memcpy PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCPY)
 target_compile_definitions(cb_memmove PRIVATE CANNEDBSD_BUILDING_LIBC_MEMMOVE)
 target_compile_definitions(cb_memcmp PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCMP)
@@ -87,6 +89,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_terminal_probe_module.c
     ${ROOT}/tests/libc_err_probe_module.c
     ${ROOT}/tests/libc_warn_probe_module.c
+    ${ROOT}/tests/libc_strcpy_probe_module.c
     ${ROOT}/tests/libc_poll_probe_module.c
     ${ROOT}/tests/libc_memory_probe_module.c
     ${ROOT}/tests/libc_argv_probe_module.c
@@ -102,11 +105,11 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_progname_probe_module.c
     ${ROOT}/tests/libc_basename_probe_module.c
     ${ROOT}/tests/vfs_executable_probe.c)
-target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_memory_probe>
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo>
-    $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp>
+    $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)

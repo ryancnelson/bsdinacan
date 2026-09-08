@@ -77,6 +77,7 @@ extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
 size_t cb_libc_strlen(const char *text);
 int cb_libc_strcmp(const char *left, const char *right);
+char *cb_libc_strcpy(char *dest, const char *src);
 void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);
 int cb_libc_memcmp(const void *left, const void *right, size_t count);

@@ -31,7 +31,7 @@ CORE_SOURCES := \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c $(CORE_SOURCES)
+TEST_SOURCES := tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
@@ -42,6 +42,7 @@ EXITPROBE_COMMAND_OBJECT := $(BUILD)/exitprobe_command.o
 GETOPTPROBE_COMMAND_OBJECT := $(BUILD)/getoptprobe_command.o
 ERRXPROBE_COMMAND_OBJECT := $(BUILD)/errxprobe_command.o
 ERRPROBE_COMMAND_OBJECT := $(BUILD)/errprobe_command.o
+STRCPYPROBE_COMMAND_OBJECT := $(BUILD)/strcpyprobe_command.o
 PROGNAMEPROBE_COMMAND_OBJECT := $(BUILD)/prognameprobe_command.o
 DIRNAMEPROBE_COMMAND_OBJECT := $(BUILD)/dirnameprobe_command.o
 DIRNAME_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirname_oldtable_probe.o
@@ -56,6 +57,7 @@ DIRENT_CLOSEDIR_REBIND_TEST_OBJECT := $(BUILD)/libc_dirent_closedir_rebind_probe
 LIBC_OBJECT := $(BUILD)/cb_libc.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
+NETBSD_STRCPY_OBJECT := $(BUILD)/netbsd_strcpy.o
 NETBSD_MEMCPY_OBJECT := $(BUILD)/netbsd_memcpy.o
 NETBSD_MEMMOVE_OBJECT := $(BUILD)/netbsd_memmove.o
 NETBSD_MEMCMP_OBJECT := $(BUILD)/netbsd_memcmp.o
@@ -78,6 +80,7 @@ LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) \
 	$(NETBSD_MEMCMP_OBJECT)
 
 LIBC_OBJECTS += $(NETBSD_STRCHR_OBJECT)
+LIBC_OBJECTS += $(NETBSD_STRCPY_OBJECT)
 LIBC_OBJECTS += $(NETBSD_DIRNAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_BASENAME_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
@@ -152,6 +155,11 @@ $(WARNPROBE_COMMAND_OBJECT): tests/libc_warn_probe.c include/cannedbsd/abi.h \
 		libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_warn_probe_main \
 		-c tests/libc_warn_probe.c -o $@
+
+$(STRCPYPROBE_COMMAND_OBJECT): tests/libc_strcpy_probe.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/string.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_strcpy_probe_main \
+		-c tests/libc_strcpy_probe.c -o $@
 
 $(ERRPROBE_COMMAND_OBJECT): tests/libc_err_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/err.h libc/include/errno.h \
@@ -242,6 +250,13 @@ $(NETBSD_STRLEN_OBJECT): upstream/netbsd/common/lib/libc/string/strlen.c \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
 		-Dstrlen=cb_libc_strlen -c $< -o $@
+
+
+$(NETBSD_STRCPY_OBJECT): upstream/netbsd/common/lib/libc/string/strcpy.c \
+		compat/netbsd/include/assert.h include/cannedbsd/libc.h libc/include/string.h \
+		libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-DCANNEDBSD_BUILDING_LIBC_STRCPY -c $< -o $@
 
 $(NETBSD_STRCMP_OBJECT): upstream/netbsd/common/lib/libc/string/strcmp.c \
 		compat/netbsd/include/assert.h include/cannedbsd/libc.h libc/include/string.h \
@@ -338,10 +353,10 @@ $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRIN
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 $(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) \
-		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(LIBC_ARCHIVE) \
+		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 
@@ -508,6 +523,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_warn_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_warn_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_strcpy_probe_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_strcpy_probe.c
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_progname_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_progname_probe.c

@@ -17,6 +17,7 @@ CB_MAC_CASE("warnprobe ordinary", "warnprobe: ordinary format: bad file descript
 CB_MAC_CASE("warnprobe null", "warnprobe: no such file or directory\ncontinued\n", 0)
 CB_MAC_CASE("warnprobe empty", "warnprobe: : no such file or directory\ncontinued\n", 0)
 CB_MAC_CASE("warnprobe failed", "preserved\n", 0)
+CB_MAC_CASE("strcpyprobe", "", 0)
 CB_MAC_CASE("normalpollprobe", "", 0)
 CB_MAC_CASE("libcterminalprobe", "", 0)
 CB_MAC_CASE("libclocaleprobe", "", 0)
