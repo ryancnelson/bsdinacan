@@ -63,6 +63,22 @@ Then execute the driver, giving both paths explicitly:
 hs -c 'macTestConfigPath="/path/to/private-config.json"; dofile("/path/to/bsdinacan/platform/mac68k/automation/run.lua")'
 ```
 
+The desktop must be unlocked, on the console, and fully logged in. Before
+starting the matcher and again immediately before launch, the driver reads
+[Hammerspoon's documented `hs.caffeinate.sessionProperties()`](https://www.hammerspoon.org/docs/hs.caffeinate.html#sessionProperties).
+A positive `CGSSessionScreenIsLocked` blocks launch. The normal unlocked
+macOS dictionary can omit that key; missing or false is accepted only with
+`kCGSSessionOnConsoleKey=true` and `kCGSessionLoginDoneKey=true`. Unavailable,
+malformed, or unrecognized session data blocks launch with a reason in
+`run.json`, preserving the staged slot and evidence. No acceptance or screenshot
+is inferred from an absent guest window. The dictionary varies by system state,
+so an unsupported schema needs inspection rather than bypassing the gate.
+
+The preflight does not unlock the Mac or guarantee it stays unlocked after
+launch. If the desktop later locks, normal runner failures retain the guest and
+slot for inspection; the coordinator must restore access and verify clean guest
+shutdown before release.
+
 The driver waits for the matcher's JSON readiness handshake before launching the
 guest. Imports must finish within `startup_timeout` (default 30 seconds); a
 startup failure leaves the guest unlaunched. Overall guest timeout starts after
