@@ -14,9 +14,15 @@ int main(int argc, char *argv[])
         return 2;
     seen_tmp = 0;
     for (;;) {
+        errno = 0;
         entry = readdir(dirp);
-        if (entry == NULL)
+        if (entry == NULL) {
+            if (errno != 0) {
+                closedir(dirp);
+                return 4;
+            }
             break;
+        }
         if (entry->d_name[0] == 't' && entry->d_name[1] == 'm' &&
             entry->d_name[2] == 'p' && entry->d_name[3] == '\0')
             seen_tmp = 1;
