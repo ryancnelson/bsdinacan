@@ -2242,6 +2242,8 @@ static void test_vfs_mount_routing(void)
     task.kernel = &kernel;
     task.root = kernel.vfs_root;
     task.cwd = kernel.vfs_root;
+    cb_vfs_node_retain(task.root);
+    cb_vfs_node_retain(task.cwd);
     task.error_cell = cb_allocate(&kernel, sizeof(int));
 
     /* Make a directory /mnt in root filesystem */
@@ -2286,9 +2288,10 @@ static void test_vfs_mount_routing(void)
         fail("stat /mnt not a directory");
         
     file = cb_vfs_open(&task, "/mnt", 0, 0);
-    if (file == NULL)
-        fail("open /mnt failed");
-    cb_open_file_release(file);
+    if (file != NULL)
+        fail("open /mnt succeeded (expected EISDIR)");
+    if (*task.error_cell != CB_EISDIR)
+        fail("open /mnt did not return EISDIR");
 
     /* 3. Exact EPERM on mount-point unlink */
     if (cb_vfs_unlink_path(&task, "/mnt") >= 0)
@@ -2314,6 +2317,37 @@ static void test_vfs_mount_routing(void)
     if (cb_vfs_mount_path(&task, "/mnt/hello", wrong_mount) != -CB_EINVAL)
         fail("wrong kernel mount did not return EINVAL");
     wrong_mount->ops->destroy(wrong_mount);
+
+
+    /* Test duplicates and root path */
+    struct cb_vfs_mount *dup_mount = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mount_path(&task, "/mnt", dup_mount) != -CB_EEXIST)
+        fail("duplicate mount target not rejected");
+    if (cb_vfs_mount_path(&task, "/mnt/", dup_mount) != -CB_EEXIST)
+        fail("duplicate routed target not rejected");
+    if (cb_vfs_mount_path(&task, "/", dup_mount) != -CB_EINVAL)
+        fail("root overlay not rejected");
+    dup_mount->ops->destroy(dup_mount);
+
+    struct cb_vfs_mount *reused = cb_ramfs_mount_create(&kernel);
+    if (cb_vfs_mkdir_path(&task, "/reused", 0777) < 0) fail("mkdir /reused");
+    if (cb_vfs_mount_path(&task, "/reused", kernel.root_mount) != -CB_EINVAL)
+        fail("root mount object reused");
+    
+    if (cb_vfs_mount_path(&task, "/reused", task.kernel->mounts[0].mount) != -CB_EINVAL)
+        fail("existing mount object reused");
+    
+    reused->ops->destroy(reused);
+
+    /* Test file overlay (not a directory) */
+    struct cb_vfs_mount *file_mount = cb_ramfs_mount_create(&kernel);
+    struct cb_open_file *tmp_file = cb_vfs_open(&task, "/reused/file", CB_O_CREAT | CB_O_WRONLY, 0666);
+    if (tmp_file == NULL)
+        fail("file create failed");
+    cb_open_file_release(tmp_file);
+    if (cb_vfs_mount_path(&task, "/reused/file", file_mount) != -CB_ENOTDIR)
+        fail("mounting over file not ENOTDIR");
+    file_mount->ops->destroy(file_mount);
 
     /* capacity */
     struct cb_vfs_mount *m3 = cb_ramfs_mount_create(&kernel);
@@ -2342,6 +2376,8 @@ static void test_vfs_mount_routing(void)
     m7->ops->destroy(m7);
 
     cb_release(&kernel, task.error_cell);
+    cb_vfs_node_release(task.cwd);
+    cb_vfs_node_release(task.root);
     cb_vfs_destroy(&kernel);
 }
 

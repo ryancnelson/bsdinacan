@@ -422,6 +422,8 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
 {
     char normalized[CB_PATH_MAX];
     struct cb_vfs_node *node = NULL;
+    struct cb_vfs_node *cand_root;
+    struct cb_stat_v1 statbuf;
     int result;
     size_t i;
 
@@ -430,6 +432,21 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
 
     if (mount->kernel != task->kernel || !mount_ops_valid(mount->ops))
         return -CB_EINVAL;
+
+    cand_root = mount->ops->root(mount);
+    if (cand_root == NULL || !node_ops_valid(cand_root->ops) || cand_root->mount != mount)
+        return -CB_EINVAL;
+        
+    if (cand_root->ops->stat(cand_root, &statbuf) < 0 || statbuf.type != CB_NODE_DIRECTORY)
+        return -CB_ENOTDIR;
+
+    if (mount == task->kernel->root_mount)
+        return -CB_EINVAL;
+
+    for (i = 0; i < task->kernel->mount_count; ++i) {
+        if (task->kernel->mounts[i].mount == mount)
+            return -CB_EINVAL;
+    }
 
     if (task->kernel->mount_count >= 4)
         return -CB_ENOMEM;
@@ -442,8 +459,15 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     if (result < 0)
         return result;
 
+    if (node == task->kernel->vfs_root)
+        return -CB_EINVAL;
+
+    if (node->ops->stat(node, &statbuf) < 0 || statbuf.type != CB_NODE_DIRECTORY)
+        return -CB_ENOTDIR;
+
     for (i = 0; i < task->kernel->mount_count; ++i) {
-        if (task->kernel->mounts[i].mount_point == node) {
+        if (task->kernel->mounts[i].mount_point == node ||
+            task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount) == node) {
             return -CB_EEXIST;
         }
     }
