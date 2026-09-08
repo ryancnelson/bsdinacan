@@ -1,0 +1,4 @@
+# Host screenshot matching only; not a guest runtime dependency.
+# Validated with Python 3.14 on arm64 macOS.
+numpy==2.5.3
+opencv-python-headless==5.0.0.93

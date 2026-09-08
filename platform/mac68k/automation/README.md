@@ -1,0 +1,111 @@
+# Fast System 7 guest test driver
+
+The Hammerspoon driver boots one staged native Basilisk II guest, launches the
+`zzz-run-tests` desktop applet, requires the shell image and fresh startup test
+result, saves guest-window evidence, types `exit`, and selects Special → Shut
+Down with a held mouse drag. Success requires the guest process to disappear,
+`guest.py check` to accept its evidence, and `guest.py release` to verify both
+disks closed. It never force-terminates the emulator.
+
+## Set up once
+
+Install Hammerspoon with its `hs` command and enable Accessibility and Screen
+Recording for it. Install the host matcher in a Python 3.14 virtual environment:
+
+```sh
+python3.14 -m venv /path/to/mac-test-venv
+/path/to/mac-test-venv/bin/python -m pip install -r platform/mac68k/automation/requirements.txt
+```
+
+Copy `config.example.json` to a private file outside the repository. Set `app`
+to the stable installed BasiliskII.app path, `python` to that virtual environment,
+and `state` to the same canonical absolute directory used by `guest.py stage`.
+Do not put local paths or config files into the repository. No Hammerspoon
+`init.lua` modification is needed.
+
+The clean System 7 boot seed must have the compiled `zzz-run-tests` applet on
+the desktop. It must open the application on the attached `CannedBSD` volume,
+not an older copy elsewhere. The supplied templates match the calibrated
+System 7 layout, fonts, and 2x template scale. Recalibrate explicitly if these
+change; a new dialog is not automatically dismissed.
+
+## Run each artifact
+
+First reserve the coordinator's shared guest slot and stage an exact Woodpecker
+artifact using the parent directory's runner:
+
+```sh
+python3 platform/mac68k/guest.py stage \
+  --artifact /path/to/downloaded-ci-artifact \
+  --commit FULL_40_CHARACTER_COMMIT_SHA \
+  --state /path/to/shared-guest-state \
+  --boot-seed /path/to/clean-shutdown-System7.dsk \
+  --native-template /path/to/current-basilisk-prefs \
+  --rom /path/to/Mac.ROM
+```
+
+Then execute the driver, giving both paths explicitly:
+
+```sh
+hs -c 'macTestConfigPath="/path/to/private-config.json"; dofile("/path/to/bsdinacan/platform/mac68k/automation/run.lua")'
+```
+
+The driver derives all disk, preferences, and result paths from the active MAC-01
+slot. It refuses an already running Basilisk II, reused evidence, a mismatching
+configuration, or a process whose command does not use those staged preferences.
+It pins the launched PID and stops on lost focus or a changed window frame.
+Use a dedicated desktop during the roughly seconds-long input sequence.
+
+The staging command precreates the empty result **before boot**. Native extfs
+successfully rewrote that file in the measured run, while creating an absent
+full-path file failed in prior trials. The driver never deletes, renames, or
+truncates exported files while the emulator runs.
+
+Results remain in the staged run: `acceptance.json` binds the exact archive and
+result hashes; `automation-<timestamp>/` contains `test.png`, copied guest output,
+and `run.json` with action timestamps. Only the emulator window is captured.
+Failures retain `failure.png` when available and leave the guest and slot for
+inspection. Stop the driver without killing the guest:
+
+```sh
+hs -c 'if macTestRun and macTestRun.active then macTestRun.stop() end'
+```
+
+After inspecting a failure, shut down the guest cleanly and release its slot
+with `guest.py release`. Start from a newly staged run for another attempt.
+
+## Calibration evidence and bounds
+
+The source driver completed one measured cold cycle in **12.6957 seconds** on
+2026-09-07: boot, desktop matching, applet launch, shell and eight-PASS/ALL PASS
+output, guest screenshot, typed exit, menu selection, and observed process exit.
+That timed trial preceded repository staging/provenance integration; it tested
+the locally configured disk and does not identify an exact CI artifact. The
+saved project driver needs its own exact-artifact integration run. This single
+trial is not evidence of hundreds of successful repetitions.
+
+Mouse delivery explicitly posts `mouseMoved`, then down/up after short delays.
+Menus retain left-button state and post `leftMouseDragged` before releasing it.
+Replacing these with host pointer movement or convenience clicks left the guest
+cursor stale during calibration. Those proven event sequences are preserved.
+
+The persistent Python matcher normalizes live window snapshots to 2x point
+scale and uses the supplied crops. It requires correlation at least 0.97 and
+rejects a spatially distinct second peak at 0.95 or higher. Flat, missing, or
+oversized templates, malformed frames, and out-of-window targets fail closed.
+The menu crop excludes hover-dependent highlighting; its Shut Down offset is
+calibrated from the same System 7 menu image. A different menu layout requires
+new calibration. Overall timeout is 60 seconds; polling and event delays are
+40–150 milliseconds. No template match is treated as permission to dismiss an
+unknown confirmation dialog.
+
+Focused tests run with:
+
+```sh
+/path/to/mac-test-venv/bin/python tests/test_mac_image_match.py
+luac -p platform/mac68k/automation/run.lua
+```
+
+Woodpecker's separate `mac-automation` workflow runs the synthetic matcher tests
+using the pinned Python packages. Linux `ci` and the Retro68 `mac68k` workflow
+remain separate gates; none of these CI workflows drives the user's desktop.
