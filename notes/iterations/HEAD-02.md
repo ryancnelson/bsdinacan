@@ -346,3 +346,20 @@ and a fail-on-first-call boundary), the three output-write failure
 shapes with an exact retry-call-count assertion, repeated invocation
 after failure, and a bounded callback-count safety cap with its own
 restoration-boundary assertion.
+
+## Coordinator integration acceptance
+
+Combined integration `70bedbbe86c9a09d5a39667c3532407c7d104204` passed independent
+review. Fresh Basilisk II run `run-5q4jh90b` passed all 66 current records,
+including all 31 head helper cases. The 21 original cases are retained;
+10 new cases characterize input/output faults and subsequent recovery.
+Archive SHA256:
+`921c43cf4c727974606b67284ddc51c4ef1a28141455660bbb75a08b04c2c9c3`.
+The full fresh transcript and decoded screenshot were inspected. Application
+and guest disks closed normally, and the driver released the slot after
+27.78 seconds from cold start. Input read errors still produce upstream head's
+zero status and truncated/empty output; this is explicitly a source limitation.
+Solaris qualification remains pending SOLARIS-01 integration.
+
+Exact integration Woodpecker #366 passed ci, mac68k and mac-automation before
+merging to main. This includes the accepted STAT and WRITE prerequisites.

@@ -4,6 +4,19 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted head fault characterization, 2026-09-08
+
+Integration `70bedbbe86c9a09d5a39667c3532407c7d104204` passed independent review
+and exact Woodpecker #366 ci, mac68k and mac-automation. The unchanged NetBSD
+head now has 31 internal acceptance cases, retaining the original 21 and adding
+bounded input/output faults, exact statuses/diagnostics and subsequent recovery.
+Fresh Basilisk II `run-5q4jh90b` passed all 66 top-level records. The full
+transcript and screenshot were inspected, followed by normal application/guest
+shutdown and slot release in 27.78 seconds. Archive SHA256:
+`921c43cf4c727974606b67284ddc51c4ef1a28141455660bbb75a08b04c2c9c3`.
+Upstream zero status on input read errors remains an explicit limitation.
+Solaris qualification remains pending integration.
+
 ## Accepted default creation mode, 2026-09-08
 
 Integration `f1a769a97017add822270526e06f826a1ab6bde4` passed independent review
@@ -33,8 +46,8 @@ terminal fault or complete nonblocking/signal support is claimed.
 
 ## Active work after head acceptance
 
-HEAD-02 669890d passed code review; combined CI and fresh Mac acceptance
-are pending. Claude implements SOLARIS-01. Antigravity implements the
+HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
+SOLARIS-01. Antigravity implements the
 reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
 candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
 acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
@@ -100,11 +113,10 @@ calculation. The tested command requests 128 KiB without changing global default
 The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
-**Current assignments:** Claude is running HEAD-02, tests-only characterization
-of unchanged head input/output failures and repeated recovery, extending the
-existing helper while preserving all current records. Antigravity implements
+**Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
+on Linux and Mac, with Solaris qualification pending. Antigravity implements
 TEE-STATE-01 from the reviewed design after the uniq/cut/tee audit. Codex
-coordinates STAT-01, independent reviews,
+coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
 for precise task boundaries; recommendations do not automatically become
 implementation assignments. New signals, upstream head patches and general

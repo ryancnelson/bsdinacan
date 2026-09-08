@@ -13,9 +13,9 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude is running HEAD-02 fault-characterization tests.
+**Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
 Antigravity implements the reviewed synthetic TEE-STATE-01 prerequisite.
-Codex coordinates STAT-01, reviews,
+Codex coordinates reviews,
 integration, backlog updates and serialized guest acceptance. HEAD-01
 is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
 FWRITE-01 was accepted at `885d83c` with 64 records.
@@ -23,7 +23,7 @@ FWRITE-01 was accepted at `885d83c` with 64 records.
 Solaris testing is now required for shared behavior changes under the transition
 policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
 coordinate Solaris validation; Claude has claimed SOLARIS-01 for source work
-after the HEAD-02 review corrections.
+after the completed HEAD-02 review corrections.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -1329,7 +1329,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### HEAD-02 — characterize unchanged head input and output failures
 
-- **Status:** Ready and assigned to Claude; implementation running on `work/HEAD-02`
+- **Status:** Done on Linux/Mac; reviewed integration 70bedbb, exact #366 all
+  three checks and fresh run-5q4jh90b with 66 records/31 head cases;
+  Solaris qualification pending
 - **Base:** freshly fetched main with accepted HEAD-01 `e65e36f`
 - **Depends on:** HEAD-01, accepted read/write stream and diagnostic contracts
 - **Scope:** Tests only, expanding the existing portable head helper while
