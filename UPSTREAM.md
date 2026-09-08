@@ -304,3 +304,31 @@ protected HFS fixture; this code is not linked into the Mac probe or runtime.
 - License: file-specific three-clause Regents of the University of California license, retained verbatim.
 
 The imported file is byte-for-byte unchanged. The build renames `main` to `cb_dirname_main`. It depends on a C-only locale boundary (`setlocale`) and a libc `dirname` implementation.
+
+## NetBSD `echo` (preparation only, not yet compiled or linked)
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/echo/echo.c`
+- Local path: `upstream/netbsd/bin/echo/echo.c`
+- SHA-256: `06d241a7305b4631b5154fe2ba72b433199e945f573dea46b9b0f17a4eeaed04`
+- Embedded RCS identifier: `$NetBSD: echo.c,v 1.23 2021/11/16 21:38:29 rillig Exp $`
+- License: file-specific three-clause Regents of the University of California license, retained verbatim.
+
+The imported file is byte-for-byte unchanged, matching the hash already
+measured in `notes/iterations/utility-roadmap-20260908.md`. It is
+vendored here as ECHO-01 preparation only, per
+`notes/iterations/ECHO-01-design.md` and the coordinator's explicit
+authorization to prepare while prerequisites integrate. **It is not yet
+compiled, linked, or registered anywhere in the build** -- it calls
+`setprogname`, `putchar`, `fflush`, and `ferror`, none of which this
+worktree's base (fresh `origin/main`, without `PROGNAME-01` or
+`STDOUT-01` merged) currently declares or implements as private
+veneers. Wiring it into the Makefile now would either fail to compile
+(reproducing the roadmap's own diagnostic) or require fake stub
+declarations, which this preparation explicitly does not do. See
+`notes/iterations/ECHO-01.md` for the prepared, not-yet-executable test
+matrix and the exact remaining steps once both prerequisites land. The
+eventual command will register under the distinct name `netbsdecho`
+for acceptance, per the design's item 3, rather than replacing the
+existing shell builtin `echo`.
