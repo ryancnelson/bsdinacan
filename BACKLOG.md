@@ -15,9 +15,10 @@ their paths do not overlap.
 
 **Current assignments:** Claude owns `VFS-03` directory iteration and its
 reviewed design corrections. Antigravity owns `IO-01` polling corrections.
-Codex owns `MAC-09` autorun integration, `REUSE-01` MacPerl/GUSI source audit,
-serialized guest acceptance, and integration. Main is `c93e2ba`, with fifteen
-actual guest checks accepted after Woodpecker #77.
+Codex owns review, serialized guest acceptance, integration, and the next
+bounded reuse/utility plans. MAC-09 and REUSE-01 are merged at `ca0cd19`,
+with fifteen actual guest checks accepted after Woodpecker #87.
+Antigravity also has the separate VFS-02 design queued behind polling fixes.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -133,7 +134,7 @@ independent backlog items while the emulator is occupied.
 
 ### FS-01-design — review the regular-file resize contract
 
-- **Status:** Design reviewed at `937c61a`; implementation assigned to Codex
+- **Status:** Done; reviewed design implemented in FS-01 and merged at `4f80e83`
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a bounded design can resolve FS-01's API and ownership questions.

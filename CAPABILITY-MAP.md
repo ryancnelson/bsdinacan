@@ -6,10 +6,10 @@ Only entries explicitly marked `Ready` in `BACKLOG.md` may be claimed.
 
 ## NetBSD utility ladder
 
-The current target is NetBSD `usr.bin/printenv` at the repository's pinned
-revision. Its actual source requires `environ`, `exit`, `getopt`, `printf`,
+NetBSD `usr.bin/printenv` is now imported and guest-tested at the repository's
+pinned revision. Its source required `environ`, `exit`, `getopt`, `printf`,
 `fprintf`, `stderr`, `errx`, and `__dead`; `strlen`, `memcmp`, and `strchr` are
-already present. The dependency order is:
+already present. The completed dependency sequence was:
 
 1. Per-task libc process state and an `environ` location/accessor that resolves
    the current task during interleaving and reflects environment mutation and
