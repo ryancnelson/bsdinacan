@@ -36,8 +36,17 @@ struct cb_tee_execution {
 
 **CRITICAL NOTE ON DISPATCH**: The wrapper must explicitly call `cb_native_executor()->method(wrapper->inner_execution)` for delegation. It must **never** dispatch via `wrapper->inner_execution->executor->method(...)` because `native_prepare` records the passed custom ops, and dispatching through it would infinitely recurse back into the wrapper!
 
-### 3. Context Save and Restore on Yields
-When a task is scheduled to run, the wrapper injects its isolated list state. When the native scheduler returns, it handles state extraction and cleanup:
+### 3. Context Save, Restore, and Creation
+When a task is scheduled to run, the wrapper injects its isolated list state. 
+
+- **`instance_create`**:
+  1. Allocate runtime-owned sidecar (`struct cb_tee_execution`) via `cb_allocate`. If it fails, return `NULL`.
+  2. Delegate inner creation: `wrapper->inner_execution = cb_native_executor()->instance_create(task, native_program)`.
+  3. If native creation fails, exact unwind: release the sidecar via `cb_release` and return `NULL`.
+  4. Initialize the outer `common` execution fields (`executor = custom_ops`, `task`, `program`).
+  5. Initialize `wrapper->task_head = NULL`.
+  6. Return the wrapper.
+  *Note*: No creation or failure path may touch or reset the global `cb_tee_head`, ensuring no active task global is ever disturbed.
 
 - **`start_or_resume`**: 
   1. Inject the task-owned list state: `cb_tee_head = wrapper->task_head;`
@@ -46,23 +55,26 @@ When a task is scheduled to run, the wrapper injects its isolated list state. Wh
   4. If the task is live, save the state: `wrapper->task_head = cb_tee_head;`
   5. Clear the global to `NULL` before returning to the scheduler. Do **not** attempt to restore any potentially dangling prior global state.
 
-This ensures no global reset is ever performed during create/destroy of another task, and the global is always `NULL` while other tasks run.
+- **`suspend`**:
+  - Explicit mandatory delegate: `cb_native_executor()->suspend(wrapper->inner_execution)`.
 
 ### 4. Lifecycle Cleanup (Exit/Teardown/Exec)
 **CRITICAL RULE 1: NEVER traverse or free `LIST` nodes in executor cleanup.**
-The task allocator owns the node allocations (via `cb_allocate`), not the wrapper. Core's `task_release_allocations()` automatically frees them *before* `request_termination` (core.c:938/949) and *before* `instance_destroy` on teardown (core.c:541/544). Attempting to traverse or free them in the wrapper would result in a use-after-free or double-free.
+The `LIST` nodes use ordinary `malloc` which maps to the task API allocate, tracking payload/bookkeeping for task cleanup. They are **not** direct `cb_allocate` allocations. Core's `task_release_allocations()` automatically frees them *before* `request_termination` (core.c:938/949) and *before* `instance_destroy` on teardown (core.c:541/544). Attempting to traverse or free them in the wrapper would result in a use-after-free or double-free. 
 
 **CRITICAL RULE 2: NEVER release the wrapper in `request_termination`.**
 Native termination suspends and *never returns*. The release belongs ONLY in `instance_destroy`.
 
 - **`request_termination`**:
   - Explicit delegate: `cb_native_executor()->request_termination(wrapper->inner_execution);`
-  - Do NOT release the wrapper here.
+  - Do NOT release the wrapper sidecar here.
 - **`instance_destroy`**:
   - Explicit delegate: `cb_native_executor()->instance_destroy(wrapper->inner_execution);`
-  - Safely release the wrapper execution structure itself (`cb_release`).
+  - The sidecar is runtime-owned `cb_allocate` and must be explicitly released here via `cb_release(kernel, wrapper)`.
+- **`program_destroy`**:
+  - Explicit delegate: `cb_native_executor()->program_destroy(kernel, native_program)`. No extra program-count decrement is performed.
 - **`exec` behavior**:
-  - A successful `exec` destroys the old execution (which releases the wrapper via `instance_destroy`) before the heap release, and the new fresh instance starts cleanly with a `NULL` state.
+  - A successful `exec` destroys the old execution (which releases the sidecar via `instance_destroy`) before the heap release, and the new fresh instance starts cleanly with a `NULL` state.
   - A failed `exec` preserves the state unharmed.
 
 ## Synthetic Verification Plan
@@ -70,5 +82,6 @@ Native termination suspends and *never returns*. The release belongs ONLY in `in
 To prove this strict isolation contract, we will build synthetic acceptance tests that work **without importing `tee` yet** (e.g., using a dummy program that mimics `tee`'s list allocation and global state usage):
 1. **Repeated Execution:** Run the mock sequentially; ensure the list size and content start fresh.
 2. **Interleaved Execution:** Spawn concurrent mock tasks. Yield between them and ensure neither pollutes the global `head` of the other.
-3. **Task-Failure / Exec / Teardown:** Force an `err()`, a failed `exec()`, a successful `exec()`, and a standard teardown mid-loop in the mock load. 
-4. **Allocation Observation:** Observe ownership counters *before* teardown to verify the core `task_release_allocations` correctly reclaims the `add()` list nodes natively, proving zero leaks and safe unwinding without wrapper-level traversal.
+3. **Creation Failure Unwinding:** Inject each creation failure (sidecar allocation, native context creation). Verify exact unwind paths correctly free runtime-owned sidecars, observe cleanup before teardown, and preserve another active task's global unharmed.
+4. **Task-Failure / Exec / Teardown:** Force an `err()`, a failed `exec()`, a successful `exec()`, and a standard teardown mid-loop in the mock load. 
+5. **Ownership and Allocation Observation:** Observe ownership counters *before* teardown, distinguishing task API list payload/bookkeeping vs runtime-owned sidecar/context ownership. Verify the core `task_release_allocations` correctly reclaims the `malloc` list nodes natively, proving zero leaks without wrapper-level traversal.
