@@ -118,7 +118,7 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   unchanged, so a retry with a larger buffer observes the same entry. On a
   runtime that predates this feature, all three calls fail with `ENOSYS`.
 - `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
-  `memmove`, `memcmp`, `strchr`, and `strcpy` under private link names; the copy routines use the
+  `memmove`, `memcmp`, `strchr`, and `strcpy` under private link names; memcpy and memmove use the
   size-optimized shared implementation.
 - `libgen.h`: `dirname` and `basename`, importing NetBSD's pinned
   `lib/libc/gen/dirname.c` and `lib/libc/gen/basename.c` unchanged. Every
