@@ -231,19 +231,7 @@ static void fd_close_all(struct cb_task *task)
     }
 }
 
-static struct cb_program *program_find(struct cb_kernel *kernel,
-                                       const char *name)
-{
-    size_t index;
-    const char *base = strrchr(name, '/');
-    if (base != NULL)
-        name = base + 1;
-    for (index = 0; index < kernel->program_count; ++index) {
-        if (strcmp(kernel->programs[index]->name, name) == 0)
-            return kernel->programs[index];
-    }
-    return NULL;
-}
+// program_find removed
 
 static cb_ssize_t console_read(struct cb_open_file *file,
                                struct cb_task *task, void *buffer,
@@ -711,6 +699,35 @@ static cb_pid_t api_getppid(void)
     return active_kernel->current->ppid;
 }
 
+
+static int resolve_executable_node(struct cb_task *task, const char *program_name, struct cb_vfs_node **node_out)
+{
+    char path[CB_PATH_MAX];
+    struct cb_vfs_node *node;
+    struct cb_stat_v1 statbuf;
+    int result;
+    
+    if (strchr(program_name, '/') == NULL) {
+        snprintf(path, sizeof(path), "/bin/%s", program_name);
+    } else {
+        snprintf(path, sizeof(path), "%s", program_name);
+    }
+    
+    result = cb_vfs_lookup_node(task, path, &node);
+    if (result < 0) return result;
+    
+    result = node->ops->stat(node, &statbuf);
+    if (result < 0) return result;
+    
+    if (statbuf.type == CB_NODE_DIRECTORY || statbuf.type == CB_NODE_TERMINAL)
+        return -CB_EACCES;
+    if (statbuf.type != CB_NODE_EXECUTABLE)
+        return -CB_ENOEXEC;
+        
+    *node_out = node;
+    return 0;
+}
+
 static int api_spawn(const char *program_name, char *const argv[],
                      char *const envp[],
                      const struct cb_spawn_action_v1 *actions,
@@ -718,8 +735,9 @@ static int api_spawn(const char *program_name, char *const argv[],
 {
     struct cb_kernel *kernel = active_kernel;
     struct cb_task *parent = kernel->current;
-    struct cb_program *program;
+    struct cb_vfs_node *node;
     struct cb_task *child;
+    int result;
     if (program_name == NULL || argv == NULL || argv[0] == NULL ||
         (action_count != 0 && actions == NULL)) {
         cb_task_set_error(parent, CB_EINVAL);
@@ -729,17 +747,23 @@ static int api_spawn(const char *program_name, char *const argv[],
         cb_task_set_error(parent, CB_EINVAL);
         return -1;
     }
-    program = program_find(kernel, program_name);
-    if (program == NULL) {
-        cb_task_set_error(parent, CB_ENOENT);
+    
+    result = resolve_executable_node(parent, program_name, &node);
+    if (result < 0) {
+        cb_task_set_error(parent, -result);
         return -1;
     }
-    child = task_create(kernel, parent, program, argv, envp, actions,
-                        action_count);
+    
+    child = task_create(kernel, parent, node->executable, argv, envp, actions, action_count);
     if (child == NULL) {
         cb_task_set_error(parent, CB_ENOMEM);
         return -1;
     }
+    
+    // task_create successful, retain node for the child
+    cb_vfs_node_retain(node);
+    child->executable_node = node;
+    
     if (pid_out != NULL)
         *pid_out = child->pid;
     cb_task_set_error(parent, 0);
@@ -750,10 +774,11 @@ static int api_exec(const char *program_name, char *const argv[],
                     char *const envp[])
 {
     struct cb_task *task = active_kernel->current;
-    struct cb_program *program;
+    struct cb_vfs_node *node;
     char **new_argv;
     char **new_environment;
     size_t argument_count;
+    int result;
     if (program_name == NULL || argv == NULL || argv[0] == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
@@ -763,11 +788,13 @@ static int api_exec(const char *program_name, char *const argv[],
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
-    program = program_find(task->kernel, program_name);
-    if (program == NULL) {
-        cb_task_set_error(task, CB_ENOENT);
+    
+    result = resolve_executable_node(task, program_name, &node);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
         return -1;
     }
+    
     new_argv = string_vector_copy(task->kernel, argv);
     new_environment = string_vector_copy(task->kernel,
         envp != NULL ? envp : task->environment);
@@ -777,7 +804,10 @@ static int api_exec(const char *program_name, char *const argv[],
         cb_task_set_error(task, CB_ENOMEM);
         return -1;
     }
-    task->pending_program = program;
+    
+    cb_vfs_node_retain(node);
+    task->pending_executable_node = node;
+    task->pending_program = node->executable;
     task->pending_argv = new_argv;
     task->pending_argc = (int)argument_count;
     task->pending_environment = new_environment;
@@ -1484,21 +1514,43 @@ int cb_kernel_register_executor(struct cb_kernel *kernel,
                                 const void *source)
 {
     struct cb_program *program;
-    if (kernel == NULL || kernel->program_count >= CB_MAX_PROGRAMS ||
-        cb_executor_prepare(kernel, executor, source, &program) < 0)
+    char path[CB_PATH_MAX];
+    int result;
+    
+    if (kernel == NULL || cb_executor_prepare(kernel, executor, source, &program) < 0) {
         return -1;
-    if (program_find(kernel, program->name) != NULL) {
+    }
+        
+    if (strchr(program->name, '/') != NULL) {
         cb_executor_program_destroy(kernel, program);
         return -1;
     }
-    kernel->programs[kernel->program_count++] = program;
+    
+    snprintf(path, sizeof(path), "/bin/%s", program->name);
+    result = cb_vfs_create_executable(kernel, path, program);
+    if (result < 0) {
+        cb_executor_program_destroy(kernel, program);
+        return -1;
+    }
+    
     return 0;
 }
 
 int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
 {
-    struct cb_program *shell = program_find(kernel, "sh");
+    struct cb_vfs_node *shell_node;
+    struct cb_task dummy_task;
     struct cb_task *task;
+    int result;
+    
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    
+    result = resolve_executable_node(&dummy_task, "sh", &shell_node);
+    if (result < 0) return -1;
+    
     char *interactive_argv[] = {(char *)"sh", NULL};
     char *command_argv[] = {(char *)"sh", (char *)"-c", (char *)command,
                             NULL};
@@ -1507,9 +1559,9 @@ int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
     struct cb_open_file *input;
     struct cb_open_file *output;
     struct cb_open_file *error;
-    if (kernel == NULL || shell == NULL || kernel->boot_pid != 0)
+    if (kernel == NULL || kernel->boot_pid != 0)
         return -1;
-    task = task_create(kernel, NULL, shell,
+    task = task_create(kernel, NULL, shell_node->executable,
                        command == NULL ? interactive_argv : command_argv,
                        environment, NULL, 0);
     if (task == NULL)
@@ -1529,6 +1581,8 @@ int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
     fd_install_at(task, input, 0, 0);
     fd_install_at(task, output, 1, 0);
     fd_install_at(task, error, 2, 0);
+    cb_vfs_node_retain(shell_node);
+    task->executable_node = shell_node;
     kernel->boot_pid = task->pid;
     return 0;
 }

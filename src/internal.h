@@ -125,6 +125,7 @@ struct cb_vfs_mount {
 struct cb_vfs_node {
     const struct cb_vfs_node_ops *ops;
     struct cb_vfs_mount *mount;
+    struct cb_program *executable;
 };
 
 enum cb_poll_event {
@@ -171,6 +172,8 @@ struct cb_fd_entry {
 
 struct cb_task {
     struct cb_kernel *kernel;
+    struct cb_vfs_node *executable_node;
+    struct cb_vfs_node *pending_executable_node;
     cb_pid_t pid;
     cb_pid_t ppid;
     enum cb_task_state state;
@@ -245,6 +248,8 @@ void cb_executor_program_destroy(struct cb_kernel *kernel,
 int cb_vfs_initialize(struct cb_kernel *kernel);
 int cb_vfs_set_root_mount(struct cb_kernel *kernel,
                           struct cb_vfs_mount *mount);
+int cb_vfs_lookup_node(struct cb_task *task, const char *path, struct cb_vfs_node **node_out);
+int cb_vfs_create_executable(struct cb_kernel *kernel, const char *path, struct cb_program *program);
 int cb_vfs_mount_path(struct cb_task *task, const char *path,
                       struct cb_vfs_mount *mount);
 void cb_vfs_destroy(struct cb_kernel *kernel);

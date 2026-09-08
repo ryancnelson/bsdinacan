@@ -31,6 +31,7 @@ enum cb_error {
     CB_ESPIPE = 29,
     CB_EPIPE = 32,
     CB_ENAMETOOLONG = 63,
+    CB_ENOEXEC = 8,
     CB_ENOSYS = 78,
     CB_ENOTEMPTY = 66
 };
@@ -55,7 +56,8 @@ enum cb_node_type {
     CB_NODE_REGULAR = 1,
     CB_NODE_DIRECTORY = 2,
     CB_NODE_TERMINAL = 3,
-    CB_NODE_PIPE = 4
+    CB_NODE_PIPE = 4,
+    CB_NODE_EXECUTABLE = 5
 };
 
 struct cb_stat_v1 {

@@ -335,6 +335,8 @@ int cb_vfs_truncate_node(struct cb_vfs_node *node, cb_off_t length)
         return result;
     if (status.type == CB_NODE_DIRECTORY)
         return -CB_EISDIR;
+    if (status.type == CB_NODE_EXECUTABLE)
+        return -CB_EINVAL;
     if (status.type != CB_NODE_REGULAR)
         return -CB_ESPIPE;
     if (node->ops->struct_size <
@@ -520,4 +522,46 @@ int cb_vfs_mount_path(struct cb_task *task, const char *path,
     task->kernel->mount_count++;
 
     return 0;
+}
+
+
+
+int cb_vfs_create_executable(struct cb_kernel *kernel, const char *path, struct cb_program *program)
+{
+    char normalized[CB_PATH_MAX];
+    struct cb_vfs_node *node;
+    struct cb_vfs_node *parent;
+    const char *name;
+    struct cb_task dummy_task;
+    int result;
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+
+    result = normalize_for_task(&dummy_task, path, normalized);
+    if (result < 0) return result;
+
+    result = resolve_normalized(&dummy_task, normalized, &node);
+    if (result == 0) return -CB_EEXIST;
+    if (result != -CB_ENOENT) return result;
+
+    result = resolve_parent(&dummy_task, normalized, &parent, &name);
+    if (result < 0) return result;
+
+    result = parent->ops->create(parent, name, CB_NODE_EXECUTABLE, 0555, &node);
+    if (result < 0) return result;
+
+    node->executable = program;
+    return 0;
+}
+
+
+int cb_vfs_lookup_node(struct cb_task *task, const char *path, struct cb_vfs_node **node_out)
+{
+    char normalized[CB_PATH_MAX];
+    int result = normalize_for_task(task, path, normalized);
+    if (result < 0) return result;
+    return resolve_normalized(task, normalized, node_out);
 }
