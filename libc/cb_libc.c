@@ -17,7 +17,7 @@ static const struct cb_api_v1 *bound_api;
 static int api_is_usable(const struct cb_api_v1 *api)
 {
     return api != NULL && api->abi_version == CB_ABI_VERSION_V1 &&
-           api->struct_size >= sizeof(*api) && api->read != NULL &&
+           api->struct_size >= offsetof(struct cb_api_v1, poll) && api->read != NULL &&
            api->write != NULL && api->open != NULL && api->close != NULL &&
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
@@ -339,4 +339,18 @@ void cb_libc_err(int eval, const char *fmt, ...)
     write_all(2, error_text, cb_libc_strlen(error_text));
     write_all(2, "\n", 1);
     cb_libc_exit(eval);
+}
+
+int cb_libc_pipe(int fds[2])
+{
+    return bound_api->pipe(fds);
+}
+
+int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout)
+{
+    if (bound_api->struct_size < sizeof(*bound_api) || bound_api->poll == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->poll(fds, nfds, timeout);
 }

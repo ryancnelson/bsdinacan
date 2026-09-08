@@ -899,7 +899,7 @@ static int pipeedgepeer_main(const struct cb_api_v1 *api, int argc,
     if (count != 0)
         return 70;
     if (cb_test_current_descriptor_poll(pipe_edge_read_fd, CB_POLL_READ) !=
-        CB_POLL_READ)
+        (CB_POLL_READ | CB_POLL_HUP))
         return 201;
     if (cb_test_current_wake_reason() != CB_WAKE_PIPE_CHANGED)
         return 82;
@@ -928,7 +928,7 @@ static int pipeedgeprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->close(descriptors[0]) < 0)
         return 72;
     if (cb_test_current_descriptor_poll(descriptors[1], CB_POLL_WRITE) !=
-        CB_POLL_WRITE)
+        (CB_POLL_WRITE | CB_POLL_ERR))
         return 197;
     if (api->write(descriptors[1], &byte, 1) != -1 ||
         api->get_errno() != CB_EPIPE)
@@ -2458,6 +2458,67 @@ static const struct cb_program_v1 pipezeroprobe_program = {
     64 * 1024, pipezeroprobe_main
 };
 
+
+static int poll_wake_write_fd;
+
+static int pollwakepeer_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    char byte = 'x';
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    for (int i = 0; i < 50; i++) {
+        api->yield();
+    }
+    if (api->write(poll_wake_write_fd, &byte, 1) != 1) return 1;
+    return 0;
+}
+
+static int pollwakeprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    char *peer_argv[] = {(char *)"pollwakepeer", NULL};
+    struct cb_spawn_action_v1 close_reader;
+    cb_pid_t peer;
+    int descriptors[2];
+    int status;
+    struct cb_pollfd pfd;
+    (void)argc;
+    (void)argv;
+
+    if (api->pipe(descriptors) < 0) return 91;
+    poll_wake_write_fd = descriptors[1];
+
+    close_reader.abi_version = CB_ABI_VERSION_V1;
+    close_reader.struct_size = sizeof(close_reader);
+    close_reader.type = CB_SPAWN_CLOSE;
+    close_reader.from_fd = descriptors[0];
+
+    if (api->spawn(peer_argv[0], peer_argv, envp, &close_reader, 1, &peer) < 0) return 92;
+    if (api->close(descriptors[1]) < 0) return 93;
+
+    pfd.fd = descriptors[0];
+    pfd.events = CB_POLLIN;
+    /* Block until the peer writes */
+    if (api->poll(&pfd, 1, 5000) != 1) return 94;
+    if (!(pfd.revents & CB_POLLIN)) return 95;
+
+    if (api->waitpid(peer, &status) != peer || status != 0) return 96;
+    if (api->close(descriptors[0]) < 0) return 97;
+    return 0;
+}
+
+static const struct cb_program_v1 pollwakepeer_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pollwakepeer", 0,
+    64 * 1024, pollwakepeer_main
+};
+
+static const struct cb_program_v1 pollwakeprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pollwakeprobe", 0,
+    64 * 1024, pollwakeprobe_main
+};
+
 static const struct cb_program_v1 pipeedgepeer_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pipeedgepeer", 0,
     64 * 1024, pipeedgepeer_main
@@ -2826,6 +2887,94 @@ static int truncateinterleave_main(const struct cb_api_v1 *api, int argc,
 }
 #undef TRUNCATE_CHECK
 
+
+
+extern int clocklossprobe_main(int argc, char **argv);
+
+CB_LIBC_PROGRAM(clocklossprobe_program, "clocklossprobe",
+                clocklossprobe_main);
+
+extern int normalpollprobe_main(int argc, char **argv);
+extern int oldpollprobe_main(int argc, char **argv);
+
+static volatile int spinner_entered = 0;
+static volatile int spinner_completed = 0;
+
+static int yieldingspinner_main(const struct cb_api_v1 *api, int argc,
+                                char *const argv[], char *const envp[])
+{
+    int i;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    spinner_entered = 1;
+    for (i = 0; i < 200; i++) {
+        api->yield();
+    }
+    spinner_completed = 1;
+    return 0;
+}
+
+static int runnabletimeoutprobe_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    char *peer_argv[] = {(char *)"yieldingspinner", NULL};
+    cb_pid_t peer;
+    struct cb_pollfd pfd;
+    int status;
+    (void)argc;
+    (void)argv;
+
+    spinner_entered = 0;
+    spinner_completed = 0;
+
+    if (api->spawn("yieldingspinner", peer_argv, envp, NULL, 0, &peer) < 0) return 31;
+
+    while (!spinner_entered) {
+        api->yield();
+    }
+
+    pfd.fd = 0;
+    pfd.events = CB_POLLIN;
+    if (api->poll(&pfd, 1, 50) != 0)
+        return 32;
+
+    if (spinner_completed)
+        return 40;
+
+    if (api->waitpid(peer, &status) != peer || status != 0)
+        return 34;
+
+    return 0;
+}
+
+static const struct cb_program_v1 yieldingspinner_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "yieldingspinner", 0,
+    64 * 1024, yieldingspinner_main
+};
+
+static const struct cb_program_v1 runnabletimeoutprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "runnabletimeoutprobe", 0,
+    64 * 1024, runnabletimeoutprobe_main
+};
+
+CB_LIBC_PROGRAM(normalpollprobe_program, "normalpollprobe",
+                normalpollprobe_main);
+
+static int oldpollprobe_start(const struct cb_api_v1 *api, int argc, char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 old_api = *api;
+    old_api.struct_size = offsetof(struct cb_api_v1, poll);
+    old_api.poll = NULL;
+    (void)envp;
+    return cb_libc_start(&old_api, argc, argv, oldpollprobe_main);
+}
+
+static const struct cb_program_v1 oldpollprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "oldpollprobe", 0,
+    64 * 1024, oldpollprobe_start
+};
+
 static const struct cb_program_v1 truncateprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "truncateprobe", 0,
     64 * 1024, truncateprobe_main
@@ -2865,6 +3014,11 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &err_short_program) < 0 ||
             cb_kernel_register(kernel, &err_interleave_program) < 0 ||
             cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
+            cb_kernel_register(kernel, &normalpollprobe_program) < 0 ||
+            cb_kernel_register(kernel, &clocklossprobe_program) < 0 ||
+            cb_kernel_register(kernel, &runnabletimeoutprobe_program) < 0 ||
+            cb_kernel_register(kernel, &yieldingspinner_program) < 0 ||
+            cb_kernel_register(kernel, &oldpollprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
             cb_kernel_register(kernel, &truncateinterleave_program) < 0 ||
@@ -2876,6 +3030,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &pipezeropeer_program) < 0 ||
             cb_kernel_register(kernel, &pipezeroprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipeedgepeer_program) < 0 ||
+            cb_kernel_register(kernel, &pollwakepeer_program) < 0 ||
+            cb_kernel_register(kernel, &pollwakeprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipeedgeprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacitypeer_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacityprobe_program) < 0 ||
@@ -3243,6 +3399,105 @@ static void test_mac_acceptance(void)
 #undef CB_MAC_CASE
 }
 
+static uint64_t mock_clock_time = 1000;
+
+
+static int console_poll_negative_one_seen = 0;
+static int clockloss_trigger = 0;
+static struct cb_kernel *clockloss_kernel = NULL;
+
+static uint64_t clockloss_monotonic(void)
+{
+    if (clockloss_trigger) return 0;
+    return mock_clock_time;
+}
+
+static int clockloss_console_poll(int timeout)
+{
+    struct cb_task *pt;
+    int has_finite = 0;
+
+    if (timeout < 0)
+        console_poll_negative_one_seen = 1;
+
+    if (clockloss_kernel != NULL) {
+        for (pt = clockloss_kernel->tasks; pt != NULL; pt = pt->next) {
+            if (pt->state == CB_TASK_BLOCKED_POLL && pt->wake_timeout > 0)
+                has_finite = 1;
+        }
+    }
+
+    if (has_finite && clockloss_trigger == 0) {
+        clockloss_trigger = 1;
+    }
+    return 0;
+}
+
+static void test_poll_clockloss(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+
+
+    console_poll_negative_one_seen = 0;
+    host.monotonic_millis = clockloss_monotonic;
+    host.console_poll = clockloss_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+
+    kernel = cb_kernel_create(&host);
+    if (!kernel) fail("clockloss kernel");
+    clockloss_kernel = kernel;
+    clockloss_trigger = 0;
+    clockloss_kernel = kernel;
+    clockloss_trigger = 0;
+    cb_register_base_programs(kernel);
+    cb_kernel_register(kernel, &clocklossprobe_program);
+
+    if (cb_kernel_boot(kernel, "clocklossprobe") < 0) fail("clockloss boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("clockloss failed");
+    if (console_poll_negative_one_seen) fail("clockloss passed -1 to console_poll");
+    cb_kernel_destroy(kernel);
+    printf("clockloss test passed\n");
+}
+
+static uint64_t advancing_clock_monotonic(void)
+{
+    mock_clock_time += 1;
+    return mock_clock_time;
+}
+
+static void test_poll_runnable_timeout(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+
+    mock_clock_time = 1000;
+
+    host.monotonic_millis = advancing_clock_monotonic;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+    console_poll_ready = 0;
+
+    kernel = cb_kernel_create(&host);
+    if (!kernel) fail("runnabletimeout kernel");
+    cb_register_base_programs(kernel);
+    cb_kernel_register(kernel, &runnabletimeoutprobe_program);
+    cb_kernel_register(kernel, &yieldingspinner_program);
+
+    if (cb_kernel_boot(kernel, "runnabletimeoutprobe") < 0) fail("runnabletimeout boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) { printf("runnabletimeout status: %d (0x%x)\n", status, status); fail("runnabletimeout failed"); }
+    cb_kernel_destroy(kernel);
+    printf("runnable timeout test passed\n");
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--err") == 0) {
@@ -3253,6 +3508,15 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--mac-acceptance") == 0) {
         test_mac_acceptance();
         puts("Mac acceptance command probes passed");
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--poll") == 0) {
+        run_case("pollwakeprobe", "", 0, 1);
+        run_case("normalpollprobe", "", 0, 1);
+        run_case("oldpollprobe", "", 0, 1);
+        test_poll_clockloss();
+        test_poll_runnable_timeout();
+        puts("poll tests passed");
         return 0;
     }
     if (argc == 2 && strcmp(argv[1], "--truncate") == 0) {
@@ -3374,6 +3638,7 @@ int main(int argc, char **argv)
     run_case("pipeallocprobe", "", 0, 1);
     run_case("pipezeroprobe", "", 0, 1);
     run_case("pipeedgeprobe", "", 0, 1);
+    run_case("pollwakeprobe", "", 0, 1);
     run_case("pipecapacityprobe", "", 0, 1);
     run_case("environprobe", "", 0, 1);
     run_case("exitwaitprobe", "", 0, 1);
@@ -3385,6 +3650,10 @@ int main(int argc, char **argv)
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
     run_case("libctruncateprobe", "", 0, 1);
+    run_case("normalpollprobe", "", 0, 1);
+    run_case("oldpollprobe", "", 0, 1);
+    test_poll_clockloss();
+    test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);

@@ -74,6 +74,7 @@ enum cb_task_state {
     CB_TASK_BLOCKED_PIPE,
     CB_TASK_BLOCKED_CONSOLE,
     CB_TASK_BLOCKED_WAIT,
+    CB_TASK_BLOCKED_POLL,
     CB_TASK_EXEC_PENDING,
     CB_TASK_ZOMBIE,
     CB_TASK_DEAD
@@ -83,7 +84,8 @@ enum cb_wake_reason {
     CB_WAKE_NONE,
     CB_WAKE_PIPE_CHANGED,
     CB_WAKE_CONSOLE_READY,
-    CB_WAKE_CHILD_EXITED
+    CB_WAKE_CHILD_EXITED,
+    CB_WAKE_POLL_TIMEOUT
 };
 
 struct cb_vfs_mount_ops {
@@ -129,7 +131,9 @@ struct cb_vfs_node {
 
 enum cb_poll_event {
     CB_POLL_READ = 0x01,
-    CB_POLL_WRITE = 0x02
+    CB_POLL_WRITE = 0x02,
+    CB_POLL_HUP = 0x04,
+    CB_POLL_ERR = 0x08
 };
 
 struct cb_file_ops {
@@ -187,6 +191,8 @@ struct cb_task {
     int exit_status;
     cb_pid_t waiting_for;
     enum cb_wake_reason wake_reason;
+    uint64_t wake_start;
+    int wake_timeout;
     const struct cb_program *pending_program;
     char **pending_argv;
     int pending_argc;

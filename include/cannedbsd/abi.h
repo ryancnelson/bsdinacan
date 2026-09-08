@@ -32,7 +32,8 @@ enum cb_error {
     CB_EPIPE = 32,
     CB_ENAMETOOLONG = 63,
     CB_ENOSYS = 78,
-    CB_ENOTEMPTY = 66
+    CB_ENOTEMPTY = 66,
+    CB_EFAULT = 14
 };
 
 enum cb_open_flag {
@@ -115,6 +116,19 @@ struct cb_getopt_state_v1 {
     char *place;
 };
 
+struct cb_pollfd {
+    int fd;
+    short events;
+    short revents;
+};
+
+#define CB_POLLIN   0x001
+#define CB_POLLPRI  0x002
+#define CB_POLLOUT  0x004
+#define CB_POLLERR  0x008
+#define CB_POLLHUP  0x010
+#define CB_POLLNVAL 0x020
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -164,6 +178,7 @@ struct cb_api_v1 {
     int (*truncate)(const char *path, cb_off_t length);
     int (*ftruncate)(int fd, cb_off_t length);
     const char *(*getprogname)(void);
+    int (*poll)(struct cb_pollfd *fds, size_t nfds, int timeout);
 };
 
 struct cb_program_v1 {

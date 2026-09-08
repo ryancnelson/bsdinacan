@@ -343,6 +343,8 @@ void cb_wake_pipe_tasks(struct cb_kernel *kernel)
         if (task->state == CB_TASK_BLOCKED_PIPE) {
             task->wake_reason = CB_WAKE_PIPE_CHANGED;
             task->state = CB_TASK_RUNNABLE;
+        } else if (task->state == CB_TASK_BLOCKED_POLL) {
+            task->state = CB_TASK_RUNNABLE;
         }
     }
 }
@@ -431,19 +433,25 @@ static int pipe_stat(struct cb_open_file *file,
 static int pipe_read_poll(struct cb_open_file *file, int events)
 {
     struct cb_pipe *pipe = file->object.pipe;
+    int revents = 0;
+    if (pipe->writers == 0)
+        revents |= CB_POLL_HUP;
     if ((events & CB_POLL_READ) != 0 &&
         (pipe->used != 0 || pipe->writers == 0))
-        return CB_POLL_READ;
-    return 0;
+        revents |= CB_POLL_READ;
+    return revents;
 }
 
 static int pipe_write_poll(struct cb_open_file *file, int events)
 {
     struct cb_pipe *pipe = file->object.pipe;
+    int revents = 0;
+    if (pipe->readers == 0)
+        revents |= CB_POLL_ERR;
     if ((events & CB_POLL_WRITE) != 0 &&
         (pipe->used < sizeof(pipe->data) || pipe->readers == 0))
-        return CB_POLL_WRITE;
-    return 0;
+        revents |= CB_POLL_WRITE;
+    return revents;
 }
 
 static void pipe_read_close(struct cb_open_file *file)
@@ -686,19 +694,51 @@ static int has_console_waiter(struct cb_kernel *kernel)
 {
     struct cb_task *task;
     for (task = kernel->tasks; task != NULL; task = task->next)
-        if (task->state == CB_TASK_BLOCKED_CONSOLE)
+        if (task->state == CB_TASK_BLOCKED_CONSOLE || task->state == CB_TASK_BLOCKED_POLL)
             return 1;
     return 0;
 }
 
+static int get_poll_timeout(struct cb_kernel *kernel)
+{
+    struct cb_task *task;
+    int min_timeout = -1;
+    int has_poll = 0;
+    uint64_t current;
+    uint64_t elapsed;
+
+    current = kernel->host->monotonic_millis();
+
+    for (task = kernel->tasks; task != NULL; task = task->next) {
+        if (task->state == CB_TASK_BLOCKED_POLL) {
+            has_poll = 1;
+            if (task->wake_timeout > 0) {
+                if (current == 0) return 0; /* Wake immediately to report ENOSYS on lost clock */
+                elapsed = current - task->wake_start;
+                if (elapsed >= (uint64_t)task->wake_timeout)
+                    return 0; /* Already expired */
+                int remaining = task->wake_timeout - (int)elapsed;
+                if (min_timeout < 0 || remaining < min_timeout)
+                    min_timeout = remaining;
+            }
+        }
+    }
+    if (!has_poll) return -1;
+    return min_timeout;
+}
+
+
 static void wake_console_waiters(struct cb_kernel *kernel)
 {
     struct cb_task *task;
-    for (task = kernel->tasks; task != NULL; task = task->next)
+    for (task = kernel->tasks; task != NULL; task = task->next) {
         if (task->state == CB_TASK_BLOCKED_CONSOLE) {
             task->wake_reason = CB_WAKE_CONSOLE_READY;
             task->state = CB_TASK_RUNNABLE;
+        } else if (task->state == CB_TASK_BLOCKED_POLL) {
+            task->state = CB_TASK_RUNNABLE;
         }
+    }
 }
 
 static cb_pid_t api_getpid(void)
@@ -858,6 +898,90 @@ static void api_yield(void)
 {
     cb_task_yield_as(active_kernel->current, CB_TASK_RUNNABLE);
 }
+
+static int api_poll(struct cb_pollfd *fds, size_t nfds, int timeout)
+{
+    struct cb_task *task = active_kernel->current;
+    size_t i;
+    int ready_count;
+    struct cb_open_file *file;
+    uint64_t current_time;
+    int events;
+    int result;
+
+    if (nfds > 0 && fds == NULL) {
+        cb_task_set_error(task, CB_EFAULT);
+        return -1;
+    }
+    if (nfds > CB_MAX_FDS) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+
+    if (timeout > 0) {
+        task->wake_start = task->kernel->host->monotonic_millis();
+        if (task->wake_start == 0) {
+            cb_task_set_error(task, CB_ENOSYS);
+            return -1;
+        }
+        task->wake_timeout = timeout;
+    } else {
+        task->wake_timeout = timeout;
+    }
+
+    for (;;) {
+        ready_count = 0;
+        for (i = 0; i < nfds; ++i) {
+            fds[i].revents = 0;
+            if (fds[i].fd < 0)
+                continue;
+            if (fds[i].fd >= CB_MAX_FDS || task->descriptors[fds[i].fd].file == NULL) {
+                fds[i].revents = CB_POLLNVAL;
+                ready_count++;
+                continue;
+            }
+            file = task->descriptors[fds[i].fd].file;
+            events = 0;
+            if (fds[i].events & CB_POLLIN)
+                events |= CB_POLL_READ;
+            if (fds[i].events & CB_POLLOUT)
+                events |= CB_POLL_WRITE;
+
+            result = file->ops->poll(file, events);
+            if (result & CB_POLL_READ)
+                fds[i].revents |= CB_POLLIN;
+            if (result & CB_POLL_WRITE)
+                fds[i].revents |= CB_POLLOUT;
+            if (result & CB_POLL_HUP)
+                fds[i].revents |= CB_POLLHUP;
+            if (result & CB_POLL_ERR)
+                fds[i].revents |= CB_POLLERR;
+
+            if (fds[i].revents != 0)
+                ready_count++;
+        }
+
+        if (ready_count > 0 || task->wake_timeout == 0) {
+            cb_task_set_error(task, 0);
+            return ready_count;
+        }
+
+        if (task->wake_timeout > 0) {
+            current_time = task->kernel->host->monotonic_millis();
+            if (current_time == 0) {
+                cb_task_set_error(task, CB_ENOSYS);
+                return -1;
+            }
+            if (current_time - task->wake_start >= (uint64_t)task->wake_timeout) {
+                cb_task_set_error(task, 0);
+                return 0;
+            }
+        }
+
+        cb_task_yield_as(task, CB_TASK_BLOCKED_POLL);
+    }
+}
+
 
 static int api_open(const char *path, int flags, uint32_t mode)
 {
@@ -1406,6 +1530,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->truncate = api_truncate;
     api->ftruncate = api_ftruncate;
     api->getprogname = api_getprogname;
+    api->poll = api_poll;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)
@@ -1541,13 +1666,34 @@ int cb_kernel_run(struct cb_kernel *kernel)
     active_kernel = kernel;
     while (!kernel->boot_finished) {
         struct cb_task *task;
+        struct cb_task *pt;
+        uint64_t current = kernel->host->monotonic_millis();
+
         if (kernel->host->console_poll(0) > 0)
             wake_console_waiters(kernel);
+
+        for (pt = kernel->tasks; pt != NULL; pt = pt->next) {
+            if (pt->state == CB_TASK_BLOCKED_POLL && pt->wake_timeout > 0) {
+                if (current == 0 || current - pt->wake_start >= (uint64_t)pt->wake_timeout) {
+                    pt->state = CB_TASK_RUNNABLE;
+                }
+            }
+        }
+
         task = pick_runnable(kernel);
         if (task == NULL) {
-            if (has_console_waiter(kernel)) {
-                if (kernel->host->console_poll(-1) >= 0)
+            int p_timeout = get_poll_timeout(kernel);
+            int has_console = has_console_waiter(kernel);
+            if (has_console || p_timeout != -1 || kernel->host->console_poll(0) > 0) {
+                /* If we have blocked tasks, wait for events or timeout */
+                if (kernel->host->console_poll(p_timeout) >= 0)
                     wake_console_waiters(kernel);
+                /* Wake ALL poll tasks to let them re-evaluate if their timeout elapsed or descriptors are ready */
+                struct cb_task *pt;
+                for (pt = kernel->tasks; pt != NULL; pt = pt->next) {
+                    if (pt->state == CB_TASK_BLOCKED_POLL)
+                        pt->state = CB_TASK_RUNNABLE;
+                }
                 continue;
             }
             if (++idle_rounds > 1) {
