@@ -14,7 +14,7 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude implements CONV-01. Antigravity prepares
-HEAD-01-testplan; the coordinator worker implements STDIN-02. Codex owns review,
+HEAD-01-testplan; the coordinator worker implements STDIN-03. Codex owns review,
 integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
 with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
 
@@ -1117,7 +1117,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-02 — read-only fopen and fclose ownership
 
-- **Status:** Claimed by coordinator worker on `work/STDIN-02`
+- **Status:** Done at `0e35e50`; all three #291 checks and fresh 59-record Mac acceptance
 - **Base:** main after dependency acceptance
 - **Depends on:** STDIN-01, reviewed STDIN-01-design
 - **Scope:** stage 2 of the reviewed design, read-only r/rb wrappers and
@@ -1129,7 +1129,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-03 — fread complete-element counts and overflow
 
-- **Status:** Blocked on accepted STDIN-02
+- **Status:** Claimed by coordinator worker on `work/STDIN-03`
 - **Base:** main after dependency acceptance
 - **Depends on:** STDIN-02, reviewed STDIN-01-design
 - **Scope:** stage 3 of the reviewed design: bounded read accumulation,
@@ -1196,7 +1196,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### MAC-13 — document retirement of closed disposable boot copies
 
-- **Status:** Coordinator documentation complete; review/CI pending
+- **Status:** Done at `0e35e50`; reviewed documentation and all three #291 checks
 - **Base:** main after accepted strcpy
 - **Evidence:** accumulated 1 GiB boot copies exhausted host working space and
   an agent application reported ENOSPC. Accepted closed copies were retired

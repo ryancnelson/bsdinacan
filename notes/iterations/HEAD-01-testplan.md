@@ -33,7 +33,7 @@ This document establishes the exact execution contracts for `head` using the pin
 | 15| Binary line | `head`, `-n`, `2` | stdin: `\xFF\n\xFF` | `\xFF\n\xFF` | `""` | 0 | `head.c:169` (`EOF` differs from unsigned `\xFF`) |
 | 16| Short fread() | `head`, `-c`, `10` | stdin: `"ab"` | `"ab"` | `""` | 0 | `head.c:156-158` (rv=0 cleanly breaks) |
 | 17| Empty file | `head` | stdin: `""` | `""` | `""` | 0 | `head.c:169` (`getc` yields EOF immediately) |
-| 18| Deterministic pipe| `head`, `-n`, `1` | `cb_kernel_pipe()` connected | `"pipe\n"` | `""` | 0 | `head.c:138` (checked producer/consumer setup) |
+| 18| Deterministic pipe| `head`, `-n`, `1` | `api->pipe` connected | `"pipe\n"` | `""` | 0 | `head.c:138` (checked producer/consumer setup) |
 
 *Note on Case 14*: The 65538 byte output exceeds the native 32768 / Mac 4096 capture arrays. This test must be implemented with a scoped child execution using a RAMFS redirected output descriptor. Do **not** resize or enlarge the global capture arrays. The test must inspect the resulting RAMFS file in bounded chunks, checking length and byte contents, then report a compact `PASS` alongside the evaluated child `exit` status.
-*Note on Case 18*: Requires an actual deterministic pipe setup via `cb_kernel_pipe()` and `cb_kernel_spawn()` verifying both producer and consumer exit statuses properly, rather than simply passing a pre-filled RAMFS file as stdin.
+*Note on Case 18*: Use existing `api->pipe`, `api->spawn` with checked descriptor actions, and `api->waitpid`. The producer must write exactly five bytes `pipe\n`; close unused pipe ends in the parent and both children, verify both child exit statuses and exact output, and keep registration in a scoped fixture. A pre-filled RAMFS file is not a pipe test.

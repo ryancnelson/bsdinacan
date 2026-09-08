@@ -100,3 +100,15 @@ native/shared command tests, ASAN/UBSAN, source boundaries, publication hygiene,
 clean build-mode isolation, protocol checks, and GCC static analysis.
 Exact feature Woodpecker and coordinator-owned exact-artifact guest acceptance:
 pending. No guest run is claimed by this worker.
+
+## Coordinator acceptance
+
+Reviewed worker `b23cc0cc02117999aa18f014ba87208139232110` is integrated with
+accepted strcpy at `0e35e50ba91bd78284b3333dcf4ffb75441637cf`. Runtime/API and
+new file tests match the reviewed worker; build/test conflict resolution
+retains all existing cases. Exact Woodpecker #291 passed all three checks.
+Fresh guest `run-q3vxq533` passed 59 records in 22.93 seconds from cold launch
+through screenshot and normal shutdown. Receipt, transcript and screenshot
+were inspected; both disks were closed and the slot released. Archive SHA256:
+`3cd475ba9b847a50db996f4f34c040a8dcfa9bfd2a1032142e6262752b837fba`.
+Merged to main; fread remains the next distinct task.

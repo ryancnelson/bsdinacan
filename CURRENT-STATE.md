@@ -24,6 +24,22 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted file-stream prerequisite, 2026-09-08
+
+Read-only fopen/fclose and owned input wrappers are accepted at
+`0e35e50ba91bd78284b3333dcf4ffb75441637cf`. Independent runtime/integration
+review and all three Woodpecker #291 checks passed. Fresh guest `run-q3vxq533`
+passed all 59 records in a 22.93-second cold automated cycle. Screenshot and
+bound receipt were inspected; app/guest shutdown, closed disks and slot release
+were verified. Archive SHA256:
+`3cd475ba9b847a50db996f4f34c040a8dcfa9bfd2a1032142e6262752b837fba`.
+
+Stream acquisition rollback and exec/exit cleanup are observed before teardown;
+non-CLOEXEC descriptor inheritance and the original stdin/output ABI remain
+intact. STDIN-03 now implements fread and the shared overflow error mapping.
+Numeric conversion is undergoing Mac-wiring/test corrections; fwrite and the
+unchanged head import remain pending prerequisites.
+
 ## Latest accepted string prerequisite, 2026-09-08
 
 Pinned unchanged NetBSD strcpy is accepted at
