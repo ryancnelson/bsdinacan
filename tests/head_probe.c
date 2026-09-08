@@ -1,5 +1,128 @@
 #include "cannedbsd/abi.h"
+#include "cannedbsd/libc.h"
 #include <string.h>
+
+extern int cb_head_main(int argc, char *argv[]);
+
+/* Fault-injection modes, dispatched through the existing "headpipeproducer"
+ * registration below (no new registration: the shared FIXTURE_FULL table
+ * is already at CB_MAX_PROGRAMS's 64-slot ceiling -- HEAD-01 itself had to
+ * relocate cb_strcpy_probe_program's own registration to make room there).
+ * Each mode wraps the exact unchanged cb_head_main with a task-local copy
+ * of the API whose read()/write() is overridden -- the real registered
+ * "head" program is never touched, and is spawned normally by other cases
+ * in this same file to prove the fault state does not leak into a sibling
+ * task. Mode 0 (no argv[1], or an argv[1] outside '1'..'4') keeps
+ * "headpipeproducer"'s original, unrelated pipe-producer behavior. */
+enum head_fault_mode {
+    HEAD_FAULT_NONE = 0,
+    HEAD_FAULT_READ = 1,           /* read() fails after a fixed byte budget */
+    HEAD_FAULT_WRITE_NEGATIVE = 2, /* write() returns -1 (injected errno) */
+    HEAD_FAULT_WRITE_ZERO = 3,     /* write() returns 0 (zero progress) */
+    HEAD_FAULT_WRITE_PARTIAL = 4   /* write() always short; must retry to complete */
+};
+
+/* Bytes the HEAD_FAULT_READ mode delivers before permanently failing.
+ * Chosen so both line mode (getc, one byte at a time: this lands exactly
+ * after two "N\n" lines) and byte mode (fread, one larger request) produce
+ * a clean, exact expected output. */
+#define HEAD_FAULT_READ_BUDGET 4
+
+/* These globals are safe only because this whole fixture (headprobe's own
+ * run_one loop) spawns one child, waits for it to fully exit, then moves
+ * to the next -- never two of these fault-mode children concurrently, and
+ * nothing here ever yields back to the scheduler while a copy is bound.
+ * This is sequential-fixture-only safety, not a general task-isolation
+ * mechanism; do not reuse this pattern from a context that might yield or
+ * interleave without re-establishing the same guarantee. */
+static const struct cb_api_v1 *fault_real_api;
+static int fault_mode;
+static size_t fault_read_delivered;
+
+static cb_ssize_t fault_read(int fd, void *buffer, size_t count)
+{
+    cb_ssize_t result;
+    if (fd == 0 && fault_mode == HEAD_FAULT_READ) {
+        if (fault_read_delivered >= HEAD_FAULT_READ_BUDGET) {
+            fault_real_api->set_errno(CB_EIO);
+            return -1;
+        }
+        if (count > HEAD_FAULT_READ_BUDGET - fault_read_delivered)
+            count = HEAD_FAULT_READ_BUDGET - fault_read_delivered;
+    }
+    result = fault_real_api->read(fd, buffer, count);
+    if (fd == 0 && fault_mode == HEAD_FAULT_READ && result > 0)
+        fault_read_delivered += (size_t)result;
+    return result;
+}
+
+static cb_ssize_t fault_write(int fd, const void *buffer, size_t count)
+{
+    if (fd != 1)
+        return fault_real_api->write(fd, buffer, count);
+    switch (fault_mode) {
+    case HEAD_FAULT_WRITE_NEGATIVE:
+        fault_real_api->set_errno(CB_EPIPE);
+        return -1;
+    case HEAD_FAULT_WRITE_ZERO:
+        return 0;
+    case HEAD_FAULT_WRITE_PARTIAL:
+        if (count > 2)
+            count = 2;
+        return fault_real_api->write(fd, buffer, count);
+    default:
+        return fault_real_api->write(fd, buffer, count);
+    }
+}
+
+static int head_fault_noop(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    return 0;
+}
+
+/* Strips its own argv[0]/argv[1] (name, fault-mode digit) and calls the
+ * exact unchanged cb_head_main with the remainder as head's own argv,
+ * with a synthetic argv[0] of "head" for that inner call. This affects
+ * only what cb_head_main itself sees as argv[0] (irrelevant here: the
+ * pinned source never reads argv[0]); it does *not* change this task's
+ * own identity -- getprogname()/err()'s diagnostic prefix reads the
+ * task's real, spawn-time-fixed argv[0] ("headpipeproducer", the actual
+ * name this task was spawned under), never the locally reconstructed
+ * inner_argv. Expected diagnostic strings below say "headpipeproducer",
+ * not "head", for exactly this reason -- confirmed by running this
+ * fixture, not assumed. Explicitly rebinds cb_libc's internal binding
+ * back to the real, unmodified api afterward -- cb_head_main's own
+ * failure paths exit through err()/errx(), which never return control
+ * here, so this rebind runs on the success path only; the failure
+ * path's own task simply terminates without ever coming back to this
+ * function, leaving nothing here to clean up on that path. Validates
+ * argc/argv bounds before indexing anything, and caps the copy to this
+ * file's own fixed 8-slot inner_argv. */
+static int head_fault_dispatch(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy = *api;
+    char *inner_argv[8];
+    int i, inner_argc, result;
+    (void)envp;
+    if (argc < 2 || argc > 8 || argv[1] == NULL)
+        return 1;
+    fault_real_api = api;
+    fault_mode = argv[1][0] - '0';
+    fault_read_delivered = 0;
+    copy.read = fault_read;
+    copy.write = fault_write;
+    inner_argv[0] = (char *)"head";
+    for (i = 2; i < argc; ++i)
+        inner_argv[i - 1] = argv[i];
+    inner_argc = argc - 1;
+    inner_argv[inner_argc] = NULL;
+    result = cb_libc_start(&copy, inner_argc, inner_argv, cb_head_main);
+    cb_libc_start(api, 0, NULL, head_fault_noop);
+    return result;
+}
 
 struct head_case {
     char *args[8];
@@ -32,7 +155,49 @@ static const struct head_case cases[] = {
     {{"head", "-n", "1", NULL}, "", "pipe\n", "", 0, 0, 1},
     {{"head", "-n", "bad", NULL}, "", "", "head: illegal line count -- bad\n", 1, 0, 0},
     {{"head", "-c", "9223372036854775808", NULL}, "", "", "head: illegal byte count -- 9223372036854775808\n", 1, 0, 0},
-    {{"head", "-n", "-1", NULL}, "", "", "head: illegal line count -- -1\n", 1, 0, 0}
+    {{"head", "-n", "-1", NULL}, "", "", "head: illegal line count -- -1\n", 1, 0, 0},
+    /* Deterministic input read failure, line mode (getc): the pinned
+       source's own `while ((ch = getc(fp)) != EOF)` loop cannot tell a
+       real read() failure apart from a clean EOF (getc returns EOF
+       either way; head.c never calls ferror()). Observed, not desired,
+       behavior: head stops with the partial output already produced
+       and exit status 0 -- a real read failure is silently equivalent
+       to a short file, not an error, for this pinned source. */
+    {{"headpipeproducer", "1", NULL}, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", "1\n2\n", "", 0, 0, 0},
+    /* Same conflation, byte mode (fread): `if (rv == 0) break;` treats a
+       failed read exactly like EOF here too. */
+    {{"headpipeproducer", "1", "-c", "20", NULL}, "ABCDEFGHIJKLMNOPQRST", "ABCD", "", 0, 0, 0},
+    /* Output write failure (write() returns -1), line mode (putchar):
+       `if (putchar(ch) == EOF) err(1, "stdout");` -- exact observed
+       message and exit status 1, zero bytes actually written since the
+       very first putchar fails. */
+    {{"headpipeproducer", "2", NULL}, "X\n", "", "headpipeproducer: stdout: broken pipe\n", 1, 0, 0},
+    /* Same fault, byte mode (fwrite): cb_libc_feof(stdout) is always 0
+       for an output stream in this project's implementation, so
+       head.c's `if (feof(stdout)) errx(1, "EOF on stdout");` branch is
+       never reachable here -- it always falls to
+       `err(1, "failure writing to stdout")`. */
+    {{"headpipeproducer", "2", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: broken pipe\n", 1, 0, 0},
+    /* Repeated invocation immediately after a failure, using the real,
+       unmodified "head" program (not "headpipeproducer" in fault mode):
+       proves the fault state above does not leak into a sibling task. */
+    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0},
+    /* Output write failure (write() returns 0, zero progress, no error
+       of its own): cb_libc_fwrite forces its own EIO regardless of
+       what the underlying write() did to errno, so the observed
+       message differs only in its error text from the negative-failure
+       case above. */
+    {{"headpipeproducer", "3", "-c", "10", NULL}, "0123456789", "", "headpipeproducer: failure writing to stdout: input/output error\n", 1, 0, 0},
+    /* Repeated invocation after this second, differently-shaped
+       failure -- same isolation proof, a second time. */
+    {{"head", "-c", "5", NULL}, "hello world", "hello", "", 0, 0, 0},
+    /* Output write positive partial retry: write() always returns a
+       short count (2 bytes) but never zero and never negative.
+       cb_libc_fwrite's own retry loop reassembles the full request
+       across several short writes -- this is not a failure at all;
+       head produces the complete, correct output and exits 0, proving
+       the retry path is correct rather than merely present. */
+    {{"headpipeproducer", "4", "-c", "10", NULL}, "0123456789", "0123456789", "", 0, 0, 0}
 };
 
 static int write_bytes(const struct cb_api_v1 *api, int fd,
@@ -105,16 +270,28 @@ static void action(struct cb_spawn_action_v1 *a, int type, int from, int to)
     a->to_fd = to;
 }
 
+/* "headpipeproducer" keeps its original, unrelated pipe-producer role
+ * (invoked with no extra argv, argc == 1) and doubles as the fault-mode
+ * dispatcher above (invoked with a mode digit as argv[1]) -- reusing this
+ * one existing registration rather than adding another, since the shared
+ * FIXTURE_FULL table is already at its 64-slot ceiling. Its stack budget
+ * is raised to head's own 128 KiB here (from the plain producer's
+ * original 64 KiB) since fault mode runs the exact same cb_head_main body
+ * as "head" itself, including its 65536-byte automatic buffer -- this is
+ * a per-task stack allocation, not a change to the 64-program registration
+ * table capacity the comment above is about. */
 static int producer_main(const struct cb_api_v1 *api, int argc,
                           char *const argv[], char *const envp[])
 {
-    (void)argc; (void)argv; (void)envp;
+    if (argc >= 2 && argv[1] != NULL)
+        return head_fault_dispatch(api, argc, argv, envp);
+    (void)envp;
     return write_bytes(api, 1, "pipe\n", 5) == 0 ? 0 : 1;
 }
 
 const struct cb_program_v1 cb_head_pipe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "headpipeproducer", 0,
-    64 * 1024, producer_main
+    128 * 1024, producer_main
 };
 
 static int run_one(const struct cb_api_v1 *api, char *const envp[],
@@ -143,7 +320,7 @@ static int run_one(const struct cb_api_v1 *api, char *const envp[],
     action(&a[4], CB_SPAWN_CLOSE, out, 0);
     action(&a[5], CB_SPAWN_CLOSE, err, 0);
     if (writer >= 0) action(&a[count++], CB_SPAWN_CLOSE, writer, 0);
-    if (api->spawn("head", test->args, envp, a, count, &child) < 0) goto done;
+    if (api->spawn(test->args[0], test->args, envp, a, count, &child) < 0) goto done;
     if (writer >= 0) {
         char *args[] = {"headpipeproducer", NULL};
         action(&a[0], CB_SPAWN_DUP2, writer, 1);
