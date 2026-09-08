@@ -235,3 +235,16 @@ source identify its Apple origin and changes. No source alteration or
 replacement license is applied here. These files are diagnostic inputs only,
 not linked into cannedBSD. The pinned SDK cannot currently compile them; see
 `notes/iterations/REUSE-02.md`.
+
+## MoreFiles owned catalog derivative (REUSE-03)
+
+`platform/mac68k/probes/catalog/catalog.c` is explicitly altered from
+revision-1.1 `IterateDirectory.c` and `MoreFilesExtras.c`, not another unchanged
+import. Both original hashes/notices remain in the MoreFiles ledger above.
+The derivative retains Jim Luther/Apple and Apple sample-code notices and
+identifies extraction/changes. Its `PROVENANCE.md` records exact source
+functions/lines, the independently pinned directory-bit constant, deliberate
+error-handling differences, and the existing SDK types it uses. No imported
+source byte or cannedBSD runtime ABI changed. The GPL-compatible host fixture
+builder uses only the pinned toolchain image's libhfs; it is not a Mac runtime
+dependency and its linked binary is excluded from the artifacts.
