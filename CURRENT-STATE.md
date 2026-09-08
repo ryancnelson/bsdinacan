@@ -1,7 +1,8 @@
 # Current State — cannedBSD
 
 **Last verified:** 2026-09-08
-**Iteration count:** 27 completed Iterate Bot loops; the prototype predates the loop log
+**Historical loop tally:** the early numbered log below ends at iteration 27;
+subsequent accepted work is tracked by backlog ID and exact evidence.
 
 ## What this is
 
@@ -17,14 +18,58 @@ discussion live in `PROJECT_NOTES.md` and `TARGETS.md`.
 ## How to run a loop
 
 Follow `AGENTS.md`. It defines orientation, stable backlog IDs, isolated
-worktrees, task claiming, the red/green loop, both Woodpecker gates, and the
+worktrees, task claiming, the red/green loop, all three Woodpecker workflows, and the
 evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 `CAPABILITY-MAP.md` records dependency planning without making everything ready.
 
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
-## Acceptance comparison correction, 2026-09-08
+## Current accepted state and assignments, 2026-09-08
+
+Main `e65e36fc0444193445b8a304f6e818d2768d5b62` includes accepted unchanged
+NetBSD head and all preceding libc/runtime prerequisites. Independent review
+and all three exact Woodpecker #324 workflows passed. Fresh System 7 guest
+`run-8u8ke41l` produced **65 PASS records plus ALL PASS**, with 21 internal
+head command cases, in **23.1268449 seconds**. The coordinator inspected the
+transcript and screenshot, verified app closure, normal shutdown and closed
+disks, and released the slot. Exact archive SHA256:
+`8ade221adcee608ac01fd69efaa30d72c8a923e5d8899c455ffb0335865c609c`.
+
+The preceding fwrite integration `885d83c8dfcef89ef8b8e969c56ef124fba06274`
+passed all three #322 workflows and fresh guest `run-lpl2107x`: **64 PASS
+records plus ALL PASS**, **19.9568 seconds**, inspected transcript/screenshot,
+app and disks closed, normal shutdown and slot released. Archive SHA256:
+`02d397dc3ad834b299c617cdc627b7b00f77a8e966f3184863f281cd03c1f915`.
+
+[HEAD-01](notes/iterations/HEAD-01.md) records the real behavioral controls:
+changing the default to nine lines fails case 0/status 20; stopping after the
+first byte block fails the 65538-byte fixture at case 13/status 33. Restoring
+the pinned source restores success. Its private Mac compiler reports isolated
+frames of 65580 and 84 bytes; those are not a measured peak or safe-margin
+calculation. The tested command requests 128 KiB without changing global defaults.
+The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
+its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
+
+**Current assignments:** Claude is running HEAD-02, tests-only characterization
+of unchanged head input/output failures and repeated recovery, extending the
+existing helper while preserving 65 top-level records. Antigravity is correcting
+the NEXT-UTIL-02 dependency audit for uniq/cut/tee. Codex owns review, integration,
+backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
+for precise task boundaries; recommendations do not automatically become
+implementation assignments. New signals, upstream head patches and general
+stdio expansion are outside these tasks. The existing zero-exit behavior after
+an injected read error must be recorded as a source limitation, not successful
+input processing.
+
+## Historical acceptance and planning records
+
+The following records preserve earlier commit/checksum/run evidence and the
+state known at each point. Their older counts, limitations and planning snapshots
+are not the current task queue; the accepted state and assignments above supersede
+them. No historical local build is promoted to guest acceptance by this update.
+
+### Historical: Acceptance comparison correction, 2026-09-08
 
 MAC-14 is accepted at `f16873d246ab3afcc70966b89ae11b9557f6055a`.
 Native and Mac text acceptance now require exact captured byte lengths; Mac
@@ -36,7 +81,7 @@ screenshot/full transcript inspected and normal shutdown, closed disks and
 slot release verified. Artifact archive SHA256:
 `e8c6c8e4cb0989a06dc5f6c6bf0805272f0217eb9e663c8eecab5420b3f24789`.
 
-## Latest accepted head prerequisites, 2026-09-08
+### Historical: Accepted head prerequisites, 2026-09-08
 
 Bounded unbuffered fread and pinned NetBSD strtoimax with C-locale ctype helpers
 are accepted at `ff08dd5c22f6c74de0bed5afce7a9798d666b84b`. Independent feature
@@ -47,11 +92,10 @@ The complete fresh transcript and screenshot were inspected; the bound receipt
 confirms the app and both guest disks closed. Archive SHA256:
 `f863c4c70f2518c9bf4f23f6aab33f147eb4cc62b50bc80f01e4ec22d8770e37`.
 
-Antigravity implements the remaining fwrite prerequisite; Claude audits the
-head stack/resource boundary as PORT32-01. The unchanged head import remains
-pending both. 32-bit classic Mac execution remains a merge gate.
+At this point fwrite and PORT32-01 were still assigned prerequisites. Both
+were resolved before the HEAD acceptance recorded above.
 
-## Latest accepted file-stream prerequisite, 2026-09-08
+### Historical: Accepted file-stream prerequisite, 2026-09-08
 
 Read-only fopen/fclose and owned input wrappers are accepted at
 `0e35e50ba91bd78284b3333dcf4ffb75441637cf`. Independent runtime/integration
@@ -64,9 +108,9 @@ were verified. Archive SHA256:
 Stream acquisition rollback and exec/exit cleanup are observed before teardown;
 non-CLOEXEC descriptor inheritance and the original stdin/output ABI remain
 intact. The later accepted fread and numeric conversion milestone is recorded
-above; fwrite and the unchanged head import remain pending.
+in the historical records; fwrite and head were pending at this point.
 
-## Latest accepted string prerequisite, 2026-09-08
+### Historical: Accepted string prerequisite, 2026-09-08
 
 Pinned unchanged NetBSD strcpy is accepted at
 `bb1190ce0d911bb333d788df58ed7df6538b5e46`. Independent source/runtime and
@@ -79,12 +123,10 @@ The ordinary probe covers destination identity, NUL, byte values, input
 preservation and canaries; an unchanged probe rejected a deliberately wrong
 return pointer in a disposable implementation regression control.
 
-Claude implements numeric conversion, the coordinator worker implements
-read-only file streams, and Antigravity prepares concrete head command fixtures.
-Head itself remains pending those prerequisites plus fread/fwrite and its
-explicit stack-budget acceptance.
+At this point numeric conversion, read-only streams and head command fixtures
+were being developed in parallel; head still awaited those prerequisites.
 
-## Latest accepted input prerequisite, 2026-09-08
+### Historical: Accepted input prerequisite, 2026-09-08
 
 Stdin byte reads and independent EOF/error queries are accepted at
 `27bb7be462f500c99c2fa05fb42c90838da65cab`, after clean independent review and
@@ -96,10 +138,10 @@ Archive SHA256:
 
 The original output state remains compatible with older runtimes. Input flags
 are task-owned, preserve failed exec/rebind state, and reset on successful exec.
-Read-only fopen/fclose wrappers are next (STDIN-02). Claude implements numeric
-conversion; strcpy is in coordinator integration testing, not yet accepted.
+At this point STDIN-02 and numeric conversion were next, and strcpy was still
+in integration testing. Later acceptance is recorded separately.
 
-## Latest accepted head prerequisite, 2026-09-08
+### Historical: Accepted head prerequisite, 2026-09-08
 
 Returning `warn` is accepted at `6f860c426e8842119615efd289f6bee2bcf6b678`.
 Independent integration review and all three Woodpecker #266 checks passed.
@@ -109,12 +151,10 @@ receipt were inspected; normal shutdown, closed disks and slot release passed.
 Archive SHA256:
 `21a82baf3c465dd6386be50ea66c59573ddd210d3488adbe0ba1fa1279c81ef7`.
 
-The read-only stream design is reviewed and included. The coordinator worker
-implements STDIN-01, Antigravity implements STRCPY-01, and Claude corrects the
-numeric conversion design and measures the actual Retro68 type contract.
-Unchanged head still needs these input/string/conversion and fwrite prerequisites.
+The read-only stream design had been reviewed. STDIN-01, STRCPY-01 and numeric
+conversion were assigned prerequisites; head still awaited those and fwrite.
 
-## Latest accepted utility and parser milestone, 2026-09-08
+### Historical: Accepted utility and parser milestone, 2026-09-08
 
 Unchanged NetBSD echo, registered as `netbsdecho`, and required-argument getopt
 are accepted at `b2dc0ce9fef946d2ae6a7c6e800888c785253101`. Independent
@@ -129,11 +169,10 @@ post-implementation false-ferror control confirms the error-status regression
 is caught. Native and Mac getopt probes exercise required arguments and actual
 peer-task/exec isolation. The existing builtin echo and YES tests remain intact.
 
-Claude is preparing the numeric conversion design for head. Antigravity is
-repairing ERR-02 review findings; warn is not accepted yet. General input streams
-and numeric conversion remain prerequisites for an unchanged head import.
+At this point numeric conversion design and ERR-02 corrections were underway;
+warn and general input streams had not yet been accepted.
 
-## Latest accepted runtime prerequisite, 2026-09-08
+### Historical: Accepted runtime prerequisite, 2026-09-08
 
 Argument storage ownership is fixed at
 `4ee800e309a10e7495236a054dbbe0537334aaaf`, independently reviewed with
@@ -146,12 +185,11 @@ launch through screenshot and normal shutdown; screenshot, receipt, closed disks
 and released slot were verified. Archive SHA256:
 `c5506052e724c00594e44c6536e618606c080cdb0f9707789906e9302db30a34`.
 
-The reviewed head dependency plan identifies required option arguments and
-returning warn diagnostics as the next steps, now assigned to the coordinator
-worker (GETOPT-02) and Antigravity (ERR-02). General input streams and numeric
-conversion remain design work. Claude continues the nearer NetBSD echo milestone.
+The reviewed dependency plan then identified GETOPT-02 and ERR-02 as next
+steps. Input streams and numeric conversion remained design work while echo
+was being implemented.
 
-## Latest accepted utility milestone, 2026-09-08
+### Historical: Accepted utility milestone, 2026-09-08
 
 Unchanged NetBSD basename and its separate writable task-owned libc result are
 accepted and merged at `5906b9c69551c6b7e3fd8fa14e777c204b5e1610`.
@@ -186,9 +224,8 @@ closed guest disks and slot release were verified. The cold automated cycle took
 tests, screenshot capture and normal shutdown. One successful measurement does
 not establish a reliability rate or guarantee against external focus changes.
 
-Claude is implementing unchanged NetBSD echo with the accepted prerequisites.
-Antigravity is implementing ERR-02 from the reviewed HEAD-01 dependency plan;
-the head command import remains deferred. Codex owns reviews and serialized guest runs.
+At this point echo and ERR-02 were under implementation and head was deferred;
+these historical assignments are superseded by the current queue above.
 
 The earlier unchanged dirname/locale milestone remains accepted at `96d5936`:
 Woodpecker #174 all three checks, twenty-eight PASS records in `run-u4ko4rto`,
@@ -205,7 +242,7 @@ closed normally and the slot was released. Exact archive SHA256:
 `cf9e30caf83f0432896de86cfc0e3ebdbe377cb3fad95a05034d3f35503086f3`.
 See the integration note for executable-node error and lifetime coverage.
 
-## Accepted directory iteration integration, 2026-09-08
+### Historical: Accepted directory iteration integration, 2026-09-08
 
 Exact commit `6e83f00` passed ci, mac68k and mac-automation in Woodpecker #182.
 Archive SHA256:
@@ -220,7 +257,7 @@ the emulator window left, the coordinator resumed the existing staged run;
 the successful resumed automation took 15.02 seconds. This is not a cold-boot
 measurement. See notes/iterations/VFS-03.md for the implementation and review.
 
-## Verified working
+### Historical: Verified working
 
 On 2026-09-06, the existing suite completed successfully and demonstrated:
 
@@ -244,7 +281,7 @@ That statement is bounded by the current tests. It is not evidence of complete
 POSIX semantics, memory safety under untested operations, classic-host
 portability, networking, dynamic modules, or WASM execution.
 
-## Mac acceptance automation update, 2026-09-07
+### Historical: Mac acceptance automation update, 2026-09-07
 
 The Hammerspoon runner and supplied image templates live in
 `platform/mac68k/automation`. It uses MAC-01 staging, validates the launched
@@ -270,11 +307,10 @@ The former Documents-based runtime stalled on iCloud-evicted NumPy modules
 and shared files. Runtime, staging, scratch, and verified clean seed now live
 outside iCloud. Matcher readiness is required before boot. MAC-03's positive
 and failure cases are verified and merged. Directory iteration is now accepted
-at `6e83f00`; Antigravity is correcting
-executable VFS node regression coverage. Polling is merged; pending runtime
-changes still require review and guest acceptance.
+at `6e83f00`; executable VFS node regression coverage was being corrected.
+Polling had merged; other runtime changes still awaited review and acceptance.
 
-## Current evidence
+### Historical: Implementation evidence
 
 The experimental `mac-system7` branch adds `platform/mac68k` without changing
 the Linux backend or portable core. Woodpecker pipeline #16 passed the existing
@@ -545,15 +581,15 @@ task-owned environment. An ordinary-source probe resolves `environ` only
 through the private libc veneer. Woodpecker pipeline #28 passed both the Linux
 gate and Retro68 cross-build on the final evidence commit.
 
-## What's next
+### Historical: Planning snapshot
 
-Directory iteration and executable VFS nodes are under implementation review.
-Polling is merged with seventeen-check Mac acceptance at `819a964`. The reviewed MacPerl/GUSI audit identifies
+Directory iteration and executable VFS nodes were under implementation review.
+Polling had seventeen-check Mac acceptance at `819a964`. The reviewed MacPerl/GUSI audit identifies
 MoreFiles as a candidate for a bounded future Mac host filesystem probe, with
 source pins and license distinctions recorded in `notes/iterations/REUSE-01.md`.
 The original bounded bootstrap `wc` remains scaffolding.
 
-## Key files and commands
+### Historical: Key files and commands
 
 | Purpose | Location or command |
 |---|---|
@@ -577,7 +613,7 @@ The original bounded bootstrap `wc` remains scaffolding.
 | Build-mode regression | `make check-build-modes` |
 | Portability boundary check | `make check-architecture` |
 
-## Known limitations
+### Historical: Known limitations
 
 - `/bin/sh` and other command paths are resolved through a native program
   registry rather than genuine executable filesystem objects.
@@ -591,7 +627,7 @@ The original bounded bootstrap `wc` remains scaffolding.
   pipelines prove the GitHub webhook, Alpine agent, and canonical gate end to
   end. Every push remains subject to that gate.
 
-## Accepted integration, 2026-09-07 evening
+### Historical: Accepted integration, 2026-09-07 evening
 
 Main `c93e2ba` includes pinned NetBSD printenv, reviewed mount routing,
 guest-owned screenshot/completion support, and direct memory/getopt/truncate
@@ -601,9 +637,8 @@ ran fifteen named checks in System 7, including named/missing/empty/invalid
 printenv inputs. Run `run-sdonh80f` completed with a fresh screenshot, normal
 shutdown and slot release in 14.29 seconds.
 
-Current work: fix polling errno and finite-deadline scheduling; implement
-owned directory iteration; complete optional fully automatic guest evidence
-collection; audit MacPerl/GUSI source before building more Mac-specific layers.
+Work assigned then: polling errno and finite deadlines, owned directory
+iteration, automatic guest evidence, and the MacPerl/GUSI source audit.
 
 Main `ca0cd19` additionally includes MAC-09 supported autorun and the reviewed
 MacPerl/GUSI/MoreFiles source audit. All three #87 workflows passed; its exact
@@ -623,7 +658,7 @@ compile diagnostic is a negative feasibility result. A smaller wrapper using
 real SDK catalog records is the next isolated host experiment.
 
 
-## Current integration and next utility milestone
+### Historical: Integration and next utility snapshot
 
 Main `592ae41` includes MAC-11's locked-desktop preflight and TERM-02 console
 classification/honest attribute fallback. Woodpecker #154 passed all three
@@ -639,9 +674,9 @@ writing, followed by normal shutdown and slot release. Protected fixture SHA256
 remained `5adc9b2bb9cb9d1d7119ad45dc2d8470e221aee776a6b653d9e788e445e56f58`.
 This is an isolated catalog experiment, not an implemented host filesystem mount.
 
-The user-selected next milestone is the unchanged NetBSD dirname command.
+The user-selected next milestone then was the unchanged NetBSD dirname command.
 Actual compilation measured only dirname and setlocale as missing private
 imports; host libgen/locale header leakage was detected, not counted as support.
-Claude owns libc dirname; Codex owns the C-only locale prerequisite. VFS-03 and
-VFS-02 remain unmerged until their outstanding review corrections pass. Broader
-terminal implementation is deferred in favor of this real utility milestone.
+The libc dirname and C-only locale work were assigned separately. VFS-03 and
+VFS-02 still awaited corrections then. These assignments and pending statuses
+are historical, superseded by later acceptance records and the current queue.

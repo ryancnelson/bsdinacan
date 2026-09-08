@@ -13,10 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude audits the head stack/resource boundary in
-PORT32-01. Antigravity implements FWRITE-01. Codex owns review, integration and
-serialized guest acceptance. CONV-01 and STDIN-03 are accepted at `ff08dd5`
-with 62 fresh Mac records, retaining all earlier accepted behavior.
+**Current assignments:** Claude is running HEAD-02 fault-characterization tests.
+Antigravity is correcting the NEXT-UTIL-02 measured dependency audit. Codex owns
+review, integration, backlog updates and serialized guest acceptance. HEAD-01
+is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
+FWRITE-01 was accepted at `885d83c` with 64 records.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -956,22 +957,22 @@ for the active command milestone or a reviewed correctness fix.
   acceptance. Preserve the existing cannedBSD echo behavior unless the reviewed
   design explicitly chooses and tests its command-resolution relationship.
 
-### HEAD-01 — unchanged NetBSD head feasibility milestone
+### HEAD-01 — unchanged NetBSD head utility milestone
 
-- **Status:** Claimed by Codex on `work/HEAD-01` for parallel source/fixture staging; merge awaits FWRITE-01 acceptance and resource review
-- **Base:** integrated dependencies
-- **Depends on:** accepted GETOPT-02, ERR-02, ARGV-01, STRCPY-01, CONV-01,
-  STDIN-01/02/03 and STDOUT-01; pending FWRITE-01 and PORT32-01 review
-- **Hypothesis:** real stream input, count conversion and argument-taking getopt
-  can eventually support the pinned command without host libc leaks.
-- **Initial red baseline:** the original audit lacked the stream, conversion,
-  string and argument-parsing interfaces recorded in HEAD-01-plan. Those accepted
-  dependencies are now listed above. FWRITE-01 remains under implementation;
-  final unchanged-source build and resource fixtures still require execution.
-- **Accept:** resolve those source-backed prerequisites and the source's 65536-byte
-  automatic buffer versus the standard 64 KiB task stack before an unchanged
-  import. Compile success alone is insufficient. See the utility audit; no
-  worker may broaden a ready echo task into implementing head.
+- **Status:** Done at `e65e36f`; independent clean review, all three exact #324
+  workflows and fresh 65-record Mac acceptance (21 internal head cases)
+- **Base:** integrated accepted dependencies
+- **Depends on:** GETOPT-02, ERR-02, ARGV-01, STRCPY-01, CONV-01,
+  STDIN-01/02/03, STDOUT-01, FWRITE-01 and reviewed PORT32-01 (Done)
+- **Scope:** unchanged pinned head source, private import namespace, owned
+  128 KiB command stack request, exact native/shared Mac command fixtures.
+- **Evidence:** `notes/iterations/HEAD-01.md` records initial missing-interface
+  compile diagnostics separately from behavioral controls. Default 10 to 9
+  lines fails case 0/status 20; stopping after one byte block fails case
+  13/status 33; restored source passes. Neither is claimed as prior TDD.
+- **Accept:** exact private build and real 65538-byte RAMFS output verification,
+  source/hash/symbol fences, full exact CI and fresh Mac execution. Isolated
+  compiler frame sizes do not establish total peak stack or a safe margin.
 
 ### PROGNAME-01 — startup-initialized public program identity
 
@@ -1056,8 +1057,8 @@ for the active command milestone or a reviewed correctness fix.
 HEAD-01's original dependency audit is `notes/iterations/HEAD-01-plan.md`.
 Its historical missing-interface list is superseded by the task statuses below
 and the current accepted libc inventory in `LIBC.md`.
-Split them into independently testable tasks before implementation. General
-stream ownership and cross-target integer contracts still require explicit design.
+Those prerequisites were split into independently tested tasks and are now
+accepted. Future stream or integer extensions still require explicit design.
 
 ### CONV-01-design — measured numeric and small string prerequisites for head
 
@@ -1154,7 +1155,8 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### FWRITE-01 — unbuffered standard-stream fwrite
 
-- **Status:** Claimed by Antigravity on `work/FWRITE-01`; coordinator-authorized parallel implementation
+- **Status:** Done at `885d83c`; all three exact #322 workflows and fresh
+  64-record Mac acceptance; see `notes/iterations/FWRITE-01-review.md`
 - **Base:** main at accepted file streams `0e35e50`
 - **Depends on:** reviewed FWRITE-01-design; coordinate the identical EOVERFLOW mapping with STDIN-03
 - **Scope:** implement the reviewed output-element design with existing output
@@ -1216,7 +1218,8 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### PORT32-01 — audit the next utility's 32-bit resource boundary
 
-- **Status:** Claimed by Claude on `work/PORT32-01`
+- **Status:** Done; reviewed doc-only `8b0b1cb`, all three exact #314 workflows;
+  historical at `731b447`, with actual later HEAD evidence linked in its note
 - **Base:** main
 - **Depends on:** reviewed HEAD-01-testplan; existing classic Mac target
 - **Scope:** Documentation-only audit in `notes/iterations/PORT32-01.md`.
@@ -1248,3 +1251,50 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** focused behavior tests, full exact CI and the unchanged complete
   actual Mac suite using the corrected comparison. No binary console-output
   fixture may rely on text comparison; verify binary data internally instead.
+
+### NEXT-UTIL-02 — select the utility after head from measured dependencies
+
+- **Status:** Claimed by Antigravity on `work/NEXT-UTIL-02`; audit corrections in progress
+- **Base:** main
+- **Depends on:** accepted libc inventory and HEAD-01 (Done)
+- **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
+  pinned NetBSD uniq, cut and tee against current private headers. Record
+  unchanged source hashes/licenses, actual includes and called interfaces,
+  precise supported versus missing behavior, and a bounded recommendation.
+  Compile-only diagnostics must record commands and private include paths;
+  missing symbols are feasibility evidence, not behavioral regression tests.
+  No host-header fallback may masquerade as a private-veneer build.
+- **Red:** a current private-header compile or source contract demonstrates an
+  unsupported interface for each candidate; distinguish transitive helpers.
+- **Accept:** recommend the smallest coherent next milestone with exact missing
+  contracts and proposed dependency task IDs, source references and explicit
+  uncertainty. No implementation, speculative ABI or guest work. Publication
+  and exact CI are required; coordinator reviews before activating proposals.
+
+### HEAD-02 — characterize unchanged head input and output failures
+
+- **Status:** Ready and assigned to Claude; implementation running on `work/HEAD-02`
+- **Base:** freshly fetched main with accepted HEAD-01 `e65e36f`
+- **Depends on:** HEAD-01, accepted read/write stream and diagnostic contracts
+- **Scope:** Tests only, expanding the existing portable head helper while
+  preserving all 65 top-level records. Execute the actual unchanged imported
+  head entry against bounded injected input/output failures; do not patch
+  source, add signals or expand runtime/libc APIs.
+- **Source contract:** `head.c` line mode stops on getc EOF; byte mode stops on
+  zero fread; neither checks input ferror. Characterize first-read and
+  prefix-then-read-error cases separately from clean EOF. A zero exit with
+  truncated input is this upstream limitation, not proof of successful input.
+  Output putchar failure calls `err(1, "stdout")`; a short fwrite calls
+  `err(1, "failure writing to stdout")` because supported feof(stdout) is zero.
+- **Red/control:** inject exact EIO/EPIPE and zero-progress output as appropriate,
+  preserving actual accepted stream error mappings. Assert emitted prefix,
+  stderr diagnostic, exit status and finite callback counts, including positive
+  short-write retry. Prove real task setup, bindings and failure injection;
+  no constant-failure wrapper may masquerade as the upstream command.
+- **Accept:** repeated successful tasks after failures demonstrate isolation;
+  first/prefix input errors retain their truthful zero-exit characterization,
+  output failures preserve exact nonzero status and diagnostics. Restore any
+  temporary binding on every path before its storage expires. Keep existing
+  source hashes, capacity, stack budget and fixture coverage; run full exact CI,
+  independent review and coordinator-owned fresh Mac acceptance. No new guest
+  run or error behavior is claimed by this assignment itself.

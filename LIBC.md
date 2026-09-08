@@ -107,6 +107,14 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   and malformed oversized read returns become sticky `EIO` before narrowing.
   Native and actual Mac probes cover byte prefixes, canaries, dynamic stream
   offsets, partial EOF/error and old capability layouts.
+- `stdio.h`: `fwrite` supports only stdout/stderr, accumulating positive short
+  writes and returning completed elements. Zero size/count invokes no callbacks;
+  nonzero requests validate the stream/state before overflow and NULL-buffer
+  checks. Partial output is not replayed. Negative writes preserve their errno;
+  zero progress and oversized returns become sticky `EIO` on the selected stream.
+  Full success preserves incoming errno and prior sticky flags. The optional
+  output-state accessor remains independently guarded; input state is unnecessary.
+  This does not add writable fopen modes or buffered output.
 - `inttypes.h`: unchanged pinned NetBSD `strtoimax` uses private link names;
   base zero and bases 2 through 36, endptr, signed limits and `ERANGE` are tested.
   Invalid bases report `EINVAL`. `ctype.h` supplies bounded C-locale `isdigit`
@@ -164,6 +172,24 @@ This is not a complete libc and the bootstrap command is not NetBSD `wc`.
 The stdio subset is deliberately unbuffered; most string functions, directory
 traversal, time, signals, terminal attribute control, locale, and the rest of ISO C/POSIX
 libc remain absent.
+
+## Accepted unchanged head command
+
+Pinned NetBSD `usr.bin/head/head.c` is accepted at `e65e36f` through the private
+veneer and an owned native descriptor. Its 21 internal command cases run in the
+65-record Mac suite, including exact 65538-byte RAMFS output checked without
+larger console captures. The descriptor requests 128 KiB; isolated private Mac
+compiler frames are recorded without claiming a measured call-chain peak.
+See [HEAD-01](notes/iterations/HEAD-01.md) for source, CI, stack, regression-control
+and exact guest evidence, and [FWRITE-01-review](notes/iterations/FWRITE-01-review.md)
+for the accepted output prerequisite.
+
+The unchanged source does not distinguish input EOF from input errors: getc EOF
+or zero fread ends its copy loop without checking input ferror. Read-failure
+characterization is assigned to HEAD-02; a zero command status under an injected
+read failure is an upstream limitation, not evidence of complete input transfer.
+Output write failures take the source's existing err(1) path. General stdio and
+signal semantics are not inferred from successful command fixtures.
 
 ## Program heap ownership
 

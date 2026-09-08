@@ -91,5 +91,20 @@ already used host headers. The follow-up moves that unchanged source into the
 Mac application with other runtime modules and removes its private object target.
 This compiler failure is setup evidence, not either behavioral regression control.
 The local runtime/full-gate result remains applicable; only CMake wiring and this
-note changed after it. The follow-up exact Woodpecker checks are pending.
-Coordinator-owned exact-artifact Mac execution remains pending. No guest acceptance or timing is claimed by this repair worker.
+note changed after it. Follow-up `908f41c60de9591292b16bd120aa87ab1a8dd288`
+passed all three exact Woodpecker #319 workflows.
+
+## Accepted coordinator integration
+
+Fwrite was accepted at `885d83c8dfcef89ef8b8e969c56ef124fba06274` after
+independent integration review and all three exact Woodpecker #322 workflows.
+The integrated suite preserves concurrent accepted prerequisites and contains
+**64 PASS records plus ALL PASS**, distinct from the 61-record feature above.
+Exact archive SHA256:
+`02d397dc3ad834b299c617cdc627b7b00f77a8e966f3184863f281cd03c1f915`.
+Fresh System 7 guest `run-lpl2107x` completed in **19.9568 seconds**. The
+coordinator inspected the transcript and screenshot, verified app closure,
+normal shutdown and closed disks, then released the slot. These are
+coordinator-observed exact-artifact results, not a guest run by the repair worker.
+The later [HEAD-01 acceptance](HEAD-01.md) exercises fwrite through the real
+unchanged utility as well.
