@@ -1,22 +1,22 @@
 # Iteration PORT-01: Host adapter conformance harness
 
-- **Base SHA:** $(git rev-parse origin/main)
-- **Worktree:** /Users/ryan/devel/bsdinacan-PORT-01
+- **Base SHA:** 78a1e5b3a83ee8d70d4b7cf568df2419415af5c5
+- **Worktree:** bsdinacan-PORT-01
 - **Branch:** work/PORT-01
 
 ## Hypothesis
-A reusable mock-host suite can prove the version, size, capability, allocation, clock, console, and context contracts without a platform-specific implementation.
+A reusable mock-host suite can prove the version, size, capability, allocation, clock, console, and context contracts without a platform-specific implementation. By isolating the API validations from the backend testing, we ensure that new backends respect deterministic context swapping, allocation rules, and console contracts.
 
 ## Red Test
-Intentionally disabling context switching in the new mock host adapter fails the test correctly:
+Modified the context conformance test to expect sequential bidirectional yielding. Commenting out the `context_switch` back to the root context causes the child context to run through to the second validation block out-of-order, verifying the test strictly tracks interleaved state preservation.
 ```
 build/test_core
-FAIL: Host context did not run or return
+FAIL: Context resumed out of order
 make: *** [Makefile:155: test] Error 1
 ```
 
 ## Solution
-Implemented `run_host_conformance_harness` which explicitly validates arbitrary host adapters (checking undersized/oversized tables, absent capabilities, clock monotonicity, and context switches). Created a platform-independent `mock_host_ops` in `tests/test_core.c` and passed both it and `cb_linux_host_ops()` through the harness to prove the core interface is correctly validated without depending on Linux behaviors.
+Implemented `run_mock_api_validation` to handle table size matching, version checks, and absent capability checks using a lightweight mock adapter. Implemented `test_real_conformance_contract` which receives the exact host adapter (e.g. Linux) and rigidly checks allocation, resize preservation, failure on `SIZE_MAX`, optional console capabilities (poll, read, write), clock monotonicity, and strict bidirectional context suspensions with local-state and instruction-position validation. Removed the previous "fake successful context backend" and proved correctness directly against `cb_linux_host_ops`. Avoided any home directory exposure in this note.
 
 ## Risks & Blockers
-None. The harness cleanly validates adapter behavior without breaking existing Linux tests.
+None. Ready for review.

@@ -245,6 +245,22 @@ static struct cb_program *program_find(struct cb_kernel *kernel,
     return NULL;
 }
 
+
+static int kernel_console_poll(struct cb_kernel *kernel, int timeout_ms) {
+    if (kernel->host->console_poll) return kernel->host->console_poll(timeout_ms);
+    return -1;
+}
+
+static cb_ssize_t kernel_console_read(struct cb_kernel *kernel, void *buffer, size_t count) {
+    if (kernel->host->console_read) return kernel->host->console_read(buffer, count);
+    return -CB_EIO;
+}
+
+static cb_ssize_t kernel_console_write(struct cb_kernel *kernel, int stream, const void *buffer, size_t count) {
+    if (kernel->host->console_write) return kernel->host->console_write(stream, buffer, count);
+    return -CB_EIO;
+}
+
 static cb_ssize_t console_read(struct cb_open_file *file,
                                struct cb_task *task, void *buffer,
                                size_t count)
@@ -255,9 +271,9 @@ static cb_ssize_t console_read(struct cb_open_file *file,
         cb_task_set_error(task, 0);
         return 0;
     }
-    while (task->kernel->host->console_poll(0) == 0)
+    while (kernel_console_poll(task->kernel, 0) == 0)
         cb_task_yield_as(task, CB_TASK_BLOCKED_CONSOLE);
-    result = task->kernel->host->console_read(buffer, count);
+    result = kernel_console_read(task->kernel, buffer, count);
     if (result < 0) {
         cb_task_set_error(task, (int)-result);
         return -1;
@@ -270,8 +286,7 @@ static cb_ssize_t console_write(struct cb_open_file *file,
                                 struct cb_task *task, const void *buffer,
                                 size_t count)
 {
-    cb_ssize_t result = task->kernel->host->console_write(
-        file->object.console_stream, buffer, count);
+    cb_ssize_t result = kernel_console_write(task->kernel, file->object.console_stream, buffer, count);
     if (result < 0) {
         cb_task_set_error(task, (int)-result);
         return -1;
@@ -292,7 +307,7 @@ static cb_off_t no_seek(struct cb_open_file *file, struct cb_task *task,
 static int console_input_poll(struct cb_open_file *file, int events)
 {
     if ((events & CB_POLL_READ) != 0 &&
-        file->kernel->host->console_poll(0) > 0)
+        kernel_console_poll(file->kernel, 0) > 0)
         return CB_POLL_READ;
     return 0;
 }
@@ -1356,8 +1371,7 @@ static int host_ops_valid(const struct cb_host_ops_v1 *host)
            host->resize != NULL && host->release != NULL &&
            host->context_root != NULL && host->context_create != NULL &&
            host->context_switch != NULL && host->context_destroy != NULL &&
-           host->console_poll != NULL && host->console_read != NULL &&
-           host->console_write != NULL && host->monotonic_millis != NULL &&
+           host->monotonic_millis != NULL &&
            host->wall_clock_millis != NULL && host->yield_host != NULL &&
            host->fatal != NULL;
 }
@@ -1482,12 +1496,12 @@ int cb_kernel_run(struct cb_kernel *kernel)
     active_kernel = kernel;
     while (!kernel->boot_finished) {
         struct cb_task *task;
-        if (kernel->host->console_poll(0) > 0)
+        if (kernel_console_poll(kernel, 0) > 0)
             wake_console_waiters(kernel);
         task = pick_runnable(kernel);
         if (task == NULL) {
             if (has_console_waiter(kernel)) {
-                if (kernel->host->console_poll(-1) >= 0)
+                if (kernel_console_poll(kernel, -1) >= 0)
                     wake_console_waiters(kernel);
                 continue;
             }
