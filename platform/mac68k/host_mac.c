@@ -395,19 +395,42 @@ int cb_mac_capture_screen(void)
 {
     Str255 path = "\pUnix:cannedbsd-screen.pict";
     static const char header[512] = {0};
-    PicHandle picture;
+    RGBColor black = {0, 0, 0}, white = {65535, 65535, 65535};
+    OpenCPicParams parameters = {0};
+    CGrafPtr saved_port;
+    GDHandle saved_device;
+    GWorldPtr pixels = NULL;
+    PixMapHandle pixel_map;
+    PicHandle picture = NULL;
     Size size;
     int status = -1;
     if (window == NULL || dispatch.active != dispatch.root) return -1;
-    /* Draw into the actual window first, then record its screen pixels.
-     * Recording the text drawing commands would not be a screenshot. */
+    /* Snapshot the actual displayed pixels, not text drawing commands.
+     * A direct-color PICT avoids legacy 1-bit bitmap decoder incompatibilities. */
     SelectWindow(window);
     redraw();
     ValidRect(&window->portRect);
-    picture = OpenPicture(&window->portRect);
-    if (picture == NULL) return -1;
-    CopyBits(&window->portBits, &window->portBits,
+    GetGWorld(&saved_port, &saved_device);
+    if (NewGWorld(&pixels, 32, &window->portRect, NULL, NULL, 0) != noErr)
+        return -1;
+    pixel_map = GetGWorldPixMap(pixels);
+    if (!LockPixels(pixel_map)) goto dispose_pixels;
+    SetGWorld(pixels, NULL);
+    RGBForeColor(&black);
+    RGBBackColor(&white);
+    ClipRect(&window->portRect);
+    CopyBits(&window->portBits, &((GrafPtr)pixels)->portBits,
              &window->portRect, &window->portRect, srcCopy, NULL);
+    if (QDError() != noErr) goto restore_port;
+    parameters.srcRect = window->portRect;
+    parameters.hRes = parameters.vRes = 72L << 16;
+    parameters.version = -2;
+    picture = OpenCPicture(&parameters);
+    if (picture == NULL) goto restore_port;
+    /* The default port clip is unbounded; record the actual image frame. */
+    ClipRect(&parameters.srcRect);
+    CopyBits(&((GrafPtr)pixels)->portBits, &((GrafPtr)pixels)->portBits,
+             &parameters.srcRect, &parameters.srcRect, srcCopy, NULL);
     ClosePicture();
     size = GetHandleSize((Handle)picture);
     if (QDError() == noErr && size > (Size)sizeof(Picture)) {
@@ -418,6 +441,11 @@ int cb_mac_capture_screen(void)
         HUnlock((Handle)picture);
     }
     KillPicture(picture);
+restore_port:
+    SetGWorld(saved_port, saved_device);
+    UnlockPixels(pixel_map);
+dispose_pixels:
+    DisposeGWorld(pixels);
     return status;
 }
 
