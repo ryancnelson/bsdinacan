@@ -251,4 +251,22 @@ for symbol in truncate ftruncate; do
     fi
 done
 
+err_source=tests/libc_err_probe.c
+err_object=$build_path/errprobe_command.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$err_source"; then
+    echo 'FAIL: err source probe uses private names' >&2
+    exit 1
+fi
+for symbol in err close; do
+    if nm -u "$err_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$err_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary err probe does not use private %s\n' "$symbol" >&2
+        exit 1
+    fi
+done
+if ! matches 'cb_libc_err\([^;]*\)\s*__dead' libc/include/err.h; then
+    echo 'FAIL: err declaration does not carry __dead metadata' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

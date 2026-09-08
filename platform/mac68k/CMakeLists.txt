@@ -11,10 +11,11 @@ target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
-foreach(probe memory getopt truncate)
+foreach(probe memory getopt truncate err)
     add_library(cb_${probe}_probe OBJECT ${ROOT}/tests/libc_${probe}_probe.c)
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
+target_compile_definitions(cb_err_probe PRIVATE main=cb_err_probe_main)
 target_compile_definitions(cb_memory_probe PRIVATE main=cb_memory_probe_main)
 target_compile_definitions(cb_getopt_probe PRIVATE main=cb_getoptprobe_main)
 target_compile_definitions(cb_truncate_probe PRIVATE main=cb_truncate_probe_main)
@@ -46,10 +47,11 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c
     ${ROOT}/libc/cb_libc.c
+    ${ROOT}/tests/libc_err_probe_module.c
     ${ROOT}/tests/libc_memory_probe_module.c
     ${ROOT}/tests/libc_getopt_probe_module.c
     ${ROOT}/tests/libc_truncate_probe_module.c)
-target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memory_probe>
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv>
