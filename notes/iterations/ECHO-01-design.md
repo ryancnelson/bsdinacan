@@ -8,18 +8,24 @@ checks ferror(stdout) after fflush(stdout).
 ## Program identity without a redundant setter ABI
 
 The existing mandatory runtime getprogname callback returns current task argv[0].
-Task creation already supplies this before ordinary main; successful exec replaces
-argv and failed exec preserves it. Expose private stdlib getprogname as the final
+Task creation already supplies argv before ordinary main. Preserve a separate
+startup-name reference into the owned original argv string when constructing the
+task and on successful exec; failed exec leaves it unchanged. The runtime getter
+uses that reference so replacing the argv[0] vector slot cannot change identity.
+Expose private stdlib getprogname as the final
 slash-delimited component of that value, a borrowed pointer valid while argv is
-unchanged. Do not allocate, use libc basename's mutable scratch buffer, or change
-argv. Test plain names, paths, empty final components and task/exec isolation.
+alive. Callers must not modify or free that original string. Do not allocate,
+use libc basename's mutable scratch buffer, or change argv. Test plain names,
+paths, empty final components, task/exec isolation, and argv[0] pointer replacement
+with restoration before teardown. This design does not expand argv ownership.
 
 NetBSD's documented startup initializes the name once; subsequent setprogname
 calls have no effect. Adopt that explicit startup-initialized contract: private
 setprogname accepts its argument but preserves the established task identity.
 This is justified by existing startup state, not an unimplemented mutable setter.
-No new runtime callback is needed. Existing raw runtime getter and err behavior
-remain compatible; this task does not change their diagnostic naming contract.
+No new runtime callback is needed. The raw runtime getter and err retain the startup string, including any path,
+while the public getter selects its final component. Existing diagnostic cases
+remain covered; vector replacement intentionally no longer renames diagnostics.
 Public getprogname/setprogname declarations and mappings remain private.
 
 Reference: [NetBSD getprogname/setprogname](https://man.netbsd.org/setprogname.3).
@@ -31,7 +37,8 @@ Keep the existing immutable stdout/stderr FILE identities. Append one optional
 runtime accessor for a versioned, task-owned standard-output state containing
 independent stdout/stderr error indicators. Preserve the existing mandatory API
 prefix, append after the actual integration tail, and validate the accessor's
-field end and pointer before use. New tasks start clean; successful exec resets
+field end and callback before use, then validate the returned pointer, version
+and minimum struct_size before reading or writing state. New tasks start clean; successful exec resets
 indicators; failed exec leaves them intact. Merely rebinding cb_libc_start must
 not clear indicators. No mutable process-global error flags or general fopen,
 fclose, input stream, or buffering subsystem belongs in this step.
@@ -40,9 +47,12 @@ All existing stdio output paths must mark the appropriate indicator on actual
 write failure. Keep partial-write retry behavior; a zero-byte write before
 completion is EIO. Successful output preserves incoming errno, so a later
 successful write does not erase the prior failure before echo invokes err.
-Raw write does not itself set stdio indicators. A successful later stdio write
+Recording the indicator must preserve the write failure errno. Raw write does
+not itself set stdio indicators. Formatter-only EINVAL/length rejection does not
+set a write-error indicator; any actual earlier failed write still does. A successful later stdio write
 never clears a previously set indicator. Invalid stream pointers are rejected
-before dereference and do not contaminate either valid stream.
+before dereference and do not contaminate either valid stream: fflush returns
+EOF and ferror nonzero, with EINVAL. NULL is valid only for fflush-all.
 
 putchar writes the unsigned-char conversion of its argument to stdout and returns
 that byte, or EOF on failure. ferror returns the current task's sticky indicator
@@ -54,10 +64,12 @@ contract does not imply storage durability or validate a raw descriptor that
 another operation has closed.
 
 Old-size and NULL-accessor runtimes must still start and run existing operations.
-New state-dependent interfaces reject unavailable capability with ENOSYS;
+New interfaces reject unavailable or malformed state with ENOSYS before output:
+putchar and fflush return EOF;
 ferror returns nonzero on this unavailable path so callers cannot obtain false
 success. Existing output operations retain their old behavior when the optional
-state is absent, recording indicators only when available. Document this bounded
+state is absent, recording indicators only when available. Zero-progress EIO
+and successful-output errno preservation still apply to those old output paths. Document this bounded
 extension behavior alongside ordinary supported-stream semantics.
 
 Reference: [NetBSD fflush](https://man.netbsd.org/fflush.3). The no-buffer case is
