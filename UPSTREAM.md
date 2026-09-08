@@ -393,3 +393,63 @@ The pinned source's `main` never reads `argc` (marked `/* ARGSUSED */`,
 a lint-only annotation with no effect on GCC/Clang warnings), so its
 build rule alone carries `-Wno-unused-parameter`; no other imported
 source loses that coverage.
+
+## NetBSD `strtoimax`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/stdlib/strtoimax.c`
+- Local path: `upstream/netbsd/common/lib/libc/stdlib/strtoimax.c`
+- SHA-256: `c2476abb39e6ab8dd1fe2d745aeef66309d6cc90adb10f4beee64ae38c1f1ae5`
+- Embedded RCS identifier: `$NetBSD: strtoimax.c,v 1.2 2013/12/02 12:20:44 joerg Exp $`
+- License: two-clause (Copyright (c) 2005 The DragonFly Project; Copyright
+  (c) 2003 Citrus Project), retained verbatim in the imported file. This
+  is a *different* license from `_strtol.h` below, imported alongside it.
+
+## NetBSD `_strtol.h` (shared template body, imported for `strtoimax` only)
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/stdlib/_strtol.h`
+- Local path: `upstream/netbsd/common/lib/libc/stdlib/_strtol.h`
+- SHA-256: `f6ad43531aab239f6bb1c669e01b9df9ebc0c3e0a035cc27a89b74d404dbb74c`
+- Embedded RCS identifier: `$NetBSD: _strtol.h,v 1.11 2017/07/06 21:08:44 joerg Exp $`
+- License: file-specific three-clause Regents of the University of
+  California license (1990, 1993), retained verbatim -- distinct from
+  `strtoimax.c`'s own license above.
+
+Both files are byte-for-byte unchanged. `strtoimax.c` is a thin driver
+(`#define _FUNCNAME strtoimax`, `__INT intmax_t`, `__INT_MIN INTMAX_MIN`,
+`__INT_MAX INTMAX_MAX`, then `#include "_strtol.h"`); `_strtol.h` is the
+actual generic base-2..36 parsing loop shared with `strtol`/`strtoll`
+(neither of which this project imports -- the shared template only emits
+code for the `_FUNCNAME` the including file defines). Compiled with
+`-DHAVE_NBTOOL_CONFIG_H=1`, NetBSD's own established mode for building
+this template without its full locale subsystem: selects the plain
+`intmax_t strtoimax(const char *, char **, int)` signature using plain
+`isspace()`, while still setting ordinary userland `errno` (`ERANGE` on
+overflow/underflow, `EINVAL` on an invalid base) rather than the
+`_KERNEL`/`_STANDALONE` `panic()` path -- verified directly against this
+file's own `#ifdef` structure, not assumed. Requires the private,
+import-only `compat/netbsd/include/nbtool_config.h` (empty; satisfies
+`strtoimax.c`'s own conditional `#include` line and nothing else) and
+`compat/netbsd/include/assert.h`'s `_DIAGASSERT(e)` no-op (used once, by
+`_strtol.h`, for a non-`NULL` argument check -- never a host `assert()`).
+Renamed to the private link name `cb_libc_strtoimax` via
+`-Dstrtoimax=cb_libc_strtoimax`; unlike `strcmp`/`memcpy`/`strcpy`, this
+file never does its own `#undef strtoimax`, so the plain rename is not
+cancelled and needs no assembler-name link adapter. `intmax_t`/
+`INTMAX_MAX`/`INTMAX_MIN` are borrowed from the host's own `<stdint.h>`
+(a pure compile-time type/constant definition with no callable surface,
+covered by this project's existing fundamental-header exemption); the
+actual host-leak risk this task closes is the `strtoimax` *function*
+declaration itself, which `libc/include/inttypes.h` always maps to the
+private veneer, never left to resolve against any host declaration.
+
+`isdigit`/`isspace` (`libc/include/ctype.h`) are cannedBSD-owned, not
+imported: NetBSD's real implementations are table-driven through the
+same rune-locale machinery `setlocale`/`LOCALE-01` deliberately does not
+import wholesale, for a dependency this task only needs in the plain
+C-locale ASCII sense (traced directly from the pinned `head.c`'s own
+`isdigit` call, and from `_strtol.h`'s internal `isspace` call for
+leading-whitespace skipping).
