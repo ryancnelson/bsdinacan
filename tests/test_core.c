@@ -4597,8 +4597,49 @@ static void test_poll_runnable_timeout(void)
 void cb_test_locale(void);
 void cb_test_terminal(void);
 
+static int startup_identity_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    char **mutable_argv = (char **)argv;
+    char *original;
+    const char *identity;
+    int preserved;
+    (void)envp;
+    if (argc < 1 || argv[0] == NULL)
+        return 2;
+    original = argv[0];
+    identity = api->getprogname();
+    mutable_argv[0] = (char *)"replacement";
+    preserved = api->getprogname() == identity &&
+                strcmp(api->getprogname(), original) == 0;
+    mutable_argv[0] = original;
+    return preserved ? 0 : 3;
+}
+
+static const struct cb_program_v1 startup_identity_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "startupidentity", 0,
+    64 * 1024, startup_identity_main
+};
+
+static void test_startup_identity(void)
+{
+    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    int status;
+    if (kernel == NULL)
+        fail("startup identity kernel");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_register(kernel, &startup_identity_program) < 0 ||
+        cb_kernel_boot(kernel, "startupidentity") < 0)
+        fail("startup identity setup");
+    status = cb_kernel_run(kernel);
+    cb_kernel_destroy(kernel);
+    if (status != 0)
+        fail("argv vector replacement renamed startup identity");
+}
+
 int main(int argc, char **argv)
 {
+    test_startup_identity();
     if (argc == 2 && strcmp(argv[1], "--err") == 0) {
         test_err();
         puts("err diagnostic tests passed");
