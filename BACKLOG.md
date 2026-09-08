@@ -708,3 +708,33 @@ with an ID, dependencies, red test, and acceptance boundary above.
 - **Accept:** task-owned handles release node references on close/exit/exec;
   mutation promises match the algorithm; directory names preserve existing
   path-length support; independent streams and failure cleanup are testable.
+
+### ERR-01 — errno-bearing err(3) for pinned dirname
+
+- **Status:** Claimed by Codex on `work/ERR-01`
+- **Base:** main
+- **Depends on:** PENV-05 (Done)
+- **Hypothesis:** existing task errno, strerror, formatter and exit can supply
+  the errno diagnostic required by pinned NetBSD dirname without a new ABI.
+- **Source evidence:** NetBSD revision
+  `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`,
+  `usr.bin/dirname/dirname.c` calls err after dirname fails.
+- **Red:** ordinary err.h source calling err has no private declaration/symbol.
+- **Accept:** snapshot errno before writes; emit program name, supplied message,
+  saved strerror and newline to fd 2; exit without continuation; test short
+  writes and task interleaving, private symbols and exact CI/guest acceptance.
+  Bound formats to the existing formatter and document that boundary.
+
+### REUSE-02 — MoreFiles read-only catalog feasibility probe
+
+- **Status:** Ready after review of `notes/iterations/REUSE-02-plan.md`
+- **Base:** main
+- **Depends on:** REUSE-01 (Done)
+- **Hypothesis:** a small pinned MoreFiles catalog subset compiles under our
+  Retro68 toolchain and correctly reads a protected real HFS fixture.
+- **Red:** record actual compile/link or guest failure if present; a successful
+  characterization requires no manufactured red.
+- **Accept:** per-file provenance/licenses, bounded compatibility shims, exact
+  CI probe artifact, directory/type/fork-length/callback/error checks, unchanged
+  fixture hash and normal guest shutdown. Keep this a separate host probe;
+  no changes to core VFS, directory streams or polling.
