@@ -25,6 +25,7 @@ extern const struct cb_program_v1 cb_stdio_oldtable_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_truncate_probe_program;
+extern const struct cb_program_v1 cb_strtoimax_probe_program;
 static const struct acceptance_case cases[] = {
 #define CB_MAC_CASE(command, expected, status) {command, expected, status},
 #include "acceptance_cases.def"
@@ -61,6 +62,7 @@ int main(void)
                 cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_basename_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_strtoimax_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_locale_env_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&

@@ -4176,7 +4176,8 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_vfs_executable_probe_program) == 0 &&
-           cb_kernel_register(kernel, &cb_basename_probe_program) == 0 ?
+           cb_kernel_register(kernel, &cb_basename_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_strtoimax_probe_program) == 0 ?
            0 : -1;
 }
 

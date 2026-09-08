@@ -150,6 +150,90 @@ established practice.
   already performs.
 - `strcpy` untouched, per the coordinator's explicit exclusion.
 
+## Review round: three blockers, one of them a real, previously-hidden bug
+
+Independent review of `2dc78c5` found three real gaps before merge.
+
+**1. `platform/mac68k` was never touched.** The Retro68 side excluded
+`strtoimax` entirely. Fixed: `platform/mac68k/CMakeLists.txt` gets a
+`cb_strtoimax` import target (`compat/netbsd/include` before
+`libc/include`, `HAVE_NBTOOL_CONFIG_H=1`, `strtoimax=cb_libc_strtoimax`
+-- the same private rename as the Linux build) and a `cb_strtoimax_probe`
+object+module, both wired into `add_application`/`target_sources` exactly
+like `cb_basename`/`cb_basename_probe`. `platform/mac68k/main.c` gets the
+matching `cb_kernel_register(kernel, &cb_strtoimax_probe_program)` in its
+checked chain. `platform/mac68k/acceptance_cases.def` gets one new case
+(`libcstrtoimaxprobe`), moving the guest-run total from 54 to 55 (the
+coordinator's own separate integration will move it further, to 60, when
+other pending work lands -- not this task's concern). **Verified with a
+real build, not just written and hoped**: synced this branch to the CI
+runner host and ran the exact `platform/mac68k/ci-build.sh` sequence
+against the pinned Retro68 image over Docker there --
+`cmake -S platform/mac68k -B build-mac68k -DCMAKE_TOOLCHAIN_FILE=...` and
+`cmake --build build-mac68k -j2` both exited `0`, `build-mac68k/
+CannedBSD.bin` and `.rsrc/CannedBSD.APPL` were produced, and
+`check_code_resources.py` confirmed the single-CODE-segment invariant --
+the exact same checks `mac68k`'s own Woodpecker workflow runs.
+
+**2. The `ERANGE` `strerror` test accepted a silent regression.** The
+first version of `check_strerror` only asserted the message was
+non-empty and different from `EINVAL`'s -- a disposable removal of the
+`CB_ERANGE` case from `api_strerror` falls through to its `"unknown
+error"` default, which is *still* non-empty and *still* different from
+`EINVAL`'s message, so that version would not have caught it. Fixed to
+assert the exact string `"result too large"` and to seed `errno` with
+the sentinel around the call, confirming `strerror` itself doesn't
+disturb it. **Verified with an actual disposable removal, not just
+reasoned about**: deleted the `case CB_ERANGE:` line from `src/core.c`
+on the built copy, rebuilt, and reran -- `./build/test_core` now fails
+exactly at `libcstrtoimaxprobe`, exit code `28` (`check_strerror`'s own
+failure code), overall exit status `1`. Restored the line, rebuilt,
+reran -- green again, exit `0`.
+
+**3. The source-boundary check only covered the imported object, not
+ordinary calling code.** `tests/test_netbsd_libc_source.sh`'s new
+section (from the previous commit) checks `netbsd_strtoimax.o` -- the
+*upstream* object -- for host-symbol absence and private-symbol
+presence, but nothing checked that *ordinary code calling* `strtoimax`/
+`isdigit`/`isspace` (like this task's own probe) actually resolves
+against the private veneer rather than a host declaration reached
+through some other header path. Added a dedicated section to
+`tests/test_libc_source.sh` (the file that already does exactly this
+for `memcpy`/`warn`/`getopt`/etc from ordinary source), covering
+`tests/libc_strtoimax_probe.c`/`strtoimaxprobe_command.o`: source text
+has no `cb_`-prefixed names, and the compiled object's undefined
+symbols include `cb_libc_strtoimax`/`cb_libc_isdigit`/
+`cb_libc_isspace`/`cb_libc_errno_location`/`cb_libc_strcmp`/
+`cb_libc_strerror` (all six, matching exactly what `nm -u` on that
+object actually shows) and none of their bare host-facing names.
+
+**A fourth, independent bug found while fixing these** (not in the
+original review, found because actually building and running things
+surfaced it): adding `platform/mac68k/acceptance_cases.def`'s new case
+also feeds `tests/test_core.c`'s `test_mac_acceptance()`, which replays
+that same `.def` file on the *Linux* side under `FIXTURE_MAC` --
+because it is literally `#include`d with `CB_MAC_CASE` mapped to
+`run_case(..., FIXTURE_MAC)`, as a native mirror of the guest run. That
+fixture's own registration list, `register_mac_probes`, did not include
+`cb_strtoimax_probe_program`, so the *native* run failed with `127:
+libcstrtoimaxprobe: no such file or directory` despite `FIXTURE_CONV`'s
+own separate registration being completely correct. This was invisible
+to `-fsyntax-only` and only surfaced by actually running `make test`;
+diagnosed by adding a temporary `fprintf` to confirm `register_conv_
+probes` was never reached for this call path (it runs under `FIXTURE_
+MAC`, not `FIXTURE_CONV`, for this specific case), then fixed by adding
+the same registration to `register_mac_probes`, mirroring
+`cb_basename_probe_program`'s own presence there. Removed the debug
+print before committing. Reran the full `make test` clean from scratch
+on the CI runner host afterward: exit `0`, no failures.
+
+All of the above -- the Mac CMake/registration/acceptance-case fix, the
+`ERANGE` exact-string fix with its own real remove/rebuild/restore
+cycle, the new `test_libc_source.sh` section, and the `register_mac_
+probes` fix -- were built and run on the pinned Linux CI toolchain
+directly on the CI runner host (not this design-worktree host's
+mismatched local `clang`), per the coordinator's explicit instruction.
+
 ## Guest acceptance: pending, not waived
 
 This is a runtime/libc behavior change. Per the backlog's explicit

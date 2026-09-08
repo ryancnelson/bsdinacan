@@ -95,10 +95,19 @@ static int check_ctype(void)
 
 static int check_strerror(void)
 {
-    const char *message = strerror(ERANGE);
-    if (message == NULL || message[0] == '\0')
+    const char *message;
+    errno = SENTINEL;
+    message = strerror(ERANGE);
+    if (errno != SENTINEL)
         return 0;
-    if (strcmp(message, strerror(EINVAL)) == 0)
+    if (message == NULL)
+        return 0;
+    /* Exact text, not merely "non-empty and distinct from another
+       message": a disposable removal of the CB_ERANGE case from
+       api_strerror's switch falls through to its "unknown error"
+       default, which is still non-empty and still distinct from
+       EINVAL's own message -- a looser check would not catch that. */
+    if (strcmp(message, "result too large") != 0)
         return 0;
     return 1;
 }
