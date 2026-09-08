@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns the VFS-03 review correction and LIBGEN-01.
-Antigravity owns VFS-02 review corrections. Codex owns LOCALE-01, review,
-integration, and serialized guest acceptance. The next user-selected milestone
-is unchanged NetBSD dirname (DIRNAME-01). Main `592ae41` passed eighteen guest
-checks; `a9346ea` additionally passed the separate thirteen-check catalog probe.
+**Current assignments:** Claude owns BASENAME-01. Antigravity owns VFS-02
+regression corrections. Codex owns VFS-03 review, integration, and serialized
+guest acceptance. The next measured utility milestone is unchanged NetBSD
+basename. Main runtime `96d5936` passed all three Woodpecker workflows (#174)
+and twenty-eight fresh Mac checks, including the real dirname command.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -800,7 +800,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### LIBGEN-01 — task-local dirname
 
-- **Status:** Ready; reserved for Claude after VFS-03 fixes
+- **Status:** Done at `96d5936`; included in twenty-eight accepted Mac checks
 - **Base:** main
 - **Depends on:** LIBGEN-01-design (Done), ERR-01 (Done)
 - **Scope:** implement the reviewed `notes/iterations/LIBGEN-01-design.md`.
@@ -857,7 +857,7 @@ separate IDs before assigning implementation.
 
 ### LOCALE-01 — C-only locale needed by NetBSD dirname
 
-- **Status:** Claimed by Codex on `work/LOCALE-01`
+- **Status:** Done at `13fb618`; twenty-one accepted Mac checks
 - **Base:** main
 - **Scope:** measured `setlocale(LC_ALL, "")` dependency; private locale header,
   honest C/POSIX support, task-environment selection, unsupported requests
@@ -868,7 +868,7 @@ separate IDs before assigning implementation.
 
 ### DIRNAME-01 — unchanged NetBSD dirname command milestone
 
-- **Status:** Blocked on LIBGEN-01 and LOCALE-01
+- **Status:** Done at `96d5936`; exact streams/status and fresh Mac acceptance
 - **Base:** integrated dependencies
 - **Scope:** import pinned `usr.bin/dirname/dirname.c` unchanged with module,
   source hash/license and private linkage. See `notes/iterations/DIRNAME-01-plan.md`.
@@ -876,13 +876,13 @@ separate IDs before assigning implementation.
   empty input, argument-count/option failures, dash-leading path, repeated
   invocation and pipeline; exact Woodpecker artifact runs in Basilisk II.
 
-The next visible project milestone is the real `dirname` command. Defer broader
+The next visible project milestone is the real `basename` command. Defer broader
 terminal and filesystem feature expansion unless needed to finish an active
 review or to satisfy this measured command's dependencies.
 
 ### BASENAME-01 — unchanged NetBSD basename utility and libc prerequisite
 
-- **Status:** Ready; coordinator assignment required
+- **Status:** Claimed by Claude on `work/BASENAME-01`
 - **Base:** main after accepted dirname milestone `96d5936`
 - **Depends on:** DIRNAME-01, LOCALE-01 (accepted in main)
 - **Scope:** pinned unchanged libc basename plus command, separate writable
