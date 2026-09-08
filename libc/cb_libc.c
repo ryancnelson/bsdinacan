@@ -348,9 +348,44 @@ int cb_libc_pipe(int fds[2])
 
 int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout)
 {
-    if (bound_api->struct_size < sizeof(*bound_api) || bound_api->poll == NULL) {
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, poll) +
+                                 sizeof(bound_api->poll) || bound_api->poll == NULL) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
     }
     return bound_api->poll(fds, nfds, timeout);
+}
+
+int cb_libc_isatty(int descriptor)
+{
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, isatty) +
+                                 sizeof(bound_api->isatty) ||
+        bound_api->isatty == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return 0;
+    }
+    return bound_api->isatty(descriptor);
+}
+
+int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes)
+{
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, tcgetattr) +
+                                 sizeof(bound_api->tcgetattr) ||
+        bound_api->tcgetattr == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->tcgetattr(descriptor, attributes);
+}
+
+int cb_libc_tcsetattr(int descriptor, int action,
+                      const struct cb_termios_v1 *attributes)
+{
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, tcsetattr) +
+                                 sizeof(bound_api->tcsetattr) ||
+        bound_api->tcsetattr == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->tcsetattr(descriptor, action, attributes);
 }

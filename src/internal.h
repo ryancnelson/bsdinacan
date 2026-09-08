@@ -155,12 +155,18 @@ struct cb_pipe {
     unsigned writers;
 };
 
+/* Embedded in the kernel: descriptor references never outlive its owner. */
+struct cb_terminal_state {
+    struct cb_kernel *kernel;
+};
+
 struct cb_open_file {
     unsigned references;
     int flags;
     cb_off_t offset;
     const struct cb_file_ops *ops;
     struct cb_kernel *kernel;
+    struct cb_terminal_state *terminal;
     union {
         struct cb_vfs_node *node;
         struct cb_pipe *pipe;
@@ -204,6 +210,7 @@ struct cb_task {
 #define CB_MAX_PROGRAMS 64
 
 struct cb_kernel {
+    struct cb_terminal_state console;
     const struct cb_host_ops_v1 *host;
     struct cb_host_context *scheduler_context;
     struct cb_task *tasks;

@@ -1060,6 +1060,50 @@ static cb_off_t api_lseek(int descriptor, cb_off_t offset, int whence)
     return file->ops->lseek(file, task, offset, whence);
 }
 
+static struct cb_terminal_state *terminal_for_descriptor(int descriptor)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return NULL;
+    }
+    if (file->terminal == NULL) {
+        cb_task_set_error(task, CB_ENOTTY);
+        return NULL;
+    }
+    return file->terminal;
+}
+
+static int api_isatty(int descriptor)
+{
+    return terminal_for_descriptor(descriptor) != NULL;
+}
+
+static int terminal_attributes_unavailable(int descriptor, const void *attributes)
+{
+    struct cb_task *task = active_kernel->current;
+    if (terminal_for_descriptor(descriptor) == NULL)
+        return -1;
+    cb_task_set_error(task, attributes == NULL ? CB_EINVAL : CB_ENOSYS);
+    return -1;
+}
+
+static int api_tcgetattr(int descriptor, struct cb_termios_v1 *attributes)
+{
+    return terminal_attributes_unavailable(descriptor, attributes);
+}
+
+static int api_tcsetattr(int descriptor, int action,
+                         const struct cb_termios_v1 *attributes)
+{
+    /* No host lease exists in this stage. Every non-null console request
+     * is unsupported, without reading or modifying the proposed profile. */
+    (void)action;
+    return terminal_attributes_unavailable(descriptor, attributes);
+}
+
 static int api_ftruncate(int descriptor, cb_off_t length)
 {
     struct cb_task *task = active_kernel->current;
@@ -1357,6 +1401,7 @@ static const char *api_strerror(int error)
     case CB_EINVAL: return "invalid argument";
     case CB_ENFILE: return "too many open files in system";
     case CB_EMFILE: return "too many open files";
+    case CB_ENOTTY: return "inappropriate ioctl for device";
     case CB_ENOSPC: return "no space left";
     case CB_ESPIPE: return "illegal seek";
     case CB_EPIPE: return "broken pipe";
@@ -1531,6 +1576,9 @@ static void initialize_api(struct cb_kernel *kernel)
     api->ftruncate = api_ftruncate;
     api->getprogname = api_getprogname;
     api->poll = api_poll;
+    api->isatty = api_isatty;
+    api->tcgetattr = api_tcgetattr;
+    api->tcsetattr = api_tcsetattr;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)
@@ -1648,6 +1696,8 @@ int cb_kernel_boot(struct cb_kernel *kernel, const char *command)
         cb_open_file_release(error);
         return -1;
     }
+    kernel->console.kernel = kernel;
+    input->terminal = output->terminal = error->terminal = &kernel->console;
     input->object.console_stream = 0;
     output->object.console_stream = 1;
     error->object.console_stream = 2;

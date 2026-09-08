@@ -27,6 +27,7 @@ enum cb_error {
     CB_EINVAL = 22,
     CB_ENFILE = 23,
     CB_EMFILE = 24,
+    CB_ENOTTY = 25,
     CB_ENOSPC = 28,
     CB_ESPIPE = 29,
     CB_EPIPE = 32,
@@ -129,6 +130,15 @@ struct cb_pollfd {
 #define CB_POLLHUP  0x010
 #define CB_POLLNVAL 0x020
 
+/* Reserved representation for terminal attributes; TERM-02 never supplies
+ * or accepts a profile. No host termios structure crosses this boundary. */
+struct cb_termios_v1 {
+    uint32_t abi_version;
+    uint32_t struct_size;
+    uint32_t c_iflag, c_oflag, c_cflag, c_lflag;
+    unsigned char c_cc[4];
+};
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -179,6 +189,9 @@ struct cb_api_v1 {
     int (*ftruncate)(int fd, cb_off_t length);
     const char *(*getprogname)(void);
     int (*poll)(struct cb_pollfd *fds, size_t nfds, int timeout);
+    int (*isatty)(int fd);
+    int (*tcgetattr)(int fd, struct cb_termios_v1 *attributes);
+    int (*tcsetattr)(int fd, int action, const struct cb_termios_v1 *attributes);
 };
 
 struct cb_program_v1 {
