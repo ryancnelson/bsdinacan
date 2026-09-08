@@ -199,6 +199,59 @@ duplicate-on-insertion case (`4b`) was designed correctly from the start.
   a directory-iteration bullet covering the ordinal enumeration, the
   documented duplicate/skip looseness under concurrent mutation, the
   errno-preserving EOF rule, and the `ENAMETOOLONG`/unchanged-cursor rule.
+## Fourth review pass: acceptance-evidence gaps closed
+
+An independent review found the second-pass fixes sound but the test
+coverage claiming them incomplete: every existing dirent probe explicitly
+closes what it opens, so none of them actually exercised the reclaim paths
+(`api_exit`, `task_finish_exec`, `task_destroy`) the second pass touched;
+the old-table coverage only shrank `struct_size`, never testing a
+full-size table with the callbacks themselves left `NULL`; and
+`cb_libc_opendir`'s allocation-failure branch (already correct in the
+code, releasing the acquired runtime descriptor before returning `NULL`)
+had no test proving it, as opposed to merely reading correct.
+
+- **`cb_libc_opendir` allocation-failure release**: added
+  `tests/libc_dirent_allocfail_probe.c` (ordinary, expects `ENOMEM`) plus
+  `direntlibcallocfailprobe`, a raw-ABI orchestrator that fails the very
+  next `allocate()` call (the `struct cb_libc_dir` allocation is the only
+  one this probe triggers -- `opendir()` dispatch itself never allocates)
+  and then, as real evidence the acquired descriptor was released and not
+  leaked, successfully opens all `CB_MAX_DIRS` directories from scratch.
+- **Full-size table, `NULL` directory callbacks**: added
+  `direntnulltableprobe`, distinct from the existing `direntoldtableprobe`
+  (which only shrinks `struct_size`). This is the case that would catch a
+  regression back to "trust `struct_size` alone" if the per-field `NULL`
+  checks in `cb_libc_opendir`/`readdir`/`closedir` were ever dropped.
+- **Reclaim paths actually exercised, with a real assertion, not just "did
+  not crash"**: added a whitebox-hook, `cb_test_ramfs_node_references`
+  (mirrors the existing `cb_test_task_allocation_count`-style test-only
+  introspection already in this codebase), exposing the otherwise-opaque
+  RAMFS refcount. `test_dir_reclaim_contract` runs three real, fully
+  scheduled kernels, each with a task that opens `/tmp` and deliberately
+  never closes it, then inspects `/tmp`'s reference count afterward:
+  1. Exit without `closedir()`: confirms `api_exit`'s `dir_close_all`
+     released the retain (count returns to baseline).
+  2. Successful `exec()` without `closedir()` first: confirms
+     `task_finish_exec`'s unconditional close released it too.
+  3. Kernel teardown while a spawned, never-`waitpid`'d child is still
+     blocked (reading from a pipe whose both ends it holds itself, so it
+     blocks forever regardless of the parent's own exit): confirms the
+     node is genuinely still retained at that moment (count is elevated,
+     not 1 -- proving the scenario is real, not vacuous) and exercises
+     `task_destroy`'s `dir_close_all` call under ASan/UBSan. This one
+     deliberately does **not** re-inspect the node after
+     `cb_kernel_destroy`: the node may already be freed by then, and
+     reading it back would itself be a use-after-free bug in the test,
+     not a valid check. Being explicit about this limitation rather than
+     quietly claiming full coverage: the destroy-path test verifies the
+     setup is real and that the reclaim code runs cleanly under the
+     sanitizer, not that the node was independently re-confirmed released
+     afterward.
+
+All of these, plus the existing suite, pass `make LDLIBS=-lucontext test`
+and the full `make LDLIBS=-lucontext SANITIZE_CC=clang ci` gate.
+
 - Remaining risk or follow-up: `rewinddir`/`seekdir`/`telldir`,
   `scandir`, and `readdir_r` are explicitly not claimed (design doc §9).
   `IO-01` (public descriptor polling) is a separate, concurrently-worked

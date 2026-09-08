@@ -10,6 +10,7 @@ extern const struct cb_program_v1 cb_getoptprobe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_direntprobe_program;
 extern int cb_direntoldtable_main(int argc, char *argv[]);
+extern int cb_direntallocfail_main(int argc, char *argv[]);
 
 static char captured[32768];
 static size_t captured_size;
@@ -1912,6 +1913,151 @@ static int direntoldtableprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int direntnulltableprobe_main(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* Distinct from direntoldtableprobe above: struct_size is the full
+       current size here, but the three directory callbacks are explicitly
+       NULL. api_is_usable's struct_size relaxation alone would not be
+       enough to make the tail genuinely optional if cb_libc_opendir/
+       readdir/closedir didn't also check the fields themselves -- this is
+       the case that catches a regression back to "trust struct_size alone". */
+    copy = *api;
+    copy.opendir = NULL;
+    copy.readdir = NULL;
+    copy.closedir = NULL;
+    result = cb_libc_start(&copy, 0, NULL, cb_direntoldtable_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 440;
+    return 0;
+}
+
+static int direntlibcallocfailprobe_main(const struct cb_api_v1 *api,
+                                         int argc, char *const argv[],
+                                         char *const envp[])
+{
+    int result;
+    int handles[CB_MAX_DIRS];
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* cb_libc_opendir's struct cb_libc_dir allocation is the only
+       allocate() call this ordinary probe triggers before failing --
+       opendir() dispatch itself never allocates (RAMFS lookup/retain only
+       touch the already-existing tree), so failing the very next
+       allocation targets exactly that allocation. */
+    allocation_failure_countdown = 0;
+    result = cb_libc_start(api, 0, NULL, cb_direntallocfail_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    allocation_failure_countdown = -1;
+    if (result != 0)
+        return 450;
+
+    /* Real evidence the raw runtime descriptor cb_libc_opendir had already
+       acquired was released on the allocation-failure path, not leaked:
+       every CB_MAX_DIRS slot must still be available from scratch. */
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        handles[index] = api->opendir("/");
+        if (handles[index] < 0)
+            return 451;
+    }
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        if (api->closedir(handles[index]) < 0)
+            return 452;
+    }
+    return 0;
+}
+
+static int direntreapexit_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->opendir("/tmp") < 0)
+        return 1;
+    /* Deliberately not closed -- returning here triggers native_entry's
+       automatic api->exit(status), and api_exit's dir_close_all must be
+       the thing that releases this directory's retained node. */
+    return 0;
+}
+
+static int direntreapexecpeer_main(const struct cb_api_v1 *api, int argc,
+                                   char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    return 0;
+}
+
+static int direntreapexec_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    char *peer_argv[] = {(char *)"direntreapexecpeer", NULL};
+    (void)argc;
+    (void)argv;
+    if (api->opendir("/tmp") < 0)
+        return 1;
+    /* Deliberately not closed before exec -- directories have no
+       close-on-exec concept; task_finish_exec's dir_close_all must close
+       every one of them unconditionally. A successful exec never returns. */
+    api->exec("direntreapexecpeer", peer_argv, envp);
+    return 2;
+}
+
+static int direntreapdestroychild_main(const struct cb_api_v1 *api, int argc,
+                                       char *const argv[], char *const envp[])
+{
+    int fds[2];
+    char buffer[1];
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->opendir("/tmp") < 0)
+        return 1;
+    if (api->pipe(fds) < 0)
+        return 2;
+    /* Both pipe ends belong to this task alone, so this blocks forever
+       regardless of what the parent does, including exiting -- leaving
+       this task still live and blocked, still holding the open directory,
+       when the parent (PID1) exits and cb_kernel_run returns without ever
+       reaping this orphan. cb_kernel_destroy must then call task_destroy
+       on it directly. */
+    api->read(fds[0], buffer, sizeof(buffer));
+    return 3;
+}
+
+static int direntreapdestroyboot_main(const struct cb_api_v1 *api, int argc,
+                                      char *const argv[], char *const envp[])
+{
+    char *child_argv[] = {(char *)"direntreapdestroychild", NULL};
+    cb_pid_t child;
+    (void)argc;
+    (void)argv;
+    if (api->spawn("direntreapdestroychild", child_argv, envp, NULL, 0,
+                   &child) < 0)
+        return 1;
+    /* Give the child a turn to reach its blocking read before this task
+       exits -- otherwise it never runs at all before boot_finished ends
+       the scheduler loop, and the scenario would be vacuous (a task that
+       never opened anything, not one genuinely holding a directory open).
+       Deliberately no waitpid after this: the child is orphaned, still
+       blocked, when this (PID1) task exits and cb_kernel_run returns. */
+    api->yield();
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -2822,6 +2968,41 @@ static const struct cb_program_v1 direntoldtableprobe_program = {
     64 * 1024, direntoldtableprobe_main
 };
 
+static const struct cb_program_v1 direntnulltableprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntnulltableprobe", 0,
+    64 * 1024, direntnulltableprobe_main
+};
+
+static const struct cb_program_v1 direntlibcallocfailprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1),
+    "direntlibcallocfailprobe", 0, 64 * 1024, direntlibcallocfailprobe_main
+};
+
+static const struct cb_program_v1 direntreapexit_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntreapexit", 0,
+    64 * 1024, direntreapexit_main
+};
+
+static const struct cb_program_v1 direntreapexecpeer_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntreapexecpeer", 0,
+    64 * 1024, direntreapexecpeer_main
+};
+
+static const struct cb_program_v1 direntreapexec_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntreapexec", 0,
+    64 * 1024, direntreapexec_main
+};
+
+static const struct cb_program_v1 direntreapdestroychild_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntreapdestroychild",
+    0, 64 * 1024, direntreapdestroychild_main
+};
+
+static const struct cb_program_v1 direntreapdestroyboot_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntreapdestroyboot",
+    0, 64 * 1024, direntreapdestroyboot_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -3148,6 +3329,114 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+/* Whitebox reclaim contract: proves dir_close_all's node release actually
+   happens on all three reclaim paths, not just that a task-owned handle
+   slot disappeared (which would happen regardless, since the whole
+   directories[] table dies with the task either way and would prove
+   nothing about the shared, still-alive VFS node it referenced). Each
+   scenario runs a real, fully scheduled kernel and inspects the shared
+   "/tmp" node's RAMFS reference count -- 1 with nothing holding it open,
+   plus one transient +1 for this function's own probe retain -- via the
+   cb_test_ramfs_node_references whitebox hook. */
+static void test_dir_reclaim_contract(void)
+{
+    struct cb_kernel *kernel;
+    struct cb_task probe_task;
+    struct cb_vfs_node *tmp_node;
+    size_t references;
+    int probe_error;
+    int status;
+
+    /* Scenario 1: task exits without closedir(). */
+    kernel = cb_kernel_create(cb_linux_host_ops());
+    if (kernel == NULL)
+        fail("dir reclaim kernel (exit)");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_register(kernel, &direntreapexit_program) < 0)
+        fail("dir reclaim registration (exit)");
+    if (cb_kernel_boot(kernel, "direntreapexit") < 0)
+        fail("dir reclaim boot (exit)");
+    status = cb_kernel_run(kernel);
+    if (status != 0)
+        fail("dir reclaim run (exit)");
+    memset(&probe_task, 0, sizeof(probe_task));
+    probe_task.kernel = kernel;
+    probe_task.root = probe_task.cwd = kernel->vfs_root;
+    probe_error = 0;
+    probe_task.error_cell = &probe_error;
+    tmp_node = cb_vfs_opendir_path(&probe_task, "/tmp");
+    if (tmp_node == NULL)
+        fail("dir reclaim probe open (exit)");
+    references = cb_test_ramfs_node_references(tmp_node);
+    cb_vfs_node_release(tmp_node);
+    if (references != 2)
+        fail("api_exit did not release an unclosed directory's node retain");
+    cb_kernel_destroy(kernel);
+
+    /* Scenario 2: task execs successfully without closedir() first --
+       directories have no close-on-exec concept, they all close. */
+    kernel = cb_kernel_create(cb_linux_host_ops());
+    if (kernel == NULL)
+        fail("dir reclaim kernel (exec)");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_register(kernel, &direntreapexec_program) < 0 ||
+        cb_kernel_register(kernel, &direntreapexecpeer_program) < 0)
+        fail("dir reclaim registration (exec)");
+    if (cb_kernel_boot(kernel, "direntreapexec") < 0)
+        fail("dir reclaim boot (exec)");
+    status = cb_kernel_run(kernel);
+    if (status != 0)
+        fail("dir reclaim run (exec)");
+    memset(&probe_task, 0, sizeof(probe_task));
+    probe_task.kernel = kernel;
+    probe_task.root = probe_task.cwd = kernel->vfs_root;
+    probe_error = 0;
+    probe_task.error_cell = &probe_error;
+    tmp_node = cb_vfs_opendir_path(&probe_task, "/tmp");
+    if (tmp_node == NULL)
+        fail("dir reclaim probe open (exec)");
+    references = cb_test_ramfs_node_references(tmp_node);
+    cb_vfs_node_release(tmp_node);
+    if (references != 2)
+        fail("task_finish_exec did not release a directory held across exec");
+    cb_kernel_destroy(kernel);
+
+    /* Scenario 3: kernel teardown destroys a task that is still live and
+       blocked (orphaned, never reaped), holding an open directory --
+       cb_kernel_destroy calls task_destroy directly for it. This confirms
+       the node is genuinely still retained at the moment of teardown (so
+       the scenario is real, not vacuous) and exercises task_destroy's
+       dir_close_all call under ASan/UBSan. It deliberately does not
+       re-inspect the node after cb_kernel_destroy: the node may be freed
+       by then, and reading it back would itself be a use-after-free bug
+       in the test, not a valid check. */
+    kernel = cb_kernel_create(cb_linux_host_ops());
+    if (kernel == NULL)
+        fail("dir reclaim kernel (destroy)");
+    cb_register_base_programs(kernel);
+    if (cb_kernel_register(kernel, &direntreapdestroyboot_program) < 0 ||
+        cb_kernel_register(kernel, &direntreapdestroychild_program) < 0)
+        fail("dir reclaim registration (destroy)");
+    if (cb_kernel_boot(kernel, "direntreapdestroyboot") < 0)
+        fail("dir reclaim boot (destroy)");
+    status = cb_kernel_run(kernel);
+    if (status != 0)
+        fail("dir reclaim run (destroy)");
+    memset(&probe_task, 0, sizeof(probe_task));
+    probe_task.kernel = kernel;
+    probe_task.root = probe_task.cwd = kernel->vfs_root;
+    probe_error = 0;
+    probe_task.error_cell = &probe_error;
+    tmp_node = cb_vfs_opendir_path(&probe_task, "/tmp");
+    if (tmp_node == NULL)
+        fail("dir reclaim probe open (destroy)");
+    references = cb_test_ramfs_node_references(tmp_node);
+    cb_vfs_node_release(tmp_node);
+    if (references != 3)
+        fail("orphaned blocked child unexpectedly not still holding directory");
+    cb_kernel_destroy(kernel);
+}
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -3201,6 +3490,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntnulltableprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntlibcallocfailprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -3568,6 +3859,7 @@ int main(int argc, char **argv)
     test_host_contract();
     test_vfs_contract();
     test_truncate_vfs_contract();
+    test_dir_reclaim_contract();
     test_registration_contract();
     test_executor_contract();
     test_allocation_cleanup();
@@ -3678,6 +3970,8 @@ int main(int argc, char **argv)
     run_case("direntmutationprobe", "", 0, 1);
     run_case("direntisolationprobe", "", 0, 1);
     run_case("direntoldtableprobe", "", 0, 1);
+    run_case("direntnulltableprobe", "", 0, 1);
+    run_case("direntlibcallocfailprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);

@@ -309,5 +309,6 @@ int cb_test_path_normalize(const char *cwd, const char *path,
 enum cb_wake_reason cb_test_current_wake_reason(void);
 int cb_test_current_descriptor_poll(int descriptor, int events);
 size_t cb_test_task_allocation_count(cb_pid_t pid);
+size_t cb_test_ramfs_node_references(struct cb_vfs_node *node);
 
 #endif

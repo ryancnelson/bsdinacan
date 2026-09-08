@@ -158,6 +158,15 @@ static void ramfs_node_release(struct cb_vfs_node *common)
         node_destroy(node);
 }
 
+/* Test hook: exposes the otherwise-opaque RAMFS refcount so tests can prove a
+   directory-handle retain was actually released by a reclaim path (task exit,
+   exec, or kernel teardown), rather than only observing that the task-owned
+   handle slot was cleared. */
+size_t cb_test_ramfs_node_references(struct cb_vfs_node *common)
+{
+    return ramfs_node(common)->references;
+}
+
 static struct cb_ramfs_node *find_child(struct cb_ramfs_node *directory,
                                         const char *name, size_t length)
 {
