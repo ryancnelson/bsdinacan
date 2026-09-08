@@ -191,6 +191,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_STDIO_TEST_OBJECT) check-architecture
 	$(TEST_PROGRAM)
 	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
+	CC='$(CC)' tests/test_mac_autorun.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
 	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh

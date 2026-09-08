@@ -335,20 +335,118 @@ int cb_mac_initialize(void)
     return 0;
 }
 
+static int write_evidence_file(ConstStr255Param path, OSType type,
+                               const void *prefix, long prefix_size,
+                               const void *bytes, long size)
+{
+    short reference, volume = 0;
+    long written;
+    OSErr error;
+    if (dispatch.active != dispatch.root) return -1;
+    HCreate(0, 0, path, 'CnBD', type);
+    if (HOpenDF(0, 0, path, fsRdWrPerm, &reference) != noErr) return -1;
+    error = GetVRefNum(reference, &volume);
+    if (error == noErr && volume == 0) error = ioErr;
+    if (error == noErr) error = SetEOF(reference, 0);
+    if (error == noErr && prefix_size) {
+        written = prefix_size;
+        error = FSWrite(reference, &written, prefix);
+        if (written != prefix_size) error = ioErr;
+    }
+    if (error == noErr && size) {
+        written = size;
+        error = FSWrite(reference, &written, bytes);
+        if (written != size) error = ioErr;
+    }
+    if (FSClose(reference) != noErr) error = ioErr;
+    if (volume && FlushVol(NULL, volume) != noErr) error = ioErr;
+    return error == noErr ? 0 : -1;
+}
+
 int cb_mac_write_result(const char *text)
 {
     Str255 path = "\pUnix:cannedbsd-result.txt";
-    short reference, volume;
-    long length = (long)strlen(text), written = length;
-    OSErr error;
-    HCreate(0, 0, path, 'CnBD', 'TEXT');
-    if (HOpenDF(0, 0, path, fsRdWrPerm, &reference) != noErr) return -1;
-    error = SetEOF(reference, 0);
-    if (error == noErr) error = FSWrite(reference, &written, text);
-    if (GetVRefNum(reference, &volume) != noErr) volume = 0;
-    if (FSClose(reference) != noErr) error = ioErr;
-    if (volume && FlushVol(NULL, volume) != noErr) error = ioErr;
-    return error == noErr && written == length ? 0 : -1;
+    return write_evidence_file(path, 'TEXT', NULL, 0, text, (long)strlen(text));
+}
+
+int cb_mac_autorun_requested(void)
+{
+    Str255 path = "\pUnix:cannedbsd-autorun.txt";
+    short reference;
+    OSErr error = HOpenDF(0, 0, path, fsRdPerm, &reference);
+    if (error == fnfErr || error == nsvErr) return 0;
+    if (error != noErr) return -1;
+    return FSClose(reference) == noErr ? 1 : -1;
+}
+
+int cb_mac_write_done(const char *text)
+{
+    Str255 path = "\pUnix:cannedbsd-done.txt";
+    int status = write_evidence_file(path, 'TEXT', NULL, 0,
+                                     text, (long)strlen(text));
+    /* Do not leave a useful completion token after an observed write failure.
+     * The controller also requires application exit, since this cleanup can
+     * itself fail on a broken shared volume. */
+    if (status < 0) write_evidence_file(path, 'TEXT', NULL, 0, NULL, 0);
+    return status;
+}
+
+int cb_mac_capture_screen(void)
+{
+    Str255 path = "\pUnix:cannedbsd-screen.pict";
+    static const char header[512] = {0};
+    RGBColor black = {0, 0, 0}, white = {65535, 65535, 65535};
+    OpenCPicParams parameters = {0};
+    CGrafPtr saved_port;
+    GDHandle saved_device;
+    GWorldPtr pixels = NULL;
+    PixMapHandle pixel_map;
+    PicHandle picture = NULL;
+    Size size;
+    int status = -1;
+    if (window == NULL || dispatch.active != dispatch.root) return -1;
+    /* Snapshot the actual displayed pixels, not text drawing commands.
+     * A direct-color PICT avoids legacy 1-bit bitmap decoder incompatibilities. */
+    SelectWindow(window);
+    redraw();
+    ValidRect(&window->portRect);
+    GetGWorld(&saved_port, &saved_device);
+    if (NewGWorld(&pixels, 32, &window->portRect, NULL, NULL, 0) != noErr)
+        return -1;
+    pixel_map = GetGWorldPixMap(pixels);
+    if (!LockPixels(pixel_map)) goto dispose_pixels;
+    SetGWorld(pixels, NULL);
+    RGBForeColor(&black);
+    RGBBackColor(&white);
+    ClipRect(&window->portRect);
+    CopyBits(&window->portBits, &((GrafPtr)pixels)->portBits,
+             &window->portRect, &window->portRect, srcCopy, NULL);
+    if (QDError() != noErr) goto restore_port;
+    parameters.srcRect = window->portRect;
+    parameters.hRes = parameters.vRes = 72L << 16;
+    parameters.version = -2;
+    picture = OpenCPicture(&parameters);
+    if (picture == NULL) goto restore_port;
+    /* The default port clip is unbounded; record the actual image frame. */
+    ClipRect(&parameters.srcRect);
+    CopyBits(&((GrafPtr)pixels)->portBits, &((GrafPtr)pixels)->portBits,
+             &parameters.srcRect, &parameters.srcRect, srcCopy, NULL);
+    ClosePicture();
+    size = GetHandleSize((Handle)picture);
+    if (QDError() == noErr && size > (Size)sizeof(Picture)) {
+        HLock((Handle)picture);
+        if (MemError() == noErr)
+            status = write_evidence_file(path, 'PICT', header, sizeof(header),
+                                         *picture, size);
+        HUnlock((Handle)picture);
+    }
+    KillPicture(picture);
+restore_port:
+    SetGWorld(saved_port, saved_device);
+    UnlockPixels(pixel_map);
+dispose_pixels:
+    DisposeGWorld(pixels);
+    return status;
 }
 
 void cb_mac_shutdown(void) { if (window != NULL) DisposeWindow(window); }
