@@ -12,7 +12,8 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->get_errno != NULL && api->set_errno != NULL &&
            api->strerror != NULL && api->allocate != NULL &&
            api->resize != NULL && api->release != NULL &&
-           api->errno_location != NULL && api->environ_location != NULL;
+           api->errno_location != NULL && api->environ_location != NULL &&
+           api->truncate != NULL && api->ftruncate != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -77,6 +78,16 @@ int cb_libc_open(const char *path, int flags, ...)
 int cb_libc_close(int descriptor)
 {
     return bound_api->close(descriptor);
+}
+
+int cb_libc_truncate(const char *path, cb_off_t length)
+{
+    return bound_api->truncate(path, length);
+}
+
+int cb_libc_ftruncate(int descriptor, cb_off_t length)
+{
+    return bound_api->ftruncate(descriptor, length);
 }
 
 void *cb_libc_malloc(size_t size)

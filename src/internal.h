@@ -109,6 +109,8 @@ struct cb_vfs_node_ops {
     int (*stat)(struct cb_vfs_node *node, struct cb_stat_v1 *stat_buffer);
     struct cb_vfs_node *(*parent)(struct cb_vfs_node *node);
     const char *(*name)(struct cb_vfs_node *node);
+    /* Optional extension; callers must check struct_size before reading. */
+    int (*truncate)(struct cb_vfs_node *node, cb_off_t length);
 };
 
 struct cb_vfs_mount {
@@ -134,6 +136,7 @@ struct cb_file_ops {
     int (*poll)(struct cb_open_file *, int events);
     int (*stat)(struct cb_open_file *, struct cb_stat_v1 *);
     void (*last_close)(struct cb_open_file *);
+    int (*truncate)(struct cb_open_file *, struct cb_task *, cb_off_t);
 };
 
 struct cb_pipe {
@@ -240,6 +243,9 @@ struct cb_open_file *cb_vfs_open(struct cb_task *task, const char *path,
                                  int flags, uint32_t mode);
 int cb_vfs_stat_path(struct cb_task *task, const char *path,
                      struct cb_stat_v1 *stat_buffer);
+int cb_vfs_truncate_node(struct cb_vfs_node *node, cb_off_t length);
+int cb_vfs_truncate_path(struct cb_task *task, const char *path,
+                         cb_off_t length);
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
 int cb_vfs_unlink_path(struct cb_task *task, const char *path);
 int cb_vfs_chdir_path(struct cb_task *task, const char *path);

@@ -145,6 +145,8 @@ struct cb_api_v1 {
     void (*release)(void *pointer);
     int *(*errno_location)(void);
     char ***(*environ_location)(void);
+    int (*truncate)(const char *path, cb_off_t length);
+    int (*ftruncate)(int fd, cb_off_t length);
 };
 
 struct cb_program_v1 {

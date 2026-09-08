@@ -18,6 +18,8 @@ memory_source=tests/libc_memory_source.c
 memory_object=$build_path/libc_memory_source.o
 environ_source=tests/libc_environ_source.c
 environ_object=$build_path/libc_environ_source.o
+truncate_source=tests/libc_truncate_probe.c
+truncate_object=$build_path/libc_truncate_probe.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -144,6 +146,19 @@ for symbol in calloc realloc; do
             matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
         printf 'FAIL: allocation probe does not import cb_libc_%s\n' \
             "$symbol" >&2
+        exit 1
+    fi
+done
+
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$truncate_source"; then
+    echo 'FAIL: truncate probe uses private names' >&2
+    exit 1
+fi
+for symbol in truncate ftruncate; do
+    if ! matches "\\b${symbol}[[:space:]]*\\(" "$truncate_source" ||
+            nm -u "$truncate_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$truncate_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary %s probe does not use the private veneer\n' "$symbol" >&2
         exit 1
     fi
 done

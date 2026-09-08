@@ -28,7 +28,7 @@ CORE_SOURCES := \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/test_core.c $(CORE_SOURCES)
+TEST_SOURCES := tests/test_core.c tests/libc_truncate_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
@@ -41,6 +41,7 @@ NETBSD_STRCHR_OBJECT := $(BUILD)/netbsd_strchr.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
 LIBC_ENVIRON_TEST_OBJECT := $(BUILD)/libc_environ_source.o
+LIBC_TRUNCATE_TEST_OBJECT := $(BUILD)/libc_truncate_probe.o
 LIBC_OBJECTS := $(LIBC_OBJECT) $(NETBSD_STRLEN_OBJECT) \
 	$(NETBSD_STRCMP_OBJECT) $(NETBSD_MEMCPY_OBJECT) $(NETBSD_MEMMOVE_OBJECT) \
 	$(NETBSD_MEMCMP_OBJECT)
@@ -127,14 +128,20 @@ $(LIBC_ENVIRON_TEST_OBJECT): tests/libc_environ_source.c \
 		include/cannedbsd/libc.h libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c $< -o $@
 
+$(LIBC_TRUNCATE_TEST_OBJECT): tests/libc_truncate_probe.c \
+        include/cannedbsd/libc.h libc/include/unistd.h libc/include/fcntl.h \
+        libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_truncate_probe_main \
+		-c $< -o $@
+
 $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
 		$(YES_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 check-architecture:
@@ -214,6 +221,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/common/lib/libc/string/strchr.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_truncate_probe.c
 
 ci:
 	python3 tests/test_mac_guest.py

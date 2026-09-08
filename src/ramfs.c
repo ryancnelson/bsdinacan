@@ -36,6 +36,8 @@ static int node_poll(struct cb_open_file *file, int events);
 static int open_file_stat(struct cb_open_file *file,
                           struct cb_stat_v1 *stat_buffer);
 static void node_last_close(struct cb_open_file *file);
+static int node_truncate(struct cb_open_file *file, struct cb_task *task,
+                          cb_off_t length);
 
 static void ramfs_node_retain(struct cb_vfs_node *common);
 static void ramfs_node_release(struct cb_vfs_node *common);
@@ -51,6 +53,7 @@ static int ramfs_stat(struct cb_vfs_node *common,
                       struct cb_stat_v1 *stat_buffer);
 static struct cb_vfs_node *ramfs_parent(struct cb_vfs_node *common);
 static const char *ramfs_name(struct cb_vfs_node *common);
+static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length);
 static struct cb_vfs_node *ramfs_mount_root(struct cb_vfs_mount *common);
 static void ramfs_mount_destroy(struct cb_vfs_mount *common);
 
@@ -60,7 +63,8 @@ static const struct cb_file_ops node_file_ops = {
     node_lseek,
     node_poll,
     open_file_stat,
-    node_last_close
+    node_last_close,
+    node_truncate
 };
 
 static const struct cb_vfs_node_ops ramfs_node_ops = {
@@ -74,7 +78,8 @@ static const struct cb_vfs_node_ops ramfs_node_ops = {
     ramfs_open,
     ramfs_stat,
     ramfs_parent,
-    ramfs_name
+    ramfs_name,
+    ramfs_truncate
 };
 
 static const struct cb_vfs_mount_ops ramfs_mount_ops = {
@@ -235,6 +240,37 @@ static int ramfs_open(struct cb_vfs_node *common, struct cb_task *task,
     ramfs_node_retain(common);
     file->offset = (flags & CB_O_APPEND) ? (cb_off_t)node->size : 0;
     *file_out = file;
+    return 0;
+}
+
+static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length)
+{
+    struct cb_ramfs_node *node = ramfs_node(common);
+    size_t needed, capacity;
+    unsigned char *data;
+    if (length < 0 || (uint64_t)length > SIZE_MAX)
+        return -CB_EINVAL;
+    if (node->type != CB_NODE_REGULAR)
+        return node->type == CB_NODE_DIRECTORY ? -CB_EISDIR : -CB_ESPIPE;
+    needed = (size_t)length;
+    if (needed > node->capacity) {
+        capacity = node->capacity == 0 ? 64 : node->capacity;
+        while (capacity < needed) {
+            if (capacity > SIZE_MAX / 2) {
+                capacity = needed;
+                break;
+            }
+            capacity *= 2;
+        }
+        data = cb_resize(common->mount->kernel, node->data, capacity);
+        if (data == NULL)
+            return -CB_ENOMEM;
+        node->data = data;
+        node->capacity = capacity;
+    }
+    if (needed > node->size)
+        memset(node->data + node->size, 0, needed - node->size);
+    node->size = needed;
     return 0;
 }
 
@@ -416,6 +452,21 @@ static cb_off_t node_lseek(struct cb_open_file *file, struct cb_task *task,
     file->offset = result;
     cb_task_set_error(task, 0);
     return result;
+}
+
+static int node_truncate(struct cb_open_file *file, struct cb_task *task,
+                          cb_off_t length)
+{
+    int result;
+    if ((file->flags & CB_O_ACCMODE) == CB_O_RDONLY) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    result = cb_vfs_truncate_node(file->object.node, length);
+    /* The descriptor fallback follows lseek's unsupported-operation error. */
+    cb_task_set_error(task, result == -CB_ENOSYS ? CB_EBADF :
+                            result < 0 ? -result : 0);
+    return result < 0 ? -1 : 0;
 }
 
 static int open_file_stat(struct cb_open_file *file,

@@ -24,6 +24,8 @@ cb_ssize_t cb_libc_read(int descriptor, void *buffer, size_t count);
 cb_ssize_t cb_libc_write(int descriptor, const void *buffer, size_t count);
 int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
+int cb_libc_truncate(const char *path, cb_off_t length);
+int cb_libc_ftruncate(int descriptor, cb_off_t length);
 void *cb_libc_malloc(size_t size);
 void *cb_libc_calloc(size_t count, size_t size);
 void *cb_libc_realloc(void *pointer, size_t size);

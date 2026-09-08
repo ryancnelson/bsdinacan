@@ -41,7 +41,8 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 ## Implemented first slice
 
 - `unistd.h`: `read`, `write`, `close`, standard descriptor numbers, and a
-  task-local `environ` lvalue.
+  task-local `environ` lvalue; `off_t`, `truncate`, and `ftruncate` for regular
+  file resizing. `off_t` uses the signed 64-bit runtime offset type.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.

@@ -331,9 +331,20 @@ Required objects are directories and regular files. Required behavior:
 - `.` and `..` handling without escaping the process root.
 - Per-process current directory.
 - Open for read, write, create, truncate, and append.
-- Truncation sets the logical size to zero. A later write beyond the logical end
-  zero-fills the intervening hole even when old storage capacity is reused; a
-  zero-byte write never changes size or contents.
+- `O_TRUNC` at open sets logical size to zero. Standalone `truncate(path, length)`
+  and `ftruncate(fd, length)` resize a regular file to a nonnegative length.
+  Growth exposes zeros immediately, including reused storage after a shrink;
+  allocator failure leaves size and contents unchanged. These operations never
+  change open-file offsets; independent opens and duplicated descriptors observe
+  the same new node size. A later write beyond the logical end zero-fills the
+  intervening hole; append writes use the new end; zero-byte writes do not mutate.
+- Descriptor truncation requires writable access (`EBADF` for read-only or
+  invalid descriptors); pipe and terminal descriptors report `ESPIPE`.
+  Directory paths report `EISDIR`; negative or size_t-unrepresentable lengths
+  report `EINVAL`. Path mode-bit permission enforcement remains deferred.
+  Older VFS node-operation table prefixes remain valid: absent optional
+  node truncation reports
+  `ENOSYS` for paths and `EBADF` through the descriptor fallback.
 - Independent directory entries and file contents.
 - File offsets shared through duplicated open-file objects.
 - Minimal `stat` information: object type, mode, size, and stable inode number.
