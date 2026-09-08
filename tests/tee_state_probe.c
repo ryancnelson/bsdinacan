@@ -1,5 +1,6 @@
 #include "internal.h"
 #include <stddef.h>
+#include <errno.h>
 
 /* Synthetic list structure */
 struct _list {
@@ -18,6 +19,8 @@ struct cb_tee_execution {
     struct cb_execution *inner_execution;
     struct _list *task_head;
 };
+
+static int sidecar_live = 0;
 
 static int tee_wrapper_prepare(struct cb_kernel *kernel,
                                const struct cb_executor_ops *executor,
@@ -40,6 +43,8 @@ static struct cb_execution *tee_wrapper_instance_create(
         cb_release(task->kernel, wrapper);
         return NULL;
     }
+    
+    ++sidecar_live;
     
     wrapper->common.executor = program->executor;
     wrapper->common.task = task;
@@ -81,6 +86,7 @@ static void tee_wrapper_instance_destroy(struct cb_execution *execution)
     struct cb_tee_execution *wrapper = (struct cb_tee_execution *)execution;
     struct cb_kernel *kernel = wrapper->common.task->kernel;
     
+    --sidecar_live;
     cb_native_executor()->instance_destroy(wrapper->inner_execution);
     cb_release(kernel, wrapper);
 }
@@ -105,6 +111,8 @@ static const struct cb_executor_ops tee_wrapper_ops = {
 
 /* --- Mocks and Tests --- */
 
+static int payload_allocated = 0;
+
 static int entry_mock(const struct cb_api_v1 *api, int argc, char *const argv[], char *const envp[])
 {
     struct _list *node;
@@ -114,6 +122,8 @@ static int entry_mock(const struct cb_api_v1 *api, int argc, char *const argv[],
     
     node = api->allocate(sizeof(*node));
     if (node == NULL) { cb_tee_main = 2; return 2; }
+    ++payload_allocated;
+    
     node->payload = is_child ? 99 : 42;
     node->next = cb_tee_head;
     cb_tee_head = node;
@@ -123,10 +133,13 @@ static int entry_mock(const struct cb_api_v1 *api, int argc, char *const argv[],
         cb_pid_t pid;
         int status = 0;
         
-        if (api->spawn("mock_tee", spawn_args, envp, NULL, 0, &pid) != 0) { cb_tee_main = 3; return 3; }
+        if (api->spawn("mock_tee", spawn_args, envp, NULL, 0, &pid) != 0) { 
+            if (cb_tee_head != node) { cb_tee_main = 7; return 7; }
+            cb_tee_main = 3; return 3; 
+        }
         api->yield();
         
-        api->waitpid(pid, &status);
+        if (api->waitpid(pid, &status) != pid) { cb_tee_main = 6; return 6; }
         if (status != 0) { cb_tee_main = 4; return 4; }
     }
     
@@ -147,11 +160,14 @@ static int entry_mock_exec(const struct cb_api_v1 *api, int argc, char *const ar
     if (cb_tee_head != NULL) { cb_tee_main = 1; return 1; }
     node = api->allocate(sizeof(*node));
     if (node == NULL) { cb_tee_main = 2; return 2; }
+    ++payload_allocated;
+    
     node->payload = 42;
     node->next = cb_tee_head;
     cb_tee_head = node;
     
-    api->exec(bad_args[0], bad_args, envp);
+    if (api->exec(bad_args[0], bad_args, envp) != -1) { cb_tee_main = 8; return 8; }
+    if (api->get_errno() != ENOENT) { cb_tee_main = 9; return 9; }
     
     if (cb_tee_head != node || cb_tee_head->payload != 42) { cb_tee_main = 4; return 4; }
     
@@ -181,17 +197,14 @@ static const struct cb_program_v1 mock_peer = {
 
 static const struct cb_host_ops_v1 *base_host;
 static int alloc_count, target_alloc_fail;
-static int context_count, target_context_fail;
-static int live_allocs, max_live_allocs;
+static int context_count, target_context_fail, live_contexts;
+static int live_allocs;
 
 static void *test_allocate(size_t size) {
     ++alloc_count;
-    if (target_alloc_fail == alloc_count) return NULL;
+    if (target_alloc_fail > 0 && target_alloc_fail == alloc_count) return NULL;
     void *p = base_host->allocate(size);
-    if (p) {
-        ++live_allocs;
-        if (live_allocs > max_live_allocs) max_live_allocs = live_allocs;
-    }
+    if (p) ++live_allocs;
     return p;
 }
 static void test_release(void *p) {
@@ -203,10 +216,13 @@ static struct cb_host_context *test_context_root(void) {
 }
 static struct cb_host_context *test_context_create(void (*entry)(void *), void *arg, size_t size) {
     ++context_count;
-    if (target_context_fail == context_count) return NULL;
-    return base_host->context_create(entry, arg, size);
+    if (target_context_fail > 0 && target_context_fail == context_count) return NULL;
+    struct cb_host_context *ctx = base_host->context_create(entry, arg, size);
+    if (ctx) ++live_contexts;
+    return ctx;
 }
 static void test_context_destroy(struct cb_host_context *ctx) {
+    --live_contexts;
     base_host->context_destroy(ctx);
 }
 
@@ -214,7 +230,8 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
 {
     struct cb_kernel *kernel;
     struct cb_host_ops_v1 copy = *host;
-    int r1, r2;
+    int r1, r2, base_allocs, i;
+    int pre_allocs, post_allocs;
     
     base_host = host;
     copy.allocate = test_allocate;
@@ -224,8 +241,8 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
     copy.context_destroy = test_context_destroy;
     
     alloc_count = target_alloc_fail = 0;
-    context_count = target_context_fail = 0;
-    live_allocs = max_live_allocs = 0;
+    context_count = target_context_fail = live_contexts = 0;
+    live_allocs = sidecar_live = payload_allocated = 0;
 
     kernel = cb_kernel_create(&copy);
     if (!kernel) return -1;
@@ -237,9 +254,7 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
     if (cb_kernel_register_executor(kernel, cb_native_executor(), &mock_tee) != 0) return -10;
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -11;
     r1 = cb_kernel_run(kernel);
-    /* In shared state, child sees leaked head, returns 1, parent sees child failure, returns 4 */
     if (r1 != 4 || cb_tee_main != 4) { cb_kernel_destroy(kernel); return 99; }
-    
     cb_kernel_destroy(kernel);
     if (live_allocs != 0) return 101; 
 
@@ -251,63 +266,105 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -13;
     r2 = cb_kernel_run(kernel); 
     cb_kernel_destroy(kernel);
-    
-    /* Sequential leak: parent starts and immediately sees cb_tee_head != NULL, returns 1 */
     if (r2 != 1 || cb_tee_main != 1) return 100;
-    
-    /* Clean up dangling pointer for next tests */
     cb_tee_head = NULL; 
 
     /* Phase 2: Isolated Wrapper Tests (Interleaved) */
     cb_tee_main = 0;
-    alloc_count = target_alloc_fail = context_count = target_context_fail = live_allocs = max_live_allocs = 0;
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
-    
     if (cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee) != 0) return -20;
-    if (cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee_exec) != 0) return -21;
-    if (cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer) != 0) return -22;
-
-    /* Booting parent will spawn child and interleave them automatically via entry_mock logic */
     if (cb_kernel_boot(kernel, "mock_tee") != 0) return -23;
+    
+    pre_allocs = live_allocs;
+    payload_allocated = 0;
+    
     if (cb_kernel_run(kernel) != 0) return 200; 
-
-    if (cb_tee_main != 0) return 201; /* Should not fail */
-    if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 202; }
+    if (cb_tee_main != 0) return 201; 
+    if (cb_tee_head != NULL) return 202; 
     
-    cb_kernel_destroy(kernel);
+    post_allocs = live_allocs;
+    if (payload_allocated != 2) return 203; 
+    if (sidecar_live != 1) return 204;
+    if (live_contexts != 1) return 205;
 
-    /* Phase 3: Creation failures */
+    cb_kernel_destroy(kernel);
+    if (sidecar_live != 0 || live_contexts != 0 || live_allocs != 0) return 206;
+
+    /* Phase 3: Creation failures (Exhaustive allocation injection) */
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
-    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
+    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee);
     
-    target_alloc_fail = alloc_count + 1;
-    if (cb_kernel_boot(kernel, "mock_peer") == 0) return 300;
-    if (cb_tee_head != NULL) return 301;
+    alloc_count = 0;
+    /* We count how many allocations api->spawn makes by running it once */
+    /* To count spawn allocations, we just let it run. But we can't easily isolate just spawn. */
+    /* We'll just run a full success case and count total allocations up to spawn success. */
+    /* Wait, we can just run a loop with target_alloc_fail until we hit success! */
     cb_kernel_destroy(kernel);
     
-    kernel = cb_kernel_create(&copy);
-    cb_register_base_programs(kernel);
-    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
-    
-    target_alloc_fail = alloc_count + 2;
-    if (cb_kernel_boot(kernel, "mock_peer") == 0) return 302;
-    if (cb_tee_head != NULL) return 303;
-    cb_kernel_destroy(kernel);
-    
+    i = 1;
+    while (1) {
+        kernel = cb_kernel_create(&copy);
+        cb_register_base_programs(kernel);
+        cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee);
+        
+        target_alloc_fail = i;
+        alloc_count = 0;
+        cb_tee_main = 0;
+        
+        int boot_res = cb_kernel_boot(kernel, "mock_tee");
+        if (boot_res != 0) {
+            /* Boot failed due to setup failure (task/error_cell) */
+            if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 400 + i; }
+        } else {
+            /* Boot succeeded, run to hit api->spawn or later allocations */
+            int run_res = cb_kernel_run(kernel);
+            if (cb_tee_main == 3) {
+                /* Spawn failed due to allocation failure. cb_tee_head was preserved. */
+            } else if (cb_tee_main == 7) {
+                /* Spawn failed, but cb_tee_head was leaked/corrupted! */
+                cb_kernel_destroy(kernel); return 450 + i;
+            } else if (cb_tee_main == 2) {
+                /* Payload allocation failed */
+            } else if (run_res == 0 && cb_tee_main == 0) {
+                /* Success! We found the max allocations. */
+                cb_kernel_destroy(kernel);
+                break;
+            }
+        }
+        cb_kernel_destroy(kernel);
+        i++;
+    }
     target_alloc_fail = 0;
     
-    kernel = cb_kernel_create(&copy);
-    cb_register_base_programs(kernel);
-    cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_peer);
-    
-    target_context_fail = context_count + 1;
-    if (cb_kernel_boot(kernel, "mock_peer") == 0) return 304;
-    if (cb_tee_head != NULL) return 305;
+    /* Phase 3b: Context failures */
+    i = 1;
+    while (1) {
+        kernel = cb_kernel_create(&copy);
+        cb_register_base_programs(kernel);
+        cb_kernel_register_executor(kernel, &tee_wrapper_ops, &mock_tee);
+        target_context_fail = i; 
+        context_count = 0;
+        cb_tee_main = 0;
+        
+        int boot_res = cb_kernel_boot(kernel, "mock_tee");
+        if (boot_res != 0) {
+            if (cb_tee_head != NULL) { cb_kernel_destroy(kernel); return 501; }
+        } else {
+            int run_res = cb_kernel_run(kernel);
+            if (cb_tee_main == 3) { /* Spawn failed due to context */ }
+            else if (cb_tee_main == 7) { cb_kernel_destroy(kernel); return 502; }
+            else if (run_res == 0 && cb_tee_main == 0) {
+                cb_kernel_destroy(kernel);
+                break;
+            }
+        }
+        cb_kernel_destroy(kernel);
+        i++;
+    }
     target_context_fail = 0;
-    cb_kernel_destroy(kernel);
-    
+
     /* Phase 4: Exec tests */
     kernel = cb_kernel_create(&copy);
     cb_register_base_programs(kernel);
@@ -316,6 +373,8 @@ int cb_tee_state_probe(const struct cb_host_ops_v1 *host)
     
     if (cb_kernel_boot(kernel, "mock_tee_exec") != 0) return -30;
     if (cb_kernel_run(kernel) != 0) return 400;
+    
+    if (sidecar_live != 1) return 401;
 
     cb_kernel_destroy(kernel);
     if (live_allocs != 0) return 500;

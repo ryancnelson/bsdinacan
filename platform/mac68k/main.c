@@ -4,6 +4,7 @@
 #include <string.h>
 
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
+int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 
 struct acceptance_case { const char *command, *expected; int status; };
 static const struct cb_mac_autorun_ops autorun_ops = {
@@ -66,6 +67,11 @@ int main(void)
         passed = cb_console_write_probe(cb_mac_host_ops()) == 0;
         cb_mac_text(passed ? "PASS: portable console write\n" : "FAIL: console write\n");
         strcat(result, passed ? "PASS consolewrite\n" : "FAIL consolewrite\n");
+    }
+    if (passed) {
+        passed = cb_tee_state_probe(cb_mac_host_ops()) == 0;
+        cb_mac_text(passed ? "PASS: tee state isolated\n" : "FAIL: tee state\n");
+        strcat(result, passed ? "PASS teestate\n" : "FAIL teestate\n");
     }
     for (index = 0; passed && index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int status = -1;
