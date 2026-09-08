@@ -27,6 +27,8 @@ getopt_source=tests/libc_getopt_probe.c
 getopt_object=$build_path/getoptprobe_command.o
 truncate_source=tests/libc_truncate_probe.c
 truncate_object=$build_path/libc_truncate_probe.o
+errx_source=tests/libc_errx_probe.c
+errx_object=$build_path/errxprobe_command.o
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: external ordinary-main source is missing: $source_file" >&2
@@ -195,6 +197,23 @@ fi
 if ! nm -u "$getopt_object" |
         matches '[[:space:]]U[[:space:]]+cb_libc_getopt$'; then
     echo 'FAIL: getopt probe does not use the private veneer function' >&2
+    exit 1
+fi
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$errx_source"; then
+    echo 'FAIL: errx source probe uses cannedBSD-specific names' >&2
+    exit 1
+fi
+if ! matches '\berrx[[:space:]]*\(' "$errx_source"; then
+    echo 'FAIL: errx source probe does not call errx()' >&2
+    exit 1
+fi
+if nm -u "$errx_object" | matches '[[:space:]]U[[:space:]]+errx$'; then
+    echo 'FAIL: errx probe imports a host-facing errx symbol' >&2
+    exit 1
+fi
+if ! nm -u "$errx_object" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_errx$'; then
+    echo 'FAIL: errx probe does not use the private veneer function' >&2
     exit 1
 fi
 if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$allocation_source"; then

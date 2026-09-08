@@ -7,6 +7,7 @@
 
 extern const struct cb_program_v1 cb_exitprobe_program;
 extern const struct cb_program_v1 cb_getoptprobe_program;
+extern const struct cb_program_v1 cb_errxprobe_program;
 
 static char captured[32768];
 static size_t captured_size;
@@ -1460,6 +1461,83 @@ static int getoptclusterprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+static int errxprobe_main(const struct cb_api_v1 *api, int argc,
+                          char *const argv[], char *const envp[])
+{
+    char sync_write_fd[32];
+    char sync_read_fd[32];
+    char *argv_a[4];
+    char *argv_b[4];
+    int sync_pipe[2];
+    struct cb_spawn_action_v1 close_for_a;
+    struct cb_spawn_action_v1 close_for_b;
+    cb_pid_t child_a;
+    cb_pid_t child_b;
+    int status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->pipe(sync_pipe) < 0)
+        return 350;
+    snprintf(sync_write_fd, sizeof(sync_write_fd), "%d", sync_pipe[1]);
+    snprintf(sync_read_fd, sizeof(sync_read_fd), "%d", sync_pipe[0]);
+
+    close_for_a.abi_version = CB_ABI_VERSION_V1;
+    close_for_a.struct_size = sizeof(close_for_a);
+    close_for_a.type = CB_SPAWN_CLOSE;
+    close_for_a.from_fd = sync_pipe[0];
+    close_for_a.to_fd = -1;
+    close_for_b = close_for_a;
+    close_for_b.from_fd = sync_pipe[1];
+
+    /* Two tasks, two distinct argv[0] program identities, spawned under
+       the SAME registered command name -- proving getprogname() tracks
+       this task's own argv[0], not the registry lookup key. */
+    argv_a[0] = (char *)"errx-task-alpha";
+    argv_a[1] = (char *)"A";
+    argv_a[2] = sync_write_fd;
+    argv_a[3] = NULL;
+    if (api->spawn("libcerrxprobe", argv_a, NULL, &close_for_a, 1,
+                   &child_a) < 0)
+        return 351;
+
+    argv_b[0] = (char *)"errx-task-beta";
+    argv_b[1] = (char *)"B";
+    argv_b[2] = sync_read_fd;
+    argv_b[3] = NULL;
+    if (api->spawn("libcerrxprobe", argv_b, NULL, &close_for_b, 1,
+                   &child_b) < 0)
+        return 352;
+
+    if (api->close(sync_pipe[0]) < 0 || api->close(sync_pipe[1]) < 0)
+        return 353;
+
+    if (api->waitpid(child_a, &status) != child_a || status != 1)
+        return 354;
+    if (api->waitpid(child_b, &status) != child_b || status != 1)
+        return 355;
+
+    /* Each task's diagnostic must carry its own program identity, order-
+       independent of exactly how the two tasks interleaved. */
+    if (strstr(captured_streams[2], "errx-task-alpha: boom\n") == NULL ||
+        strstr(captured_streams[2], "errx-task-beta: boom\n") == NULL)
+        return 356;
+    /* errx must never write to stdout. */
+    if (captured_streams[1][0] != '\0')
+        return 357;
+    /* Already verified above, order-independently; clear the transcript so
+       the run_case() caller's own blanket comparison isn't coupled to
+       exactly how these two tasks happened to interleave. */
+    captured_size = 0;
+    captured[0] = '\0';
+    captured_stream_sizes[1] = 0;
+    captured_streams[1][0] = '\0';
+    captured_stream_sizes[2] = 0;
+    captured_streams[2][0] = '\0';
+    return 0;
+}
+
 static int terminalpeer_main(const struct cb_api_v1 *api, int argc,
                              char *const argv[], char *const envp[])
 {
@@ -1751,7 +1829,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->allocate == NULL || api->resize == NULL ||
         api->release == NULL || api->errno_location == NULL ||
         api->environ_location == NULL || api->getopt_state_location == NULL ||
-        api->truncate == NULL || api->ftruncate == NULL)
+        api->truncate == NULL || api->ftruncate == NULL ||
+        api->getprogname == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -2338,6 +2417,11 @@ static const struct cb_program_v1 getoptclusterprobe_program = {
     64 * 1024, getoptclusterprobe_main
 };
 
+static const struct cb_program_v1 errxprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "errxprobe", 0,
+    64 * 1024, errxprobe_main
+};
+
 static const struct cb_program_v1 terminalprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "terminalprobe", 0,
     64 * 1024, terminalprobe_main
@@ -2708,6 +2792,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &getoptwaitprobe_program) < 0 ||
             cb_kernel_register(kernel, &getopterrprobe_program) < 0 ||
             cb_kernel_register(kernel, &getoptclusterprobe_program) < 0 ||
+            cb_kernel_register(kernel, &cb_errxprobe_program) < 0 ||
+            cb_kernel_register(kernel, &errxprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -2987,6 +3073,7 @@ int main(int argc, char **argv)
     run_case("getoptwaitprobe", "libcgetoptprobe: illegal option -- x\n", 0, 1);
     run_case("getopterrprobe", "", 0, 1);
     run_case("getoptclusterprobe", "", 0, 1);
+    run_case("errxprobe", "", 0, 1);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);

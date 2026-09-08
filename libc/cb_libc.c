@@ -24,7 +24,8 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->resize != NULL && api->release != NULL &&
            api->errno_location != NULL && api->environ_location != NULL &&
            api->exit != NULL && api->getopt_state_location != NULL &&
-           api->truncate != NULL && api->ftruncate != NULL;
+           api->truncate != NULL && api->ftruncate != NULL &&
+           api->getprogname != NULL;
 }
 
 int cb_libc_start(const struct cb_api_v1 *api, int argc, char *const argv[],
@@ -302,4 +303,19 @@ int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...)
     result = format_output(stream->descriptor, format, arguments);
     va_end(arguments);
     return result;
+}
+
+void cb_libc_errx(int eval, const char *fmt, ...)
+{
+    va_list arguments;
+    const char *name = bound_api->getprogname();
+    if (name == NULL)
+        name = "";
+    write_all(2, name, cb_libc_strlen(name));
+    write_all(2, ": ", 2);
+    va_start(arguments, fmt);
+    format_output(2, fmt, arguments);
+    va_end(arguments);
+    write_all(2, "\n", 1);
+    cb_libc_exit(eval);
 }

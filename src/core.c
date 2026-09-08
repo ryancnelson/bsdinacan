@@ -1268,6 +1268,11 @@ static struct cb_getopt_state_v1 *api_getopt_state_location(void)
     return &active_kernel->current->getopt_state;
 }
 
+static const char *api_getprogname(void)
+{
+    return active_kernel->current->argv[0];
+}
+
 static const struct cb_capabilities_v1 *api_capabilities(void)
 {
     return &active_kernel->capabilities;
@@ -1400,6 +1405,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->getopt_state_location = api_getopt_state_location;
     api->truncate = api_truncate;
     api->ftruncate = api_ftruncate;
+    api->getprogname = api_getprogname;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)
