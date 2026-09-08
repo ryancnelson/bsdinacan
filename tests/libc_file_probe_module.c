@@ -23,6 +23,7 @@ static int entry(const struct cb_api_v1 *api, int argc,
 {
     char *peer[] = {(char *)"fileprobe", (char *)"peer", NULL};
     char *after[] = {(char *)"fileprobe", (char *)"after", NULL};
+    struct cb_stat_v1 metadata;
     struct cb_input_state_v1 *state = api->input_state_location();
     cb_pid_t child;
     int status, fd;
@@ -40,6 +41,24 @@ static int entry(const struct cb_api_v1 *api, int argc,
         if (state->input_streams != NULL) return 43;
         return cb_file_call(api, "foreign");
     }
+    /* No descriptors beyond stdin/stdout/stderr exist yet. The ordinary
+     * source creates with DEFFILEMODE and closes fd3; verify before later
+     * task exit or kernel cleanup could hide a leaked descriptor/file. */
+    if (cb_file_call(api, "default-mode") != 0) return 51;
+    if (api->fstat(3, &metadata) != -1 || api->get_errno() != CB_EBADF)
+        return 52;
+    if (api->stat("/tmp/default-mode", &metadata) != 0 ||
+        metadata.mode != 0666 || metadata.type != CB_NODE_REGULAR ||
+        metadata.size != 0) return 53;
+    fd = api->open("/tmp/default-mode", CB_O_RDONLY, 0);
+    if (fd != 3) { if (fd >= 0) api->close(fd); return 54; }
+    status = api->fstat(fd, &metadata);
+    if (api->close(fd) != 0 || status != 0 || metadata.mode != 0666 ||
+        metadata.type != CB_NODE_REGULAR || metadata.size != 0) return 55;
+    if (api->fstat(fd, &metadata) != -1 || api->get_errno() != CB_EBADF ||
+        api->unlink("/tmp/default-mode") != 0 ||
+        api->stat("/tmp/default-mode", &metadata) != -1 ||
+        api->get_errno() != CB_ENOENT) return 56;
     if (cb_file_prepare(api) != 0 || cb_file_call(api, "invalid") != 0 ||
         cb_file_call(api, "missing-directory") != 0 ||
         cb_file_call(api, "open-two") != 0) return 44;
