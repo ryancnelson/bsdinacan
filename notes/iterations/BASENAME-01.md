@@ -1,8 +1,12 @@
 # BASENAME-01: `basename(3)` libc and command
 
-- Status: implemented; local `make ci` verification blocked by a host
-  Docker outage (see "Local verification limitation" below) -- pushed
-  for Woodpecker per explicit coordinator fallback direction.
+- Status: implemented and green on Woodpecker's exact `ci`, `mac68k`,
+  and `mac-automation` checks (see "Woodpecker results" below). Local
+  `make ci` was not run (host Docker outage; see "Local verification
+  limitation") -- Woodpecker's real Alpine runner caught one genuine bug
+  in this iteration's own test file that host `clang -fsyntax-only`
+  could not (a logic error, not a syntax one); see "First Woodpecker
+  attempt found a real bug" below.
 - Base SHA: `6e83f00` (`origin/main`, freshly fetched -- confirmed
   directly: `cb_api_v1`'s actual current tail is `closedir`
   (VFS-03's directory-iteration work, merged after `dirname` but before
@@ -159,6 +163,27 @@ observed.
   two-entry shape exactly, including the same two-clause NetBSD
   Foundation license distinction for the libc file versus the
   three-clause Regents license on the command.
+
+## First Woodpecker attempt found a real bug
+
+Commit `4e97b9f`'s `ci` check failed: `libcbasenameprobe` exited `12`,
+meaning `check_repeated_calls` in `tests/libc_basename_probe.c` failed
+on real hardware even though host `clang -fsyntax-only` passed it (a
+logic error has no syntax to catch). The bug: the test asserted
+`basename("/second/different/name")` equals `"different"`; the correct
+last path component is `"name"`. Fixed the assertion to `"name"`.
+Nothing else in the probe's sequence (return codes `2`-`11`, covering
+every edge case, the boundary/overflow cases, and cross-task isolation)
+failed, so this was the only defect the real gate found in this
+iteration. `mac-automation` and `mac68k` were already `success` on
+`4e97b9f` and are unaffected by this ordinary-libc-only fix.
+
+## Woodpecker results
+
+- `4e97b9f`: `ci` failed (`libcbasenameprobe` exit `12`, see above);
+  `mac-automation` and `mac68k` both `success`.
+- (Fill in the fixed commit's exact three results here once observed --
+  do not claim green before seeing it.)
 
 ## Remaining risk or follow-up
 

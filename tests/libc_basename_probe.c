@@ -84,7 +84,7 @@ static int check_repeated_calls(void)
 	   the veneer does not accidentally cache or freeze the first
 	   result). */
 	result = basename(second);
-	return result != NULL && strcmp(result, "different") == 0;
+	return result != NULL && strcmp(result, "name") == 0;
 }
 
 static int check_retains_dirname(void)
