@@ -161,7 +161,7 @@ char *cb_libc_dirname(char *path)
        (cooperative scheduling), so the copy itself cannot race -- the
        hazard is purely about what happens *after* this function returns,
        which per-task ownership of the destination buffer solves. */
-    cb_libc_strlcpy_or_equivalent(owned, shared, CB_PATH_MAX);
+    cb_libc_memcpy(owned, shared, cb_libc_strlen(shared) + 1);
     return owned;
 }
 ```
@@ -173,7 +173,8 @@ new, append-only `cb_api_v1` accessor,
 char *(*dirname_buffer_location)(void);
 ```
 
-placed after `closedir` (the current last field), returning a pointer to
+placed after the actual last field at implementation time (`poll` on current
+main, or the directory fields after VFS-03 integration), returning a pointer to
 one new field on `struct cb_task`:
 
 ```c
@@ -201,17 +202,17 @@ and ordinary-source coverage of both (see section 8).
 for the task-owned buffer rather than importing or inventing a smaller
 `PATH_MAX`, for the same reason VFS-03's design review rejected an
 invented smaller `d_name` bound -- one existing, already-pinned constant,
-not a second one to keep in sync. Upstream's own `xdirname_r` truncates
-safely into whatever buffer it is given (section 3), so copying into a
-`CB_PATH_MAX`-sized destination is never narrower than upstream's own
-`PATH_MAX`-sized static in any environment this project targets.
+not a second one to keep in sync. The import-only limits shim must define `PATH_MAX` as `CB_PATH_MAX`.
+Upstream's `xdirname_r` then bounds its static result to exactly the task
+buffer size, including the terminal NUL. Copy with existing `strlen` and
+`memcpy`; this task does not require `strlcpy`.
 
 ## 5. New shim headers required (none exist yet)
 
 `lib/libc/gen/dirname.c` includes `"namespace.h"`, `<sys/param.h>`,
 `<libgen.h>`, `<limits.h>`, and `<string.h>`. Checked against the current
-tree: `libc/include/` and `compat/netbsd/include/` have neither
-`sys/param.h`, `libgen.h`, nor `limits.h` yet (only
+tree: the dirname import needs `sys/param.h`, `libgen.h`, and a dedicated
+`PATH_MAX` definition. Existing ordinary libc limits must remain intact (the
 `compat/netbsd/include/namespace.h` and `assert.h` exist, both already
 established as minimal import-only shims for the string routines).
 Implementation will need three new minimal shims, following that exact
@@ -221,12 +222,9 @@ precedent -- import-only, no unimplemented surface advertised:
   macro `xdirname_r` uses; must not pull in anything else NetBSD's real
   `sys/param.h` exposes (page sizes, `howmany`, etc.) that this project
   does not implement.
-- `compat/netbsd/include/limits.h` (or `libc/include/limits.h`, TBD at
-  implementation time depending on whether NetBSD's `dirname.c` needs
-  `PATH_MAX` to already agree with `CB_PATH_MAX` at compile time -- if
-  so, this header should `#define PATH_MAX CB_PATH_MAX` by including
-  `cannedbsd/abi.h`, keeping one source of truth rather than a second
-  pinned constant): only `PATH_MAX`.
+- An import-only limits shim for the dirname compilation supplies `PATH_MAX`
+  as `CB_PATH_MAX`. It must not shadow the existing ordinary libc limits
+  definitions such as `INT_MAX`, or pick up the host's unrelated path bound.
 - `compat/netbsd/include/libgen.h`: only the declaration `dirname.c`
   implicitly relies on being internally consistent with its own
   definition (an empty or near-empty import-only header, matching the
