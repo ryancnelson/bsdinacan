@@ -38,7 +38,8 @@ and released slot were verified. Archive SHA256:
 `c5506052e724c00594e44c6536e618606c080cdb0f9707789906e9302db30a34`.
 
 The reviewed head dependency plan identifies required option arguments and
-returning warn diagnostics as Ready next steps. General input streams and numeric
+returning warn diagnostics as the next steps, now assigned to the coordinator
+worker (GETOPT-02) and Antigravity (ERR-02). General input streams and numeric
 conversion remain design work. Claude continues the nearer NetBSD echo milestone.
 
 ## Latest accepted utility milestone, 2026-09-08
@@ -77,8 +78,8 @@ tests, screenshot capture and normal shutdown. One successful measurement does
 not establish a reliability rate or guarantee against external focus changes.
 
 Claude is implementing unchanged NetBSD echo with the accepted prerequisites.
-Antigravity is preparing a source-backed HEAD-01 dependency plan; head code
-implementation remains deferred. Codex owns reviews and serialized guest runs.
+Antigravity is implementing ERR-02 from the reviewed HEAD-01 dependency plan;
+the head command import remains deferred. Codex owns reviews and serialized guest runs.
 
 The earlier unchanged dirname/locale milestone remains accepted at `96d5936`:
 Woodpecker #174 all three checks, twenty-eight PASS records in `run-u4ko4rto`,

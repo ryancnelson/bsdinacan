@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements ECHO-01 with its prerequisites now
-accepted. Antigravity prepares the bounded HEAD-01 dependency plan in an isolated
-worktree; implementation remains deferred. Codex reviews, integrates and owns
-serialized guest acceptance. STDOUT-01 and MAC-12 are accepted at `894b753`
-with 42 fresh Mac records and a 16.09-second cold automated cycle.
+**Current assignments:** Claude implements ECHO-01. Antigravity implements
+ERR-02 in its isolated worktree. The coordinator's worker implements GETOPT-02
+in a separate worktree; Codex owns review, integration and serialized guest
+acceptance. ARGV-01 is accepted at `4ee800e` with 43 fresh Mac records and a
+15.33-second cold automated cycle. STDOUT-01 and MAC-12 remain accepted in main.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -1024,7 +1024,7 @@ review or to satisfy this measured command's dependencies.
 
 ### GETOPT-02 — required option arguments for unchanged head
 
-- **Status:** Ready; unclaimed
+- **Status:** Claimed by coordinator worker on `work/GETOPT-02`
 - **Base:** main
 - **Depends on:** reviewed HEAD-01 dependency plan
 - **Scope:** extend the existing task-owned parser for single-colon required
@@ -1041,7 +1041,7 @@ review or to satisfy this measured command's dependencies.
 
 ### ERR-02 — returning warn diagnostic for unchanged head
 
-- **Status:** Ready; unclaimed
+- **Status:** Claimed by Antigravity on `work/ERR-02`
 - **Base:** main
 - **Depends on:** ERR-01 (Done), reviewed HEAD-01 dependency plan
 - **Scope:** expose private `warn` using the existing bounded formatter and saved
