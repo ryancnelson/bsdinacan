@@ -921,9 +921,9 @@ separate IDs before assigning implementation.
   empty input, argument-count/option failures, dash-leading path, repeated
   invocation and pipeline; exact Woodpecker artifact runs in Basilisk II.
 
-The next visible project milestone is unchanged NetBSD `echo`, after STDOUT-01.
-Defer broader terminal and filesystem feature expansion unless needed to finish an active
-review or to satisfy this measured command's dependencies.
+The next visible milestone is unchanged NetBSD `head`; `echo` and STDOUT-01
+are accepted. Defer broader terminal and filesystem expansion unless needed
+for the active command milestone or a reviewed correctness fix.
 
 ### BASENAME-01 — unchanged NetBSD basename utility and libc prerequisite
 
@@ -960,12 +960,14 @@ review or to satisfy this measured command's dependencies.
 
 - **Status:** Awaiting FWRITE-01 acceptance and PORT32-01 stack/resource review
 - **Base:** integrated dependencies
-- **Depends on:** a reviewed dependency plan based on the measured audit
+- **Depends on:** accepted GETOPT-02, ERR-02, ARGV-01, STRCPY-01, CONV-01,
+  STDIN-01/02/03 and STDOUT-01; pending FWRITE-01 and PORT32-01 review
 - **Hypothesis:** real stream input, count conversion and argument-taking getopt
   can eventually support the pinned command without host libc leaks.
-- **Red:** current diagnostics lack ERANGE, fopen/warn/fclose/stdin/fread/fwrite,
-  feof/getc/putchar/strcpy/getprogname; host ctype/inttypes silently supply further
-  unsupported interfaces. Existing getopt does not consume required arguments.
+- **Initial red baseline:** the original audit lacked the stream, conversion,
+  string and argument-parsing interfaces recorded in HEAD-01-plan. Those accepted
+  dependencies are now listed above. FWRITE-01 remains under implementation;
+  final unchanged-source build and resource fixtures still require execution.
 - **Accept:** resolve those source-backed prerequisites and the source's 65536-byte
   automatic buffer versus the standard 64 KiB task stack before an unchanged
   import. Compile success alone is insufficient. See the utility audit; no
@@ -1051,8 +1053,9 @@ review or to satisfy this measured command's dependencies.
   terminate the task or overwrite the original errno. Source fence plus exact
   CI and fresh ordinary Mac probe acceptance.
 
-HEAD-01's remaining numeric/character/string and general stream dependencies
-are planning items in `notes/iterations/HEAD-01-plan.md`, not Ready assignments.
+HEAD-01's original dependency audit is `notes/iterations/HEAD-01-plan.md`.
+Its historical missing-interface list is superseded by the task statuses below
+and the current accepted libc inventory in `LIBC.md`.
 Split them into independently testable tasks before implementation. General
 stream ownership and cross-target integer contracts still require explicit design.
 

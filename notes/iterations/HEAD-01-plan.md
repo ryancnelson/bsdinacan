@@ -1,5 +1,18 @@
 # HEAD-01 Dependency Plan
 
+## Reading this historical audit
+
+The missing-interface statements below describe the original feasibility audit.
+They are not a current task queue or a claim that accepted headers are absent.
+As of 2026-09-08, getopt arguments, warn, argv ownership, strcpy, numeric
+conversion, stdin/getc/feof, read-only fopen/fclose and fread are accepted.
+FWRITE-01 remains in progress; PORT32-01 is under review. Use `BACKLOG.md`
+for assignments and `LIBC.md` for the accepted interface inventory.
+The reviewed `HEAD-01-testplan.md` supplies the concrete fixture requirements.
+For the 65538-byte case, a portable probe must verify RAMFS output internally
+in bounded chunks on both native and Mac targets, then return compact output.
+
+
 ## Context
 The goal is to prepare for the unchanged import of NetBSD's `usr.bin/head/head.c` (RCS 1.24) at the pinned revision `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c` (SHA256: `33745355975529ef5b33256578bee822dae8e80fbb27dc615a1761385d7eb18a`). Compiling and running `head` safely requires specific file streams, argument parsing, numeric conversions, and memory lifecycles. This plan maps actual missing dependencies into small, ordered backlog proposals with observable acceptance criteria, without broadening existing scopes or speculating APIs.
 
