@@ -14,7 +14,8 @@ assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
 **Current assignments:** Claude audits the head stack/resource boundary in
-PORT32-01. Antigravity implements FWRITE-01. Codex owns review, integration and
+PORT32-01. Antigravity audits NEXT-UTIL-02 while the coordinator worker repairs
+FWRITE-01 acceptance tests. Codex owns review, integration and
 serialized guest acceptance. CONV-01 and STDIN-03 are accepted at `ff08dd5`
 with 62 fresh Mac records, retaining all earlier accepted behavior.
 
@@ -1248,3 +1249,22 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** focused behavior tests, full exact CI and the unchanged complete
   actual Mac suite using the corrected comparison. No binary console-output
   fixture may rely on text comparison; verify binary data internally instead.
+
+### NEXT-UTIL-02 — select the utility after head from measured dependencies
+
+- **Status:** Claimed by Antigravity on `work/NEXT-UTIL-02`
+- **Base:** main
+- **Depends on:** accepted libc inventory; HEAD-01 remains the active import
+- **Scope:** Documentation-only `notes/iterations/NEXT-UTIL-02.md`. Compare
+  pinned NetBSD uniq, cut and tee against the current private headers. Record
+  unchanged source hashes/licenses, actual includes and called interfaces,
+  precise supported versus missing behavior, and a bounded recommendation.
+  If running compile-only diagnostics, record full commands and private include
+  paths; missing symbols are feasibility evidence, not behavioral regression
+  tests. No host-header fallback may masquerade as a private-veneer build.
+- **Red:** a current private-header compile or source contract demonstrates an
+  unsupported interface for each candidate; distinguish transitive helpers.
+- **Accept:** recommend the smallest coherent next milestone with exact missing
+  contracts and proposed dependency task IDs, source references and explicit
+  uncertainty. No implementation, speculative ABI or guest work. Run publication
+  and exact CI; coordinator reviews before activating proposed tasks.
