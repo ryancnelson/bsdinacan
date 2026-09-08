@@ -727,7 +727,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### REUSE-02 — MoreFiles read-only catalog feasibility probe
 
-- **Status:** Ready after review of `notes/iterations/REUSE-02-plan.md`
+- **Status:** Ready; scope reviewed in `notes/iterations/REUSE-02-plan.md`
 - **Base:** main
 - **Depends on:** REUSE-01 (Done)
 - **Hypothesis:** a small pinned MoreFiles catalog subset compiles under our
