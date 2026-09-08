@@ -8,10 +8,16 @@
 typedef struct cb_libc_file FILE;
 
 int cb_libc_puts(const char *text);
+int cb_libc_putchar(int character);
+int cb_libc_fflush(FILE *stream);
+int cb_libc_ferror(FILE *stream);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(FILE *stream, const char *format, ...);
 
 #define puts cb_libc_puts
+#define putchar cb_libc_putchar
+#define fflush cb_libc_fflush
+#define ferror cb_libc_ferror
 #define printf cb_libc_printf
 #define fprintf cb_libc_fprintf
 #define stdout cb_libc_stdout_stream
