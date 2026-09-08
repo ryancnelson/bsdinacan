@@ -40,7 +40,6 @@ EXITPROBE_COMMAND_OBJECT := $(BUILD)/exitprobe_command.o
 GETOPTPROBE_COMMAND_OBJECT := $(BUILD)/getoptprobe_command.o
 ERRXPROBE_COMMAND_OBJECT := $(BUILD)/errxprobe_command.o
 ERRPROBE_COMMAND_OBJECT := $(BUILD)/errprobe_command.o
-WARNPROBE_COMMAND_OBJECT := $(BUILD)/warnprobe_command.o
 PROGNAMEPROBE_COMMAND_OBJECT := $(BUILD)/prognameprobe_command.o
 DIRNAMEPROBE_COMMAND_OBJECT := $(BUILD)/dirnameprobe_command.o
 DIRNAME_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirname_oldtable_probe.o
@@ -91,7 +90,7 @@ print-program:
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(WC_COMMAND_OBJECT): commands/wc.c 
+$(WC_COMMAND_OBJECT): commands/wc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/fcntl.h libc/include/stdlib.h \
 		libc/include/errno.h libc/include/string.h libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_wc_main \
@@ -131,13 +130,15 @@ $(PRINTENV_COMMAND_OBJECT): upstream/netbsd/usr.bin/printenv/printenv.c \
 		-Dmain=cb_printenv_main \
 		-c upstream/netbsd/usr.bin/printenv/printenv.c -o $@
 
-$(WARNPROBE_COMMAND_OBJECT): tests/libc_warn_probe.c 
+WARNPROBE_COMMAND_OBJECT := $(BUILD)/warnprobe_command.o
+
+$(WARNPROBE_COMMAND_OBJECT): tests/libc_warn_probe.c \
 		libc/include/errno.h libc/include/err.h \
-		libc/include/unistd.h
+		libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_warn_probe_main \
 		-c tests/libc_warn_probe.c -o $@
 
-$(ERRPROBE_COMMAND_OBJECT): tests/libc_err_probe.c 
+$(ERRPROBE_COMMAND_OBJECT): tests/libc_err_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/err.h libc/include/errno.h \
 		libc/include/unistd.h libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_err_probe_main \
@@ -171,24 +172,24 @@ $(BASENAME_OLDTABLE_TEST_OBJECT): tests/libc_basename_oldtable_probe.c \
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_basename_oldtable_main \
 		-c tests/libc_basename_oldtable_probe.c -o $@
 
-$(EXITPROBE_COMMAND_OBJECT): tests/libc_exit_probe.c 
+$(EXITPROBE_COMMAND_OBJECT): tests/libc_exit_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/stdlib.h libc/include/unistd.h \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_exitprobe_main \
 		-c tests/libc_exit_probe.c -o $@
 
-$(GETOPTPROBE_COMMAND_OBJECT): tests/libc_getopt_probe.c 
+$(GETOPTPROBE_COMMAND_OBJECT): tests/libc_getopt_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/string.h libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_getoptprobe_main \
 		-c tests/libc_getopt_probe.c -o $@
 
-$(ERRXPROBE_COMMAND_OBJECT): tests/libc_errx_probe.c 
+$(ERRXPROBE_COMMAND_OBJECT): tests/libc_errx_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/err.h libc/include/unistd.h \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_errxprobe_main \
 		-c tests/libc_errx_probe.c -o $@
 
-$(DIRENTPROBE_COMMAND_OBJECT): tests/libc_dirent_probe.c 
+$(DIRENTPROBE_COMMAND_OBJECT): tests/libc_dirent_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/dirent.h libc/include/errno.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_direntprobe_main \
 		-c tests/libc_dirent_probe.c -o $@
@@ -217,7 +218,7 @@ $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT): tests/libc_dirent_closedir_rebind_probe.c
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) \
 		-c tests/libc_dirent_closedir_rebind_probe.c -o $@
 
-$(LIBC_OBJECT): libc/cb_libc.c 
+$(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c libc/cb_libc.c -o $@
 
@@ -337,12 +338,12 @@ $(LIBC_LOCALE_TEST_OBJECT): tests/libc_locale_probe.c include/cannedbsd/libc.h \
 		libc/include/locale.h libc/include/errno.h libc/include/string.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_locale_probe_main -c $< -o $@
 
-$(LIBC_TERMINAL_TEST_OBJECT): tests/libc_terminal_probe.c 
+$(LIBC_TERMINAL_TEST_OBJECT): tests/libc_terminal_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/termios.h libc/include/unistd.h \
 		libc/include/errno.h libc/include/fcntl.h libc/include/poll.h libc/include/string.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_terminal_probe_main -c $< -o $@
 
-$(LIBC_POLL_TEST_OBJECT): tests/libc_poll_source.c 
+$(LIBC_POLL_TEST_OBJECT): tests/libc_poll_source.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/poll.h libc/include/unistd.h \
 		libc/include/errno.h libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/libc_poll_source.c -o $@
@@ -481,9 +482,6 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_err_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_err_probe.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_warn_probe_main \
-		-Wno-deprecated-declarations $(CFLAGS) \
-		-fanalyzer -fsyntax-only tests/libc_warn_probe.c
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_progname_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_progname_probe.c

@@ -1,4 +1,3 @@
-#define CANNEDBSD_SOURCE_FENCE
 #include <err.h>
 #include <errno.h>
 #include <stddef.h>
@@ -31,14 +30,14 @@ int main(int argc, char **argv)
         errno = ENOEXEC;
         warn("failed stderr");
         if (errno == ENOEXEC) {
-            if (write(STDOUT_FILENO, "preserved\\n", 10) != 10) return 3;
+            if (write(STDOUT_FILENO, "preserved\n", 10) != 10) return 3;
         } else {
-            if (write(STDOUT_FILENO, "corrupted\\n", 10) != 10) return 3;
+            if (write(STDOUT_FILENO, "corrupted\n", 10) != 10) return 3;
             return 1;
         }
         return 0;
     }
     
-    if (write(STDOUT_FILENO, "continued\\n", 10) != 10) return 3;
+    if (write(STDOUT_FILENO, "continued\n", 10) != 10) return 3;
     return 0;
 }
