@@ -13,8 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current ready order:** `PENV-02`, `PENV-03`, `PENV-04`, `PORT-01`, `MAC-01`.
-`VFS-01` is already claimed.
+**Current assignments:** Claude owns `FS-01-design` and the `PENV-03` review
+corrections; Antigravity owns the `PORT-01` review corrections. Codex owns
+`MAC-03`, `MAC-04`, serialized guest acceptance, and integration. `PENV-02`,
+`PENV-04`, `VFS-01`, `MAC-01`, and `MAC-02` are awaiting integration gates.
+Do not duplicate these claims.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -51,7 +54,7 @@ independent backlog items while the emulator is occupied.
 
 ### PORT-01 — host adapter conformance harness
 
-- **Status:** Ready
+- **Status:** Review corrections assigned to Antigravity on `work/PORT-01`
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a reusable mock-host suite can prove the version, size,
@@ -65,7 +68,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-01 — repeatable Basilisk II artifact acceptance
 
-- **Status:** Ready
+- **Status:** Implemented and verified; awaiting integration
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a host-side runner can stage and identify the exact Woodpecker
@@ -77,6 +80,53 @@ independent backlog items while the emulator is occupied.
   missing or non-`ALL PASS` fresh result. GUI launch may remain serialized and
   manual until Basilisk II exposes a reliable automation seam.
 
+### MAC-02 — System 7 private-stack and Toolbox safety
+
+- **Status:** Implemented on `work/MAC-02`; repeated guest acceptance in progress
+- **Base:** main at `78a1e5b`
+- **Depends on:** none
+- **Hypothesis:** preserving stack-sniffer state and dispatching Toolbox work on
+  the original stack removes intermittent System 7 error 28.
+- **Red:** old guest artifact failed on two of three cold launches; direct
+  service callbacks fail the real alternate-stack dispatcher test.
+- **Accept:** preserve StkLowPt at switches, execute Toolbox calls on root,
+  require a single CODE segment, green CI and repeated exact-artifact cold runs.
+
+### MAC-03 — guest-owned screenshot and autorun completion
+
+- **Status:** Implemented on `work/MAC-03`; CI and guest acceptance pending
+- **Base:** MAC-02 at `9a3e4db`
+- **Depends on:** MAC-02 integration
+- **Hypothesis:** an opt-in guest mode can flush results and an actual pixel
+  screenshot before publishing completion and exiting.
+- **Red:** result-only completion cannot prove screenshot persistence.
+- **Accept:** result and PICT close/flush precede PASS/FAIL completion; evidence
+  failure leaves the app open; normal interactive mode remains available.
+
+### MAC-04 — fast Hammerspoon guest test driver
+
+- **Status:** Claimed on `work/MAC-04`; working local prototype being integrated
+- **Base:** MAC-01 at `5c013c5`
+- **Depends on:** MAC-01 integration
+- **Hypothesis:** image-matched actions remove manual mouse and tool-call delays.
+- **Red:** previous manual boot-to-result measurement excluded screenshot,
+  exit, and shutdown; stale guest cursor made host clicks unreliable.
+- **Accept:** staged artifact identity, serialized slot, image-matched launch,
+  fresh ALL PASS, saved screenshot, shell exit, held Special-menu drag, and
+  verified guest shutdown. Fail closed on ambiguous images or lost focus.
+  The local prototype completed the whole cycle in 12.7 seconds.
+
+### FS-01-design — review the regular-file resize contract
+
+- **Status:** Assigned to Claude on `work/FS-01-design`
+- **Base:** main
+- **Depends on:** none
+- **Hypothesis:** a bounded design can resolve FS-01's API and ownership questions.
+- **Red:** FS-01 remains blocked without defined adapter and failure semantics.
+- **Accept:** specify truncate/ftruncate offsets, zero growth, permissions,
+  nonregular-file errors, overflow, allocation failure, append behavior,
+  versioned interfaces, and a falsifiable test matrix. No runtime changes.
+
 ## Dependency-ordered queue
 
 These entries become Ready only after every named dependency is Done. An agent
@@ -84,7 +134,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-02 — `exit(3)` and `__dead`
 
-- **Status:** Ready
+- **Status:** Implemented; review passed; exact-artifact guest smoke pending
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** the existing task-exit operation can provide a non-returning
@@ -95,7 +145,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-03 — empty-option `getopt`
 
-- **Status:** Ready
+- **Status:** Review corrections assigned to Claude on `work/PENV-03`
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** task-local getopt state can support the exact empty optstring
@@ -107,7 +157,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-04 — bounded unbuffered formatted output
 
-- **Status:** Ready
+- **Status:** Review and guest smoke passed; awaiting integration
 - **Base:** main
 - **Depends on:** PENV-01 (Done)
 - **Hypothesis:** literals, `%%`, and `%s` are sufficient for every format in

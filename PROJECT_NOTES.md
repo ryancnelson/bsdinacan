@@ -719,3 +719,28 @@ already a small Unix.
 The detailed target/resistance matrix, including AmigaOS, BeOS, Haiku,
 TempleOS, illumos, Roku, Samsung TV, Android, classic workstation systems,
 locked appliances, and the browser backend, lives in [TARGETS.md](TARGETS.md).
+
+
+## Fast native Mac acceptance (2026-09-07)
+
+A Hammerspoon prototype completed a cold boot, desktop click, `zzz-run-tests`
+launch, fresh eight-PASS/ALL PASS result, screenshot, shell `exit`, and clean
+System 7 shutdown in **12.6957 seconds**. The earlier 15.6-second measurement
+covered only boot to test result; manual capture and shutdown took additional
+interaction time. This comparison measures automation overhead, not a faster
+underlying test suite.
+
+Use the MAC-04 driver under `platform/mac68k/automation` once integrated with
+MAC-01 artifact staging. It uses the supplied Trash/desktop, launcher, shell,
+Special, and open-menu crops. Explicit mouse-move events precede clicks; menu
+selection holds mouse-down through a drag and then releases over Shut Down.
+Never force-terminate a guest merely because a confirmation or save dialog is
+still open. Unknown states require inspection or a new template.
+
+The timing prototype tested the currently configured disk, not an identified
+new commit. Exact artifact receipts remain a separate acceptance requirement.
+The first staged MAC-02 run (`9a3e4db`, archive
+`3f808aa9a09c5f3cf7cd6c18941a9608282edc919675c071ebc1e7f347dce164`)
+returned fresh ALL PASS and shut down in 14.262 seconds. Repeated cold-run
+acceptance is in progress; this is startup regression/context coverage, not
+execution of every new libc probe.
