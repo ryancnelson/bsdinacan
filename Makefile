@@ -132,8 +132,8 @@ $(PRINTENV_COMMAND_OBJECT): upstream/netbsd/usr.bin/printenv/printenv.c \
 
 WARNPROBE_COMMAND_OBJECT := $(BUILD)/warnprobe_command.o
 
-$(WARNPROBE_COMMAND_OBJECT): tests/libc_warn_probe.c \
-		libc/include/errno.h libc/include/err.h \
+$(WARNPROBE_COMMAND_OBJECT): tests/libc_warn_probe.c include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/errno.h libc/include/err.h \
 		libc/include/unistd.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_warn_probe_main \
 		-c tests/libc_warn_probe.c -o $@
@@ -482,6 +482,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_err_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_err_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_warn_probe_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/libc_warn_probe.c
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_progname_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_progname_probe.c

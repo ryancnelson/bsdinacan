@@ -8,6 +8,6 @@
   - The probe executes the diagnostic and verifies execution continues properly.
   - In the closed `stderr` case, it explicitly checks that the snapshot `errno` is perfectly restored and output matches expectations.
   - Scoped into a new `FIXTURE_ERR` to rigorously protect the `CB_MAX_PROGRAMS` 64-slot limit.
-- **Mac Guest:** Added standard probe registration natively to `platform/mac68k/main.c` and verification strings to `acceptance_cases.def` expecting exactly one ordinary execution and transcript expansion.
+- **Mac Guest:** Added standard probe registration natively to `platform/mac68k/main.c` and verification strings to `acceptance_cases.def` expecting exactly four explicit cases (ordinary, null, empty, failed) and the expanded transcript.
 
 No implementation rules, host features, or dependencies outside `warn` were broadened.
