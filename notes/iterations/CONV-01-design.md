@@ -207,84 +207,187 @@ then declares `intmax_t`/`INTMAX_MAX`/`INTMAX_MIN` and maps
 `#define strtoimax cb_libc_strtoimax`, mirroring `stdio.h`'s existing
 `#define puts cb_libc_puts` pattern exactly.
 
-## Proposed contract: import `strcpy` unchanged, exactly like `strlen`/`strchr`
+## `_DIAGASSERT`: an explicit, empty, import-only policy -- no host `assert`
+
+`_strtol.h` (in the branch this design selects) calls `_DIAGASSERT(nptr !=
+NULL);` once; `strcpy.c` and `strtoimax.c` both `#include <assert.h>` in
+their own non-kernel/non-standalone branch even where they never call any
+assert-style macro themselves. Fetching NetBSD's real
+`include/assert.h` at the pinned revision shows exactly what `_DIAGASSERT`
+is: `#undef _DIAGASSERT` then, unless the internal `_DIAGNOSTIC` build flag
+is defined (a NetBSD libc-build-time-only flag this project never sets),
+`#define _DIAGASSERT(e) ((void)0)` -- a pure no-op. Only the `_DIAGNOSTIC`
+branch (not proposed here) calls a real `__diagassert13` diagnostic
+function. So the correct, minimal, no-host-dependency policy is a private,
+import-only `<assert.h>` (on the same footing as this project's existing
+empty `libgen.h`) that defines `_DIAGASSERT(e)` as `((void)0)`
+unconditionally and does **not** implement `_DIAGNOSTIC` mode or route to
+any host `assert()`. This must be stated as an explicit, deliberate policy
+in the implementing task -- not left for whoever writes the header to
+improvise -- because the alternative (a private `assert.h` that actually
+maps to the host's own `<assert.h>`) would be exactly the kind of host
+leak `check-architecture`'s existing header-leak check is designed to
+catch, and because a *silently* empty shim invites a future edit to
+"complete" it by wiring in a real assert without re-deriving why it was
+deliberately a no-op.
+
+## Proposed contract: import `strcpy` unchanged -- corrected to the `strcmp`/`memcpy` link-name pattern, not `strlen`'s
 
 The pinned revision's `common/lib/libc/string/strcpy.c`
 (`sha256:36754cc692e0df72390e24cfd585a1fb9343257ae6edc4052771b1e5a47c9fad`,
 three-clause Regents 1988/1993, fetched and read for this design) is a
 seven-line, dependency-free loop -- no macro template, no locale, nothing
 transitive beyond the standard's own undefined-on-overlap/under-size
-contract already noted above. It is proposed for import exactly like
-`strlen.c`: a single Makefile `-Dstrcpy=cb_libc_strcpy` rename, archived into
-`libcannedbsd.a`, with `<string.h>` adding `#define strcpy cb_libc_strcpy`
-alongside the existing `strlen`/`strchr`/`strerror` mappings. No wrapper,
-no task-owned state, no ABI involvement -- the same size of change as the
-existing `strlen`/`strchr` entries.
+contract already noted above.
 
-## Verified vs. still-to-measure: Retro68 (ILP32) against this host's LP64 toolchain
+**This design's first draft wrongly proposed importing it like `strlen.c`
+(a single Makefile `-Dstrcpy=cb_libc_strcpy` rename); independent review
+caught the error before implementation.** The pinned source itself does
+`#undef strcpy` immediately before its own definition (`#undef strcpy` /
+`char * strcpy(char *to, const char *from) { ... }`), exactly like
+`strcmp.c`/`memcpy.c`/`memmove.c` already do, and for the same reason:
+a plain `-D` command-line macro definition is textually cancelled by that
+file's own `#undef` before the definition is reached, so the rename would
+silently not happen and the object would export a plain `strcpy` symbol.
+This project already solved exactly this problem for `strcmp`/`memcpy`/
+`memmove` with the GCC/Clang assembler-name link adapter in `string.h`
+(`int strcmp(...) __asm__("cb_libc_strcmp");` guarded by
+`CANNEDBSD_BUILDING_LIBC_STRCMP`, immune to `#undef` because it renames the
+emitted symbol at the declaration level, not by text substitution).
+`strcpy` needs the identical treatment: a
+`CANNEDBSD_BUILDING_LIBC_STRCPY`-guarded
+`char *strcpy(char *to, const char *from) __asm__("cb_libc_strcpy");`
+declaration in `<string.h>`, defined only when compiling
+`strcpy.c` itself with `-DCANNEDBSD_BUILDING_LIBC_STRCPY`; ordinary callers
+still see the plain `#define strcpy cb_libc_strcpy` macro. Archived into
+`libcannedbsd.a` exactly like `strcmp.c`/`memcpy.c` already are. No wrapper,
+no task-owned state, no ABI involvement.
 
-Measured directly on this design's own host (Apple Clang 17, arm64 Darwin,
-a real LP64 target -- not the exact Woodpecker Alpine/GCC/x86_64 image, but
-architecturally the same class for this specific question: is `long` 64
-bits?):
+`strcpy.c` also does `#include <assert.h>` (present in the pinned source
+even though its own seven-line body never actually calls any assert-style
+macro) -- see the `_DIAGASSERT` section below, which this file shares with
+`_strtol.h`.
+
+## Measured: Retro68 (ILP32) against this host's LP64 toolchain
+
+The first version of this design flagged the Retro68 side as unmeasured
+because Docker was down on the design-worktree host. The coordinator
+pointed out Docker there is irrelevant: the CI runner host itself has both
+Docker and the exact pinned Retro68 image already present, reachable over
+SSH. This section records what was actually run there, over SSH, against
+that exact pinned image -- distinguishing **compile evidence** (the
+compiler accepted or rejected the code; this is real, deterministic
+signal) from **execution evidence** (a compiled binary was actually run
+and observed; this design does none of that, per the coordinator's
+explicit instruction not to touch runtime or the guest).
+
+Confirmed the exact pinned image is present and matches
+`.woodpecker/mac68k.yml`'s pin byte-for-byte (`docker inspect` on the
+digest reference returns that same digest in `RepoDigests`, not merely a
+same-named tag that could silently drift):
 
 ```
-sizeof(int)=4 sizeof(long)=8 sizeof(long long)=8 sizeof(void*)=8
-sizeof(intmax_t)=8, INTMAX_MAX=9223372036854775807, INTMAX_MIN=-9223372036854775808
-__INTMAX_TYPE__ = long int
+$ docker inspect ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019 \
+    --format '{{.RepoDigests}}'
+[ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019]
 ```
 
-This confirms, on a real measured LP64 compiler, `intmax_t` is spelled
-`long` and is 64 bits, matching what glibc/musl also do on 64-bit Linux (the
-actual Woodpecker `ci` target) -- `long` is already 64 bits there, so no
-64-bit-arithmetic-on-a-32-bit-register concern exists on that side at all.
+### Compile evidence: type/limit `_Static_assert`s, actually compiled on the pinned cross-compiler
 
-**Not measured here, and explicitly flagged as such rather than assumed**:
-the pinned Retro68 image (`ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019`,
-read from `.woodpecker/mac68k.yml`) requires Docker, which remains down on
-this host (the same outage that blocked local execution for `BASENAME-01`
-and `ECHO-01`). What is known with high confidence from the m68k target's
-own well-established GCC ABI, without needing to run anything: `int`/`long`
-are 32 bits and pointers are 32 bits (ILP32) on classic m68k, but `long
-long` has always been a real, GCC-supported 64-bit type there too, so C99's
-own requirement ("`intmax_t` is the widest signed integer type the
-implementation supports") forces the *spelling* to differ: `intmax_t` must
-be `long long` on Retro68's target, not `long`. Code must therefore never
-assume the two platforms' `intmax_t` share an underlying spelling -- always
-route through `<inttypes.h>`'s `intmax_t`/`INTMAX_MAX`/`INTMAX_MIN`, never
-`long`/`LONG_MAX` -- which is exactly what the proposed import already does,
-and is precisely the kind of assumption a design should make impossible to
-get away with silently, not just avoid making itself.
+Wrote the exact probe this design's first draft only proposed (not
+executed, only *compiled to an object file* -- `-c`, no link, no run):
 
-The one thing this measurement gap must not become is a silent assumption
-inside the implementation: the bounded next step (not claimed done here) is
-a `_Static_assert(sizeof(intmax_t) == 8 && INTMAX_MAX ==
-9223372036854775807LL, ...)` compiled on **both** targets as part of that
-task's own red/green evidence, the same "measure, do not assume" discipline
-`utility-roadmap-20260908.md` already applied to head/echo's own missing
-declarations. Until that assertion has actually been compiled on the
-pinned Retro68 image, "Retro68's `intmax_t` is 64 bits" remains a
-well-founded expectation from general m68k GCC ABI knowledge, not a
-measured cannedBSD fact.
+```c
+_Static_assert(sizeof(intmax_t) == 8, "intmax_t must be 8 bytes");
+_Static_assert(sizeof(int) == 4, "int must be 4 bytes (ILP32)");
+_Static_assert(sizeof(long) == 4, "long must be 4 bytes (ILP32)");
+_Static_assert(sizeof(void *) == 4, "pointer must be 4 bytes (ILP32)");
+_Static_assert(INTMAX_MAX == 9223372036854775807LL, "INTMAX_MAX must be 2^63-1");
+_Static_assert(INTMAX_MIN == (-INTMAX_MAX - 1), "INTMAX_MIN must be -2^63");
+```
 
-## No private 64-bit-arithmetic compiler helper is needed
+Compiled inside the pinned container with the exact toolchain binary the
+real Mac build resolves to (`m68k-apple-macos-gcc`, confirmed as GCC
+`16.1.0`, not assumed from any general Retro68 version knowledge):
+
+```
+$ docker run --rm -v <probe.c>:/work/probe.c \
+    ghcr.io/autc04/retro68@sha256:459dd3ea9856262162615527021be7b64f198631dc59cca8cedbf197b7656019 \
+    /Retro68-build/toolchain/bin/m68k-apple-macos-gcc \
+    -std=c99 -Wall -Wextra -Wpedantic -c /work/probe.c -o /tmp/probe.o
+```
+
+Result: exit status `0`. The only diagnostics were six `-Wpedantic`
+warnings that C99 (as opposed to C11) doesn't standardize
+`_Static_assert` -- warnings, not errors, and irrelevant to what is being
+measured; every `_Static_assert` itself passed, because a failing one is a
+hard compile error in GCC 16, not a warning. **This is the actual measured
+fact this design's first draft could only expect**: on the exact pinned
+Retro68 cross-compiler, `intmax_t` is 8 bytes, `int`/`long`/`void *` are
+each 4 bytes (ILP32, confirmed, not assumed), and `INTMAX_MAX`/`INTMAX_MIN`
+hold the exact standard 64-bit values.
+
+### Compile+link evidence: the libgcc 64-bit arithmetic helpers actually resolve
+
+`nm -u` on that same object file:
+
+```
+$ /Retro68-build/toolchain/bin/m68k-apple-macos-nm -u /tmp/probe.o
+         U __divdi3
+         U __muldi3
+         U printf
+```
+
+Confirms directly (not inferred from ABI convention alone) that ordinary
+`intmax_t` multiply/divide on this target -- literally the same
+`acc *= base; acc += digit;` and cutoff-division arithmetic
+`_strtol.h`'s accumulation loop performs, reproduced in the probe as
+`accumulate()`/`divide_step()` -- compiles down to calls on `__muldi3`/
+`__divdi3`, exactly as the m68k ABI predicts for a 64-bit type on a CPU
+with no native 64-bit multiply/divide.
+
+Confirmed those symbols are actually defined (not just referenced) in the
+toolchain's own default `libgcc.a`, and link successfully with no other
+flags added:
+
+```
+$ m68k-apple-macos-gcc -print-libgcc-file-name
+/Retro68-build/toolchain/lib/gcc/m68k-apple-macos/16.1.0/libgcc.a
+$ m68k-apple-macos-nm /Retro68-build/toolchain/lib/gcc/m68k-apple-macos/16.1.0/libgcc.a | grep -E '__muldi3|__divdi3'
+00000000 T __muldi3
+00000000 T __divdi3
+$ m68k-apple-macos-gcc /tmp/probe.o -o /tmp/probe.elf
+$ echo $?
+0
+```
+
+The link step succeeded (exit `0`); `__muldi3`/`__divdi3`/`printf` all
+resolved automatically from the toolchain's own default libraries, with no
+special flags. This confirms the earlier architectural claim ("no private
+64-bit-arithmetic helper needed") as a measured fact on the exact pinned
+image, not just an inference from the absence of `-nostdlib` in this
+project's own build scripts.
+
+**Explicitly not done, and not claimed**: `probe.elf` (produced above) was
+never executed -- not on real hardware, not under an emulator, not in the
+Basilisk II guest. It is also not a real Retro68/Mac application (no CRT,
+no resource fork, no `CMAKE_TOOLCHAIN_FILE`); it exists solely to answer
+the compile- and link-time questions above. Nothing here is Mac guest
+acceptance evidence, and this section must not be read as such.
+
+## No private 64-bit-arithmetic compiler helper is needed (measured, not just inferred)
 
 `_strtol.h`'s accumulation loop (`acc *= base; acc += i;` and the symmetric
-negative-side subtraction) performs ordinary `intmax_t` multiply/add. On
-Retro68's 32-bit m68k target, since `intmax_t` there is a 64-bit `long long`
-on a CPU with no native 64-bit multiply/divide instruction, GCC will emit
-calls to its own `libgcc` runtime routines (`__muldi3`, `__divdi3`, and
-similar) exactly as it already must for *any* `long long` arithmetic
-anywhere in this project's Mac target, head.c's own conversion code
-included. This is not something cannedBSD needs to implement: `libgcc` is
-the C compiler's own runtime support library, linked automatically by an
-ordinary (non-freestanding) build. Checked directly for this design: neither
-`platform/mac68k/CMakeLists.txt` nor `platform/mac68k/ci-build.sh` passes
-`-nostdlib`, `-nodefaultlibs`, or any other flag that would exclude it, so
-the existing Mac build already links `libgcc` normally today. No new
-"private compiler helper" is proposed; the bounded next step's own
-`_Static_assert`-style smoke build (above) is also the natural place to
-confirm this by simply linking successfully, not by writing new code.
+negative-side subtraction) performs ordinary `intmax_t` multiply/add. As
+measured directly above, this compiles to real `__muldi3`/`__divdi3` calls
+on the pinned Retro68 cross-compiler, and those calls resolve and link
+successfully against that toolchain's own default `libgcc.a` with no
+extra flags. `libgcc` is the C compiler's own runtime support library,
+linked automatically by an ordinary (non-freestanding) build; separately
+checked that neither `platform/mac68k/CMakeLists.txt` nor
+`platform/mac68k/ci-build.sh` passes `-nostdlib`, `-nodefaultlibs`, or any
+other flag that would exclude it, so the existing Mac build already links
+it normally today too. No new "private compiler helper" is proposed.
 
 ## Proposed additions, scoped exactly to this evidence
 
@@ -295,14 +398,31 @@ confirm this by simply linking successfully, not by writing new code.
   `strtoimax`. Not `strtoumax`, not the `PRId64`-style format-macro family
   head.c never uses.
 - `libc/include/errno.h`: add `#define ERANGE CB_ERANGE`, and add
-  `CB_ERANGE` to `enum cb_error` in `include/cannedbsd/abi.h` (matching
-  POSIX/NetBSD's own numeric value `34`, placed near the existing `EPIPE =
-  32` entry for readability -- exact placement is the implementing task's
-  call, not fixed here). This is a plain named-constant addition to an
+  `CB_ERANGE` to `enum cb_error` in `include/cannedbsd/abi.h`. **Corrected
+  by review**: the numeric value `34` is NetBSD's (and Linux's) own
+  implementation choice, not a value POSIX mandates -- POSIX only requires
+  `ERANGE` be a distinct positive macro, not any particular number. This
+  design still proposes `34` for familiarity with those two systems, but
+  states plainly that cannedBSD is free to assign any value that does not
+  collide with its existing `enum cb_error` entries; nothing about this
+  task depends on matching NetBSD's number. Placed near the existing
+  `EPIPE = 32` entry for readability -- exact placement is the
+  implementing task's call. This is a plain named-constant addition to an
   enumeration of independent error codes, not a versioned struct field, so
   no ABI-tail positional concern applies to it the way it does for
-  `cb_api_v1`'s function-pointer table.
-- `libc/include/string.h`: add `#define strcpy cb_libc_strcpy`.
+  `cb_api_v1`'s function-pointer table. **Also added by review**:
+  `cb_libc_strerror`'s existing table (`src/core.c`'s `api_strerror`,
+  which already has one `case` per existing `enum cb_error` value) needs
+  its own `case CB_ERANGE: return "...";` entry and a probe asserting it --
+  this was missing from the first draft entirely, not merely under-scoped.
+- `libc/include/string.h`: add the `CANNEDBSD_BUILDING_LIBC_STRCPY`-guarded
+  `__asm__`-link-name declaration plus the ordinary `#define strcpy
+  cb_libc_strcpy` mapping, per the corrected import section above -- not
+  a bare `-D` rename.
+- A private, import-only `<assert.h>` (`libc/include/assert.h`, new)
+  defining `_DIAGASSERT(e)` as `((void)0)` unconditionally, per the
+  dedicated section above. Not a general-purpose `assert()` -- head.c
+  itself never calls `assert`, and nothing here proposes one.
 - `upstream/netbsd/common/lib/libc/stdlib/strtoimax.c`,
   `upstream/netbsd/common/lib/libc/stdlib/_strtol.h`,
   `upstream/netbsd/common/lib/libc/string/strcpy.c`: vendored unchanged,
@@ -327,26 +447,62 @@ inline and never calls that wrapper.
 
 ## Proposed executable test matrix (for the implementing task, not run here)
 
-Numeric (`strtoimax`, base 10 only, matching head.c's own exclusive usage,
-but testing the full declared interface's contract since nothing about a
-single caller's habits should leave the *function* itself narrower than its
-name promises):
+Numeric (`strtoimax`). Head.c only ever calls this with a literal base of
+`10`, but the *function*'s own declared contract covers base `0`
+autodetection and bases `2..36`, and review correctly rejected narrowing
+the test matrix to only what one caller happens to exercise. Every row's
+`errno` assertion is checked against a **nonzero sentinel value seeded
+into `errno` immediately before the call** (e.g. an arbitrary fixed value
+distinct from every real error code this project defines), not against
+literal `0` -- so "unchanged" means "still bit-for-bit the sentinel
+afterward," not merely "happens to read as zero," which would not
+actually distinguish "never touched" from "touched and reset to zero."
 
-| Input | Expected result | Expected `*endptr` | Expected `errno` |
-| --- | --- | --- | --- |
-| `"10"` | `10` | points at the terminating NUL | unchanged (not set) |
-| `"-10"` | `-10` | points at the terminating NUL | unchanged |
-| `"  42"` (leading whitespace) | `42` | points at the terminating NUL | unchanged |
-| `"+5"` | `5` | points at the terminating NUL | unchanged |
-| `"9223372036854775807"` (`INTMAX_MAX`) | `INTMAX_MAX` | terminating NUL | unchanged |
-| `"9223372036854775808"` (`INTMAX_MAX + 1`) | `INTMAX_MAX` | terminating NUL | `ERANGE` |
-| `"-9223372036854775808"` (`INTMAX_MIN`) | `INTMAX_MIN` | terminating NUL | unchanged |
-| `"-9223372036854775809"` (`INTMAX_MIN - 1`) | `INTMAX_MIN` | terminating NUL | `ERANGE` |
-| `"12abc"` | `12` | points at `'a'` | unchanged |
-| `"abc"` (no digits) | `0` | equals `nptr` (points at `'a'`) | unchanged |
-| `""` (empty) | `0` | equals `nptr` | unchanged |
-| `"0"` | `0` | terminating NUL | unchanged |
-| `"018"` (leading zero, base 10 -- not octal) | `18` | terminating NUL | unchanged |
+| Input | Base | Expected result | Expected `*endptr` | Expected `errno` |
+| --- | --- | --- | --- | --- |
+| `"10"` | 10 | `10` | terminating NUL | sentinel (unchanged) |
+| `"-10"` | 10 | `-10` | terminating NUL | sentinel |
+| `"  42"` (leading whitespace) | 10 | `42` | terminating NUL | sentinel |
+| `"+5"` | 10 | `5` | terminating NUL | sentinel |
+| `"9223372036854775807"` (`INTMAX_MAX`) | 10 | `INTMAX_MAX` | terminating NUL | sentinel |
+| `"9223372036854775808"` (`INTMAX_MAX + 1`) | 10 | `INTMAX_MAX` | terminating NUL | `ERANGE` |
+| `"-9223372036854775808"` (`INTMAX_MIN`) | 10 | `INTMAX_MIN` | terminating NUL | sentinel |
+| `"-9223372036854775809"` (`INTMAX_MIN - 1`) | 10 | `INTMAX_MIN` | terminating NUL | `ERANGE` |
+| `"12abc"` | 10 | `12` | points at `'a'` | sentinel |
+| `"abc"` (no digits) | 10 | `0` | equals `nptr` (points at `'a'`) | sentinel |
+| `""` (empty) | 10 | `0` | equals `nptr` | sentinel |
+| `"0"` | 10 | `0` | terminating NUL | sentinel |
+| `"018"` (leading zero, base 10 -- not octal) | 10 | `18` | terminating NUL | sentinel |
+| `"-"` (sign only, no digits) | 10 | `0` | equals `nptr` (endptr does not even advance past the sign, since no digit was consumed) | sentinel |
+| `"017"` (leading zero, base `0` autodetect) | 0 | `15` (octal) | terminating NUL | sentinel |
+| `"0x1F"` (base `0` autodetect) | 0 | `31` (hex) | terminating NUL | sentinel |
+| `"42"` (no prefix, base `0` autodetect) | 0 | `42` (decimal) | terminating NUL | sentinel |
+| `"1010"` | 2 | `10` | terminating NUL | sentinel |
+| `"1f"` (lowercase hex digit) | 16 | `31` | terminating NUL | sentinel |
+| `"1F"` (uppercase hex digit) | 16 | `31` | terminating NUL | sentinel |
+| `"z"` (lowercase, highest base-36 digit) | 36 | `35` | terminating NUL | sentinel |
+| `"Z"` (uppercase, highest base-36 digit) | 36 | `35` | terminating NUL | sentinel |
+| `"5"` | 1 (invalid: below 2, and not the autodetect value 0) | `0` | equals `nptr` (nothing consumed) | `EINVAL` |
+| `"5"` | 37 (invalid: above 36) | `0` | equals `nptr` | `EINVAL` |
+| `"5"` | 10 | `5`, called with `endptr = NULL` | (no crash; nothing to inspect) | sentinel |
+| overflowing digit string with more valid digits *after* the overflow point, e.g. `"99999999999999999999999999"` followed immediately by more digits then a non-digit, all base 10 | 10 | `INTMAX_MAX` | scans past **every** digit character, not just up to the point overflow was first detected (`_strtol.h`'s `if (any < 0) continue;` keeps consuming recognized digits without accumulating once overflow is latched) | `ERANGE` |
+
+String (`strcpy`, bounds probes with canaries, matching this project's
+existing exact-byte-boundary probe style):
+
+| Case | Assertion |
+| --- | --- |
+| Ordinary copy into an exactly-sized destination | destination equals source through its NUL; return value equals destination pointer |
+| Empty source (`""`) | destination's first byte becomes NUL; no bytes beyond it are touched |
+| Destination has a trailing canary byte one past where the NUL lands | canary byte is provably unmodified |
+| Destination has a leading canary byte one before the copy starts | canary byte is provably unmodified (this function never writes before `dst`) |
+
+`ERANGE` `strerror` mapping (added by review, missing from the first
+draft):
+
+| Case | Assertion |
+| --- | --- |
+| `cb_libc_strerror(CB_ERANGE)` | returns a non-`NULL`, non-empty string distinct from every other existing `cb_error` message |
 
 String (`strcpy`, bounds probes with canaries, matching this project's
 existing exact-byte-boundary probe style):
@@ -368,17 +524,28 @@ existing exact-byte-boundary probe style):
 ## Independent worker steps and acceptance
 
 1. `CONV-01`: implement exactly the surface proposed above (three unchanged
-   upstream imports, one empty import-only header, two small new functions,
-   one new error code). Genuinely red-first: temporarily omit
-   `cb_libc_isdigit`/`cb_libc_isspace` or the `strtoimax` rename and confirm
-   an actual link/compile failure before restoring them, per this project's
-   standard practice. Compile the `_Static_assert(sizeof(intmax_t) == 8,
-   ...)` smoke check on both the Linux `ci` target and the pinned Retro68
-   image as this task's own first falsifiable step, not assumed from this
-   design. Exact CI on all three Woodpecker checks; an ordinary Mac
-   acceptance probe if the coordinator's guest-acceptance slot allows it,
-   documented as not required otherwise with a reason, exactly as
-   Documentation-only tasks already do.
+   upstream imports, one import-only `assert.h` and one empty
+   `nbtool_config.h`, two small new functions, one new error code plus its
+   `strerror` mapping). Temporarily removing a symbol (e.g.
+   `cb_libc_isdigit`/`cb_libc_isspace` or the `strtoimax` link-name
+   declaration) and confirming a link/compile failure is a **source-boundary
+   negative control** -- it proves the build genuinely depends on that
+   symbol, not that a behavior was captured by a test before the behavior
+   existed. Label it as exactly that, not as "red-first," per this
+   project's own established distinction (see `BASENAME-01`'s notes for
+   the same care). Genuine behavioral red-first evidence is the numeric/
+   string/`ctype` test matrix above: write it to fail against a stub or
+   missing implementation first, then implement. This design's own
+   `_Static_assert(sizeof(intmax_t) == 8, ...)` compile check has already
+   been run on the pinned Retro68 image (see above); the implementing task
+   should still compile it again itself, on both targets, as part of its
+   own red/green record, rather than importing this design's result by
+   reference only. Exact CI on all three Woodpecker checks. Runtime Mac
+   guest acceptance is a libc/runtime behavior change and **must never be
+   marked "not required"** merely because the guest slot is unavailable --
+   record it as **pending** until the coordinator actually runs the exact
+   built artifact in Basilisk II, exactly like every other runtime-affecting
+   task in this project's backlog.
 2. `HEAD-01` (deferred, per the existing plan): once `CONV-01` and this
    plan's other still-open prerequisites (`GETOPT-02`, `ERR-02`, `STDIN-01`,
    `FWRITE-01`, `ARGV-01`) are all actually merged, assemble the unchanged
