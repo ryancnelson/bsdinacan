@@ -89,3 +89,25 @@ and `git diff --check` pass. Exact-commit
 Woodpecker validation and artifact identifiers are recorded at handoff after
 push. No runtime guest acceptance is applicable to diagnostic-only imported
 inputs that are never linked into an application.
+
+## Exact CI evidence and integration refresh
+
+Feature `057470d006cd8cfb497b73909af94bbe02f31608` ran Woodpecker #105.
+The `mac68k` and `mac-automation` workflows passed; the separate diagnostic
+archive was fetched and checked against its published SHA256SUMS:
+`2a55860b47ecd702718dbbef942df45e2c78c023f7af9eb5d166d6386d8de557`.
+Its embedded commit/pipeline match; the SDK control compiled and both MoreFiles
+units exited 1 with the documented blocker. This is failed feasibility evidence,
+not a guest artifact. Local full Alpine `make LDLIBS=-lucontext SANITIZE_CC=clang
+ci` passed.
+
+The #105 Linux workflow failed at the printenv diagnostic test because concurrent
+local-backend jobs shared fixed `/tmp` files. Both #104 and #105 ran that gate
+during overlapping timestamps and failed. The coordinator separately implemented
+CI-01 (`0ebfd2f`), replacing shared captures with unique per-run storage and
+verifying eight concurrent real-binary tests. With explicit authorization, this
+branch merged freshly fetched `origin/main` at `0ebfd2f` without conflicts
+(merge `ed3c9e9`), including the already integrated ERR-01 work. No REUSE-02 source,
+probe scope or expected outcome changed. Exact refreshed workflow statuses and
+the newly published diagnostic checksum are supplied at handoff; #105's failed
+Linux gate is not represented as an all-green result.
