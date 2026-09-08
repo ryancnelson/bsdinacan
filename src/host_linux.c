@@ -130,8 +130,10 @@ static cb_ssize_t host_console_write(int stream, const void *buffer,
         ssize_t result = write(descriptor, cursor + written, count - written);
         if (result < 0 && errno == EINTR)
             continue;
-        if (result < 0)
-            return -CB_EIO;
+        /* A failed continuation must not hide bytes already emitted.  Zero
+           progress is an error, not permission to spin in this callback. */
+        if (result <= 0)
+            return written != 0 ? (cb_ssize_t)written : -CB_EIO;
         written += (size_t)result;
     }
     return (cb_ssize_t)written;
