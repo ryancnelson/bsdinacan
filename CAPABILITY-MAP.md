@@ -22,12 +22,11 @@ already present. The completed dependency sequence was:
 6. The unchanged, hash-pinned `printenv` source, descriptor, provenance, and
    behavioral acceptance tests.
 
-Likely next imports must be confirmed by compiling the exact pinned source:
+Unchanged `echo` (registered as `netbsdecho`), `basename` and `dirname` are
+accepted on Linux and classic Mac. The active next milestone is pinned `head`;
+its measured dependency plan and assigned tasks live in BACKLOG.md.
 
-- `echo`: program name, C-locale no-op, `putchar`, `fflush`, `ferror`, and the
-  formatter above.
-- `basename` and `dirname`: `libgen` operations plus the existing option and
-  diagnostic slices.
+Further imports must be confirmed by compiling the exact pinned source:
 - `pwd`: libc wrappers for existing stat/getcwd/environment operations,
   `strstr`, and logical-versus-physical path behavior.
 - `mkdir`: only after mode, `umask`, `chmod`, and setmode/getmode semantics.
