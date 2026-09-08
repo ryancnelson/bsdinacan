@@ -584,6 +584,112 @@ static void expect_invalid_executor(struct cb_kernel *kernel,
     }
 }
 
+
+
+static unsigned exec_early_destroy_count;
+static void exec_early_program_destroy(struct cb_kernel *kernel,
+                                       struct cb_program *program)
+{
+    exec_early_destroy_count++;
+    cb_native_executor()->program_destroy(kernel, program);
+}
+
+static int exec_early_fail_countdown = -1;
+static int exec_early_fail_target;
+static struct cb_kernel *exec_early_kernel;
+
+static void *exec_early_allocate(size_t size)
+{
+    if (exec_early_fail_countdown == 0) {
+        exec_early_fail_countdown = -1;
+        struct cb_vfs_node *node;
+        
+        if (cb_vfs_lookup_node(exec_early_kernel->current, "/bin/early_target", &node) != 0)
+            fail("lookup early_target during allocation");
+            
+        if (node->ops->unlink(node) != 0)
+            fail("unlink early_target during allocation");
+            
+        if (exec_early_destroy_count != 0)
+            fail("executable destroyed during allocation (not retained early)");
+            
+        return NULL;
+    }
+    if (exec_early_fail_countdown > 0)
+        exec_early_fail_countdown--;
+    return base_allocate(size);
+}
+
+static int early_caller_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    char *exec_argv[] = {(char *)"early_target", NULL};
+    char *exec_envp[] = {(char *)"FOO=bar", NULL};
+    (void)argc; (void)argv; (void)envp;
+    
+    exec_early_fail_countdown = exec_early_fail_target;
+    
+    if (api->exec("early_target", exec_argv, exec_envp) >= 0)
+        return 1;
+    if (api->get_errno() != CB_ENOMEM)
+        return 2;
+    if (exec_early_destroy_count != 1)
+        return 3;
+    return 0;
+}
+
+static const struct cb_program_v1 early_caller_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "early_caller", 0,
+    64 * 1024, early_caller_main
+};
+
+static void test_exec_early_retain_case(int fail_countdown)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    base_allocate = host.allocate;
+    host.allocate = exec_early_allocate;
+    
+    exec_early_fail_countdown = -1;
+    exec_early_fail_target = fail_countdown;
+    exec_early_destroy_count = 0;
+    
+    struct cb_kernel *kernel = cb_kernel_create(&host);
+    if (kernel == NULL) fail("kernel creation");
+    
+    exec_early_kernel = kernel;
+    cb_kernel_register(kernel, &early_caller_program);
+    cb_register_base_programs(kernel);
+    
+    struct cb_executor_ops executor = *cb_native_executor();
+    executor.program_destroy = exec_early_program_destroy;
+    struct cb_program_v1 target_source = {
+        CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "early_target", 0,
+        64 * 1024, early_caller_main
+    };
+    
+    if (cb_kernel_register_executor(kernel, &executor, &target_source) < 0)
+        fail("register early_target");
+        
+    if (cb_kernel_boot(kernel, "early_caller") != 0)
+        fail("boot early_caller");
+    
+    int status = cb_kernel_run(kernel);
+    if (status != 0) {
+        fprintf(stderr, "early_caller failed with %d (countdown %d)\\n", status, fail_countdown);
+        fail("early_caller run failed");
+    }
+    
+    cb_kernel_destroy(kernel);
+}
+
+static void test_exec_early_retain(void)
+{
+    test_exec_early_retain_case(0);
+    test_exec_early_retain_case(1);
+    test_exec_early_retain_case(2);
+    test_exec_early_retain_case(3);
+}
+
 static void test_executor_contract(void)
 {
     const struct cb_executor_ops *native = cb_native_executor();
@@ -3096,6 +3202,11 @@ static int test_vfs_executable_main(const struct cb_api_v1 *api, int argc,
     if (api->get_errno() != CB_EPERM)
         return 61;
 
+    if (api->stat("/bin/sh", &statbuf) != 0)
+        return 62;
+    if (statbuf.type != CB_NODE_EXECUTABLE || statbuf.size != 0)
+        return 63;
+
     if (api->spawn("/missing/sh", (char *[]){"sh", NULL}, NULL, NULL, 0, &child) == 0)
         return 7;
     if (api->get_errno() != CB_ENOENT)
@@ -3124,6 +3235,9 @@ static void test_nullboot(void)
     struct cb_host_ops_v1 host = *cb_linux_host_ops();
     struct cb_kernel *kernel;
     
+    if (cb_kernel_boot(NULL, "sh") != -1)
+        fail("null kernel boot did not return -1");
+        
     host.console_poll = controlled_console_poll;
     host.console_read = controlled_console_read;
     host.console_write = capture_write;
@@ -3410,6 +3524,7 @@ int main(int argc, char **argv)
     test_vfs_contract();
     test_truncate_vfs_contract();
     test_registration_contract();
+    test_exec_early_retain();
     test_executor_contract();
     test_allocation_cleanup();
     test_uninitialized_host_memory();
