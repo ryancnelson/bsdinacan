@@ -77,6 +77,13 @@ unless the coordinating prompt explicitly asks for it.
    Linux-host-only changes may record guest acceptance as not required with a
    reason.
 
+8. Solaris 9 SPARC is also a required portability target for runtime, libc,
+   VFS, shell, command, shared ABI and host-adapter changes. Follow the transition
+   and exact-commit evidence policy in `notes/CI.md`. Coordinate the shared rig
+   slot; historical results and skipped runs are not passing evidence. While
+   SOLARIS-01 is pending, report Solaris acceptance as pending and hand it to
+   the coordinator rather than claiming full cross-platform completion.
+
 Do not delete or disable existing tests to make a gate green. An intentional
 contract change requires an explicit design decision and replacement assertions
 that preserve the remaining coverage.
