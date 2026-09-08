@@ -958,7 +958,7 @@ for the active command milestone or a reviewed correctness fix.
 
 ### HEAD-01 — unchanged NetBSD head feasibility milestone
 
-- **Status:** Awaiting FWRITE-01 acceptance and PORT32-01 stack/resource review
+- **Status:** Claimed by Codex on `work/HEAD-01` for parallel source/fixture staging; merge awaits FWRITE-01 acceptance and resource review
 - **Base:** integrated dependencies
 - **Depends on:** accepted GETOPT-02, ERR-02, ARGV-01, STRCPY-01, CONV-01,
   STDIN-01/02/03 and STDOUT-01; pending FWRITE-01 and PORT32-01 review

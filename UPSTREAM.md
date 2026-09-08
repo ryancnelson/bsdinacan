@@ -465,3 +465,22 @@ import wholesale, for a dependency this task only needs in the plain
 C-locale ASCII sense (traced directly from the pinned `head.c`'s own
 `isdigit` call, and from `_strtol.h`'s internal `isspace` call for
 leading-whitespace skipping).
+
+## NetBSD `head`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `usr.bin/head/head.c` / `upstream/netbsd/usr.bin/head/head.c`
+- SHA-256: `33745355975529ef5b33256578bee822dae8e80fbb27dc615a1761385d7eb18a`
+- Embedded RCS revision: head.c 1.24, 2016-05-12.
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim.
+
+Source bytes are unchanged. Both builds rename main to cb_head_main and use
+cannedBSD private headers. commands/head_module.c requests a per-command128KiB
+stack for the source's65536-byte automatic buffer. The ordinary imported source
+never includes runtime-private headers. The portable headprobe verifies separate
+RAMFS output/error files internally, including the65538-byte boundary, binary
+bytes and checked pipe producer/consumer statuses. Source/symbol fences pin the
+import and reject unprefixed libc dependencies. Compiler stack-usage reports
+are isolated function-frame evidence, not a claim of a measured peak call chain.

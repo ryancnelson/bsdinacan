@@ -19,6 +19,7 @@ extern const struct cb_program_v1 cb_poll_probe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_warn_probe_program;
 extern const struct cb_program_v1 cb_strcpy_probe_program;
+extern const struct cb_program_v1 cb_head_probe_program, cb_head_pipe_program;
 extern const struct cb_program_v1 cb_memory_probe_program;
 extern const struct cb_program_v1 cb_fread_probe_program, cb_fread_compat_program;
 extern const struct cb_program_v1 cb_file_probe_program, cb_file_compat_program;
@@ -77,6 +78,8 @@ int main(void)
                 cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_warn_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_strcpy_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_head_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_head_pipe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_getopt_arg_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_argv_probe_program) == 0 &&

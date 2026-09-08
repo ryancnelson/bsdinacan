@@ -230,4 +230,27 @@ for private_symbol in cb_libc_setprogname cb_libc_setlocale cb_libc_strcmp \
     fi
 done
 
+head_source=upstream/netbsd/usr.bin/head/head.c
+head_object=$build_path/netbsd_head.o
+head_hash=33745355975529ef5b33256578bee822dae8e80fbb27dc615a1761385d7eb18a
+if [[ $(sha256sum "$head_source" | awk '{print $1}') != "$head_hash" ]] ||
+   ! matches "$head_hash" "$provenance_file"; then
+    echo 'FAIL: head source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$head_object" | matches '[[:space:]]T[[:space:]]+cb_head_main$' ||
+   nm "$head_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: head entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in err errno_location errx exit fclose feof fopen fprintf fread fwrite \
+        getc getopt getopt_state_location getprogname isdigit malloc printf putchar \
+        setlocale stderr_stream stdin_stream stdout_stream strcpy strlen strtoimax warn; do
+    if ! nm -u "$head_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$" ||
+       nm -u "$head_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: head private boundary for $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

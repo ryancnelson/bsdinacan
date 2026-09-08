@@ -45,6 +45,10 @@ target_compile_definitions(cb_basename_probe PRIVATE main=cb_basename_probe_main
 target_compile_definitions(cb_strtoimax_probe PRIVATE main=cb_strtoimax_probe_main)
 add_library(cb_poll_probe OBJECT ${ROOT}/tests/libc_poll_source.c)
 target_include_directories(cb_poll_probe PRIVATE ${ROOT}/libc/include)
+add_library(cb_head OBJECT ${ROOT}/upstream/netbsd/usr.bin/head/head.c)
+target_include_directories(cb_head PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_head PRIVATE main=cb_head_main)
+target_compile_options(cb_head PRIVATE -fstack-usage)
 add_library(cb_echo OBJECT ${ROOT}/upstream/netbsd/bin/echo/echo.c)
 target_include_directories(cb_echo PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_echo PRIVATE main=cb_netbsdecho_main)
@@ -94,6 +98,8 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/dirname_module.c ${ROOT}/commands/basename_module.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
+    ${ROOT}/commands/head_module.c
+    ${ROOT}/tests/head_probe.c
     ${ROOT}/libc/cb_libc.c
     ${ROOT}/tests/libc_locale_probe_module.c
     ${ROOT}/tests/libc_terminal_probe_module.c
@@ -126,7 +132,7 @@ add_application(CannedBSD CREATOR "CnBD"
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
-    $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo>
+    $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
