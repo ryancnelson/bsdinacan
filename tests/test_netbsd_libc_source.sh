@@ -27,6 +27,9 @@ memcmp_hash=a926ba117d7a044631da27bc301769607072bdf42995e4d49dbc00139643d5ce
 strchr_source=upstream/netbsd/common/lib/libc/string/strchr.c
 strchr_object=$build_path/netbsd_strchr.o
 strchr_hash=ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9
+dirname_source=upstream/netbsd/lib/libc/gen/dirname.c
+dirname_object=$build_path/netbsd_dirname.o
+dirname_hash=05ad1f66a7a5a4ceee33fe767a3410c60aa76e4ed670b5d57ab9198a0a2a892b
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -208,6 +211,34 @@ if nm -u "$strchr_object" | rg -q '[[:space:]]U[[:space:]]+strchr$'; then
 fi
 if ! ar t "$archive_file" | rg -q '^netbsd_strchr\.o$'; then
     echo 'FAIL: libcannedbsd.a does not contain NetBSD strchr' >&2
+    exit 1
+fi
+if [[ ! -f $dirname_source ]] ||
+        [[ $(sha256sum "$dirname_source" | awk '{print $1}') != "$dirname_hash" ]]; then
+    echo 'FAIL: pinned NetBSD dirname source is missing or changed' >&2
+    exit 1
+fi
+if ! rg -q "$dirname_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD dirname provenance does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $dirname_object ]] ||
+        ! nm "$dirname_object" |
+            rg -q '[[:space:]]T[[:space:]]+cb_libc_dirname_upstream$'; then
+    echo 'FAIL: NetBSD dirname was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$dirname_object" | rg -q '[[:space:]]U[[:space:]]+dirname$'; then
+    echo 'FAIL: NetBSD dirname object imports host dirname' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | rg -q '^netbsd_dirname\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD dirname' >&2
+    exit 1
+fi
+if ! nm -u "$build_path/cb_libc.o" |
+        rg -q '[[:space:]]U[[:space:]]+cb_libc_dirname_upstream$'; then
+    echo 'FAIL: cannedBSD dirname veneer does not use the imported dirname' >&2
     exit 1
 fi
 

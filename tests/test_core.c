@@ -3134,7 +3134,9 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
-           cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 ? 0 : -1;
+           cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 ?
+           0 : -1;
 }
 
 /* FIXTURE_FULL is already at its 64-slot ceiling: scope the new dirname(3)

@@ -21,13 +21,22 @@ location` implementation, and the three new compat shim headers
 (`sys/param.h`, `limits.h`, `libgen.h`) were all written directly,
 without a preceding failing test of their own -- the same "ABI/runtime
 as prerequisite infrastructure" treatment every prior libc addition in
-this project has given its own ABI additions. What was genuinely
-red-first: `libc/cb_libc.c`'s `cb_libc_dirname` definition. It was
-written last; every ordinary-source probe and its raw-ABI orchestrators
-(`tests/libc_dirname_probe.c`, the isolation pair, the two old-table
-probes) were compiled and linked *without* it first.
+this project has given its own ABI additions. `libc/cb_libc.c`'s
+`cb_libc_dirname` definition was written before any of this note's
+"regression check" below was performed -- so, unlike `PENV-02`'s or
+`PENV-03`'s genuine link-fails-before-the-definition-exists reds, none
+of this iteration's tests were actually written or run against a
+missing implementation first. The check described below was performed
+*after* the full implementation already existed, by temporarily
+deleting an already-working definition and confirming the test suite
+notices. That is real, meaningful evidence -- it is not a "this test
+probably works" assumption, and it did catch a mismatch once already
+(the `struct_size`/`register_test_programs` fixture issues below) -- but
+it is regression evidence, not red-first TDD evidence, and calling it
+red-first would overclaim what was actually done. Recorded plainly
+rather than reused as if it were the same thing.
 
-## Red
+## Regression check (not red-first: performed after the implementation existed)
 
 - Command: temporarily removed `cb_libc_dirname`'s definition from
   `libc/cb_libc.c` (the declaration in `include/cannedbsd/libc.h` and
@@ -39,7 +48,10 @@ probes) were compiled and linked *without* it first.
   orchestrators in `tests/test_core.c` -- exactly the call sites that
   should fail, and nothing else (every other new piece -- the ABI field,
   the task-owned buffer, the imported `cb_libc_dirname_upstream` object,
-  the three compat shims -- compiled cleanly in the same build).
+  the three compat shims -- compiled cleanly in the same build). This
+  demonstrates the test suite would catch cb_libc_dirname going missing
+  again later; it does not demonstrate the tests were written before the
+  implementation, because they were not.
 - Restored the real definition immediately afterward; re-verified green.
 
 ## Green
@@ -54,9 +66,33 @@ probes) were compiled and linked *without* it first.
   to the `CannedBSD` target's sources -- `libc/cb_libc.c` is unconditionally
   part of that target and now references `cb_libc_dirname_upstream`, so
   the mac68k link would otherwise fail with a missing symbol (the exact
-  failure class PENV-06 hit for the same reason). No dirname *test*
-  probe was added to the Mac target, matching this project's existing
-  practice of not mirroring every native test probe there.
+  failure class PENV-06 hit for the same reason). A real Mac-side test
+  case was also added, not just the link fix: `cb_dirname_probe` (the
+  same `tests/libc_dirname_probe.c` used natively) is now built into the
+  `CannedBSD` target and exercised through
+  `platform/mac68k/acceptance_cases.def`'s `libcdirnameprobe` case, run
+  by both `test_mac_acceptance()` natively and the real Mac guest
+  acceptance harness (`test_mac_guest.py`) -- successful linking alone
+  does not exercise the runtime behavior, so this was added rather than
+  left as a documentation-only claim.
+- `tests/test_netbsd_libc_source.sh` now pins `dirname`'s source hash
+  and provenance and checks its private link name and host-symbol
+  exclusion, mirroring every other pinned import there (the earlier
+  commit's `UPSTREAM.md` entry claimed this coverage before it actually
+  existed -- corrected now, not just described).
+- `tests/test_libc_source.sh` now checks `tests/libc_dirname_probe.c`
+  for cannedBSD-specific names, requires it to call `dirname()`, and
+  requires its compiled object to import the private `cb_libc_dirname`
+  veneer rather than a host-facing `dirname` symbol -- the same
+  ordinary-source boundary check every other libc addition here gets.
+- `tests/libc_dirname_probe.c`'s boundary case now targets the actual
+  exact-fit boundary (a 1023-byte result, the true maximum a
+  `PATH_MAX == CB_PATH_MAX == 1024` buffer can hold) rather than one
+  byte short of it, and a new overflow case confirms a dirname computed
+  from a path long enough that upstream's own `xdirname_r` truncates it
+  first (to longer than `PATH_MAX` can hold) is reproduced by the veneer
+  exactly as upstream already truncated it, not truncated a second time
+  or read past.
 - All three exact-commit Woodpecker statuses: pending push.
 
 ## Design decisions carried from the approved design, as implemented
