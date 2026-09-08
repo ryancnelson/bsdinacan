@@ -10,5 +10,7 @@ steps:
   - name: verify-mac-image-matcher
     image: python:3.14-slim
     commands:
+      - apt-get update && apt-get install -y --no-install-recommends lua5.4
+      - lua tests/test_mac_runner_startup.lua
       - python -m pip install --no-cache-dir -r platform/mac68k/automation/requirements.txt
       - python tests/test_mac_image_match.py
