@@ -1040,7 +1040,7 @@ review or to satisfy this measured command's dependencies.
 
 ### ERR-02 — returning warn diagnostic for unchanged head
 
-- **Status:** Claimed by Antigravity on `work/ERR-02`
+- **Status:** Done at `6f860c4`; exact #266 CI and fresh 54-record Mac acceptance
 - **Base:** main
 - **Depends on:** ERR-01 (Done), reviewed HEAD-01 dependency plan
 - **Scope:** expose private `warn` using the existing bounded formatter and saved

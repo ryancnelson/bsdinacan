@@ -24,6 +24,21 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted head prerequisite, 2026-09-08
+
+Returning `warn` is accepted at `6f860c426e8842119615efd289f6bee2bcf6b678`.
+Independent integration review and all three Woodpecker #266 checks passed.
+Fresh Mac run `run-4j885q64` passed 54 records, including all prior 50 and four
+warn cases, in a 24.82-second cold automated cycle. The screenshot and exact
+receipt were inspected; normal shutdown, closed disks and slot release passed.
+Archive SHA256:
+`21a82baf3c465dd6386be50ea66c59573ddd210d3488adbe0ba1fa1279c81ef7`.
+
+The read-only stream design is reviewed and included. The coordinator worker
+implements STDIN-01, Antigravity implements STRCPY-01, and Claude corrects the
+numeric conversion design and measures the actual Retro68 type contract.
+Unchanged head still needs these input/string/conversion and fwrite prerequisites.
+
 ## Latest accepted utility and parser milestone, 2026-09-08
 
 Unchanged NetBSD echo, registered as `netbsdecho`, and required-argument getopt

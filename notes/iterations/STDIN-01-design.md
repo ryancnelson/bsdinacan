@@ -225,5 +225,6 @@ RAMFS files and pipes on native and Mac. Exact CI and coordinator-run guest
 evidence are required before calling each runtime loop accepted.
 
 Design validation: source review and publication/diff checks only; exact docs
-CI pending. Guest execution is not required for this documentation-only change,
+CI #262 passed all three checks on `5fcc687`. Independent review found no
+design blocker; the design is included in accepted integration `6f860c4`. Guest execution is not required for this documentation-only change,
 and no guest result or input-stream implementation is claimed.
