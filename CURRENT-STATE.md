@@ -425,16 +425,25 @@ compile diagnostic is a negative feasibility result. A smaller wrapper using
 real SDK catalog records is the next isolated host experiment.
 
 
-## Pending acceptance and review
+## Current integration and next utility milestone
 
-The REUSE-03 catalog experiment at `1365553` passed all three Woodpecker #132
-workflows. Its first guest run at `a66308b` produced twelve passing checks and
-one failing native catalog-error assertion; that evidence was retained. The
-follow-up corrects that assertion against the raw native call and adds desktop
-metadata to the read-only fixture. Fresh guest acceptance is still pending;
-a locked host prevented inspection of the new run. No host filesystem adapter
-has been accepted or merged. MAC-11 adds a prelaunch session check.
+Main `592ae41` includes MAC-11's locked-desktop preflight and TERM-02 console
+classification/honest attribute fallback. Woodpecker #154 passed all three
+workflows; run `run-h_uugpe6` passed eighteen fresh Mac records in 13.21 seconds
+with screenshot, normal shutdown, receipt and slot release. Archive SHA256:
+`98da005d4afce5df1a32d04bd7e4656dc7e3b1505141b798f5f4102e0c2f5455`.
 
-VFS-03 and VFS-02 remain unmerged while cleanup/capability and executable-node
-ownership/contract review findings are addressed. Their CI results alone do
-not establish guest acceptance. LIBGEN-01 and TERM-01 remain design reviews.
+Main `a9346ea` adds the separate REUSE-03 catalog experiment. Woodpecker #156
+passed all three workflows. The normal eighteen-check artifact passed in
+`run-grt4pnjg` (15.19 seconds). The separate catalog probe passed all thirteen
+records in cold run `run-kpjadavd`; screenshot showed successful shared-file
+writing, followed by normal shutdown and slot release. Protected fixture SHA256
+remained `5adc9b2bb9cb9d1d7119ad45dc2d8470e221aee776a6b653d9e788e445e56f58`.
+This is an isolated catalog experiment, not an implemented host filesystem mount.
+
+The user-selected next milestone is the unchanged NetBSD dirname command.
+Actual compilation measured only dirname and setlocale as missing private
+imports; host libgen/locale header leakage was detected, not counted as support.
+Claude owns libc dirname; Codex owns the C-only locale prerequisite. VFS-03 and
+VFS-02 remain unmerged until their outstanding review corrections pass. Broader
+terminal implementation is deferred in favor of this real utility milestone.
