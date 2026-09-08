@@ -161,6 +161,8 @@ struct cb_api_v1 {
     int *(*errno_location)(void);
     char ***(*environ_location)(void);
     struct cb_getopt_state_v1 *(*getopt_state_location)(void);
+    int (*truncate)(const char *path, cb_off_t length);
+    int (*ftruncate)(int fd, cb_off_t length);
 };
 
 struct cb_program_v1 {

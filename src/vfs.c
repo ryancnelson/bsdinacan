@@ -13,7 +13,8 @@ static int mount_ops_valid(const struct cb_vfs_mount_ops *ops)
 static int node_ops_valid(const struct cb_vfs_node_ops *ops)
 {
     return ops != NULL && ops->abi_version == CB_ABI_VERSION_V1 &&
-           ops->struct_size >= sizeof(*ops) && ops->retain != NULL &&
+           ops->struct_size >= offsetof(struct cb_vfs_node_ops, truncate) &&
+           ops->retain != NULL &&
            ops->release != NULL && ops->lookup != NULL &&
            ops->create != NULL && ops->unlink != NULL && ops->open != NULL &&
            ops->stat != NULL && ops->parent != NULL && ops->name != NULL;
@@ -277,6 +278,47 @@ int cb_vfs_stat_path(struct cb_task *task, const char *path,
     }
     cb_task_set_error(task, 0);
     return 0;
+}
+
+int cb_vfs_truncate_node(struct cb_vfs_node *node, cb_off_t length)
+{
+    struct cb_stat_v1 status;
+    int result;
+    if (length < 0 || (uint64_t)length > SIZE_MAX)
+        return -CB_EINVAL;
+    if (node == NULL || !node_ops_valid(node->ops))
+        return -CB_EIO;
+    result = node->ops->stat(node, &status);
+    if (result < 0)
+        return result;
+    if (status.type == CB_NODE_DIRECTORY)
+        return -CB_EISDIR;
+    if (status.type != CB_NODE_REGULAR)
+        return -CB_ESPIPE;
+    if (node->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, truncate) +
+                sizeof(node->ops->truncate) || node->ops->truncate == NULL)
+        return -CB_ENOSYS;
+    return node->ops->truncate(node, length);
+}
+
+int cb_vfs_truncate_path(struct cb_task *task, const char *path,
+                         cb_off_t length)
+{
+    char normalized[CB_PATH_MAX];
+    struct cb_vfs_node *node;
+    int result;
+    if (length < 0 || (uint64_t)length > SIZE_MAX) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    result = normalize_for_task(task, path, normalized);
+    if (result >= 0)
+        result = resolve_normalized(task, normalized, &node);
+    if (result >= 0)
+        result = cb_vfs_truncate_node(node, length);
+    cb_task_set_error(task, result < 0 ? -result : 0);
+    return result < 0 ? -1 : 0;
 }
 
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode)

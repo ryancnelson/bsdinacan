@@ -279,6 +279,15 @@ static cb_ssize_t console_write(struct cb_open_file *file,
     return result;
 }
 
+static int no_truncate(struct cb_open_file *file, struct cb_task *task,
+                        cb_off_t length)
+{
+    (void)file;
+    (void)length;
+    cb_task_set_error(task, CB_ESPIPE);
+    return -1;
+}
+
 static cb_off_t no_seek(struct cb_open_file *file, struct cb_task *task,
                         cb_off_t offset, int whence)
 {
@@ -318,11 +327,13 @@ static int terminal_stat(struct cb_open_file *file,
 }
 
 static const struct cb_file_ops console_input_ops = {
-    console_read, NULL, no_seek, console_input_poll, terminal_stat, NULL
+    console_read, NULL, no_seek, console_input_poll, terminal_stat, NULL,
+    no_truncate
 };
 
 static const struct cb_file_ops console_output_ops = {
-    NULL, console_write, no_seek, console_output_poll, terminal_stat, NULL
+    NULL, console_write, no_seek, console_output_poll, terminal_stat, NULL,
+    no_truncate
 };
 
 void cb_wake_pipe_tasks(struct cb_kernel *kernel)
@@ -454,11 +465,13 @@ static void pipe_write_close(struct cb_open_file *file)
 }
 
 static const struct cb_file_ops pipe_read_ops = {
-    pipe_read, NULL, no_seek, pipe_read_poll, pipe_stat, pipe_read_close
+    pipe_read, NULL, no_seek, pipe_read_poll, pipe_stat, pipe_read_close,
+    no_truncate
 };
 
 static const struct cb_file_ops pipe_write_ops = {
-    NULL, pipe_write, no_seek, pipe_write_poll, pipe_stat, pipe_write_close
+    NULL, pipe_write, no_seek, pipe_write_poll, pipe_stat, pipe_write_close,
+    no_truncate
 };
 
 void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
@@ -923,6 +936,28 @@ static cb_off_t api_lseek(int descriptor, cb_off_t offset, int whence)
     return file->ops->lseek(file, task, offset, whence);
 }
 
+static int api_ftruncate(int descriptor, cb_off_t length)
+{
+    struct cb_task *task = active_kernel->current;
+    struct cb_open_file *file;
+    if (descriptor < 0 || descriptor >= CB_MAX_FDS ||
+        (file = task->descriptors[descriptor].file) == NULL ||
+        file->ops->truncate == NULL) {
+        cb_task_set_error(task, CB_EBADF);
+        return -1;
+    }
+    if (length < 0 || (uint64_t)length > SIZE_MAX) {
+        cb_task_set_error(task, CB_EINVAL);
+        return -1;
+    }
+    return file->ops->truncate(file, task, length);
+}
+
+static int api_truncate(const char *path, cb_off_t length)
+{
+    return cb_vfs_truncate_path(active_kernel->current, path, length);
+}
+
 static int api_dup(int descriptor)
 {
     struct cb_task *task = active_kernel->current;
@@ -1363,6 +1398,8 @@ static void initialize_api(struct cb_kernel *kernel)
     api->errno_location = api_errno_location;
     api->environ_location = api_environ_location;
     api->getopt_state_location = api_getopt_state_location;
+    api->truncate = api_truncate;
+    api->ftruncate = api_ftruncate;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

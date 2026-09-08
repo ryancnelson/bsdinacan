@@ -18,6 +18,9 @@ static void *(*base_resize)(void *, size_t);
 static void (*base_release)(void *);
 static int allocation_failure_countdown = -1;
 static int resize_failure_countdown = -1;
+static size_t resize_request_size;
+static struct cb_kernel *truncate_test_kernel;
+static int truncate_child_phase;
 static long allocation_balance;
 static const unsigned char *console_input;
 static size_t console_input_size;
@@ -51,6 +54,7 @@ static unsigned executor_terminate_count;
 static unsigned executor_instance_destroy_count;
 static unsigned executor_program_destroy_count;
 static void fail(const char *message);
+extern const struct cb_program_v1 cb_truncate_probe_program;
 
 static int registration_stub_main(const struct cb_api_v1 *api, int argc,
                                   char *const argv[], char *const envp[])
@@ -136,6 +140,7 @@ static void *controlled_allocate(size_t size)
 
 static void *controlled_resize(void *pointer, size_t size)
 {
+    resize_request_size = size;
     if (resize_failure_countdown == 0) {
         resize_failure_countdown = -1;
         return NULL;
@@ -406,7 +411,7 @@ static void test_vfs_contract(void)
     root->ops = &node_copy;
     expect_invalid_root_mount(&kernel, mount, "node version");
     node_copy = *node_ops;
-    node_copy.struct_size = sizeof(node_copy) - 1;
+    node_copy.struct_size = offsetof(struct cb_vfs_node_ops, truncate) - 1;
     root->ops = &node_copy;
     expect_invalid_root_mount(&kernel, mount, "node size");
     EXPECT_INVALID_NODE_OP(retain);
@@ -420,7 +425,9 @@ static void test_vfs_contract(void)
     EXPECT_INVALID_NODE_OP(name);
 #undef EXPECT_INVALID_NODE_OP
 
-    root->ops = node_ops;
+    node_copy = *node_ops;
+    node_copy.struct_size = offsetof(struct cb_vfs_node_ops, truncate);
+    root->ops = &node_copy;
     if (cb_vfs_set_root_mount(&kernel, mount) < 0 ||
         cb_vfs_set_root_mount(&kernel, mount) == 0 ||
         kernel.vfs_root != root || root->mount != mount ||
@@ -433,9 +440,72 @@ static void test_vfs_contract(void)
         fail("root mount installation");
     cb_vfs_node_retain(tmp);
     cb_vfs_node_release(tmp);
+    root->ops = node_ops;
     cb_vfs_destroy(&kernel);
     if (kernel.root_mount != NULL || kernel.vfs_root != NULL)
         fail("root mount destruction");
+}
+
+static void test_truncate_vfs_contract(void)
+{
+    struct cb_kernel *kernel = cb_kernel_create(cb_linux_host_ops());
+    struct cb_task task;
+    struct cb_open_file *file;
+    struct cb_vfs_node *node;
+    const struct cb_vfs_node_ops *original;
+    struct cb_vfs_node_ops copy;
+    struct cb_vfs_node_ops *old;
+    struct cb_stat_v1 status;
+    int error = 0;
+    size_t old_size = offsetof(struct cb_vfs_node_ops, truncate);
+    if (kernel == NULL)
+        fail("truncate adapter kernel");
+    memset(&task, 0, sizeof(task));
+    task.kernel = kernel;
+    task.root = task.cwd = kernel->vfs_root;
+    task.error_cell = &error;
+    file = cb_vfs_open(&task, "/tmp/optional", CB_O_CREAT | CB_O_RDWR, 0600);
+    if (file == NULL)
+        fail("truncate adapter file");
+    node = file->object.node;
+    original = node->ops;
+    old = malloc(old_size);
+    if (old == NULL)
+        fail("old VFS table allocation");
+    copy = *original;
+    copy.struct_size = (uint32_t)old_size;
+    memcpy(old, &copy, old_size);
+    node->ops = old;
+    /* The allocation ends at the old prefix: ASan catches tail-member reads. */
+    if (cb_vfs_stat_path(&task, "/tmp/optional", &status) != 0 ||
+        cb_vfs_truncate_path(&task, "/tmp/optional", 2) != -1 ||
+        error != CB_ENOSYS || file->ops->truncate(file, &task, 2) != -1 ||
+        error != CB_EBADF)
+        fail("old VFS prefix or absent truncate capability");
+    node->ops = original;
+    free(old);
+
+    copy = *original;
+    node->ops = &copy;
+    copy.struct_size = sizeof(copy) - 1;
+    if (cb_vfs_truncate_path(&task, "/tmp/optional", 2) != -1 ||
+        error != CB_ENOSYS)
+        fail("partial truncate callback must not be read");
+    copy.struct_size = sizeof(copy);
+    copy.truncate = NULL;
+    if (cb_vfs_truncate_path(&task, "/tmp/optional", 2) != -1 ||
+        error != CB_ENOSYS || file->ops->truncate(file, &task, 2) != -1 ||
+        error != CB_EBADF)
+        fail("NULL optional truncate callback");
+    copy = *original;
+    copy.struct_size = sizeof(copy) + 32;
+    if (cb_vfs_truncate_path(&task, "/tmp/optional", 2) != 0 ||
+        cb_vfs_stat_path(&task, "/tmp/optional", &status) != 0 ||
+        status.size != 2)
+        fail("larger VFS table prefix compatibility");
+    node->ops = original;
+    cb_open_file_release(file);
+    cb_kernel_destroy(kernel);
 }
 
 static void test_registration_contract(void)
@@ -1680,7 +1750,8 @@ static int abiprobe_main(const struct cb_api_v1 *api, int argc,
         api->set_errno == NULL || api->capabilities == NULL ||
         api->allocate == NULL || api->resize == NULL ||
         api->release == NULL || api->errno_location == NULL ||
-        api->environ_location == NULL || api->getopt_state_location == NULL)
+        api->environ_location == NULL || api->getopt_state_location == NULL ||
+        api->truncate == NULL || api->ftruncate == NULL)
         return 181;
     capabilities = api->capabilities();
     if (capabilities == NULL ||
@@ -2358,6 +2429,241 @@ static const struct cb_program_v1 yesprobe_program = {
     64 * 1024, yesprobe_main
 };
 
+#define TRUNCATE_CHECK(condition, message) do { \
+    if (!(condition)) { \
+        fprintf(stderr, "truncate: %s\n", message); \
+        return 1; \
+    } \
+} while (0)
+
+static int truncateprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    const char *path = "/tmp/resize";
+    unsigned char original[100], data[320], snapshot[11];
+    struct cb_stat_v1 status;
+    int fd, reader, duplicate, append, pipes[2], result, saved_error;
+    size_t index;
+    (void)argc; (void)argv; (void)envp;
+    for (index = 0; index < sizeof(original); ++index)
+        original[index] = (unsigned char)(index + 1);
+    fd = api->open(path, CB_O_CREAT | CB_O_RDWR, 0400);
+    TRUNCATE_CHECK(fd >= 0 && api->write(fd, original, sizeof(original)) == 100,
+                   "create baseline data; mode-bit enforcement remains deferred");
+    reader = api->open(path, CB_O_RDONLY, 0);
+    duplicate = api->dup(fd);
+    TRUNCATE_CHECK(reader >= 0 && duplicate >= 0 &&
+                   api->lseek(reader, 80, CB_SEEK_SET) == 80 &&
+                   api->lseek(duplicate, 80, CB_SEEK_SET) == 80,
+                   "independent and shared offsets");
+    TRUNCATE_CHECK(api->ftruncate(duplicate, 10) == 0 &&
+                   api->lseek(fd, 0, CB_SEEK_CUR) == 80 &&
+                   api->lseek(reader, 0, CB_SEEK_CUR) == 80 &&
+                   api->fstat(reader, &status) == 0 && status.size == 10 &&
+                   api->read(fd, data, 1) == 0,
+                   "shrink visible through independent fd; offsets unchanged and EOF");
+    TRUNCATE_CHECK(api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 10 &&
+                   memcmp(data, original, 10) == 0,
+                   "shrink preserves prefix");
+    TRUNCATE_CHECK(api->ftruncate(fd, 50) == 0 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 50 &&
+                   memcmp(data, original, 10) == 0,
+                   "regrow within old capacity");
+    for (index = 10; index < 50; ++index)
+        TRUNCATE_CHECK(data[index] == 0, "regrow exposes zeros, not stale bytes");
+    TRUNCATE_CHECK(api->ftruncate(fd, 300) == 0 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 300,
+                   "growth requiring a new allocation");
+    for (index = 10; index < 300; ++index)
+        TRUNCATE_CHECK(data[index] == 0, "allocated growth is zero-filled");
+
+    TRUNCATE_CHECK(api->lseek(reader, 77, CB_SEEK_SET) == 77 &&
+                   api->truncate(path, 5) == 0 &&
+                   api->fstat(reader, &status) == 0 && status.size == 5 &&
+                   api->lseek(reader, 0, CB_SEEK_CUR) == 77 &&
+                   api->lseek(fd, 0, CB_SEEK_CUR) == 80,
+                   "path truncate leaves independently open and shared offsets unchanged");
+    TRUNCATE_CHECK(api->write(fd, "Z", 1) == 1 &&
+                   api->lseek(duplicate, 0, CB_SEEK_CUR) == 81 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 81 &&
+                   memcmp(data, original, 5) == 0 && data[80] == 'Z',
+                   "write past shrunk EOF keeps offset and prefix");
+    for (index = 5; index < 80; ++index)
+        TRUNCATE_CHECK(data[index] == 0, "write after shrink zero-fills hole");
+
+    append = api->open(path, CB_O_WRONLY | CB_O_APPEND, 0);
+    TRUNCATE_CHECK(append >= 0 && api->ftruncate(fd, 2) == 0 &&
+                   api->write(append, "!", 1) == 1 &&
+                   api->truncate(path, 10) == 0 &&
+                   api->write(append, "A", 1) == 1 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, snapshot, sizeof(snapshot)) == 11 &&
+                   snapshot[0] == 1 && snapshot[1] == 2 &&
+                   snapshot[2] == '!' && snapshot[10] == 'A',
+                   "append follows new end after shrink and growth");
+    for (index = 3; index < 10; ++index)
+        TRUNCATE_CHECK(snapshot[index] == 0, "append growth gap zeros");
+    TRUNCATE_CHECK(api->ftruncate(append, 11) == 0, "write-only descriptor can truncate");
+    TRUNCATE_CHECK(api->ftruncate(reader, 0) == -1 && api->get_errno() == CB_EBADF,
+                   "read-only descriptor");
+    TRUNCATE_CHECK(api->truncate("/tmp", 0) == -1 && api->get_errno() == CB_EISDIR,
+                   "directory path");
+    TRUNCATE_CHECK(api->truncate("/missing", 0) == -1 && api->get_errno() == CB_ENOENT,
+                   "missing path");
+    TRUNCATE_CHECK(api->truncate("/tmp/resize/child", 0) == -1 && api->get_errno() == CB_ENOTDIR,
+                   "non-directory path component");
+    TRUNCATE_CHECK(api->truncate(NULL, 0) == -1 && api->get_errno() == CB_EINVAL,
+                   "NULL path");
+    TRUNCATE_CHECK(api->truncate(path, -1) == -1 && api->get_errno() == CB_EINVAL &&
+                   api->ftruncate(fd, -1) == -1 && api->get_errno() == CB_EINVAL,
+                   "negative lengths rejected before narrowing");
+    TRUNCATE_CHECK(api->ftruncate(-1, 0) == -1 && api->get_errno() == CB_EBADF &&
+                   api->ftruncate(CB_MAX_FDS, 0) == -1 && api->get_errno() == CB_EBADF,
+                   "invalid descriptors");
+    TRUNCATE_CHECK(api->ftruncate(0, 0) == -1 && api->get_errno() == CB_ESPIPE &&
+                   api->ftruncate(1, 0) == -1 && api->get_errno() == CB_ESPIPE,
+                   "terminal descriptors");
+    TRUNCATE_CHECK(api->pipe(pipes) == 0 &&
+                   api->ftruncate(pipes[0], 0) == -1 && api->get_errno() == CB_ESPIPE &&
+                   api->ftruncate(pipes[1], 0) == -1 && api->get_errno() == CB_ESPIPE &&
+                   api->close(pipes[0]) == 0 && api->close(pipes[1]) == 0,
+                   "both pipe directions");
+    {
+        struct cb_open_file *file = truncate_test_kernel->current->descriptors[fd].file;
+        const struct cb_file_ops *ops = file->ops;
+        struct cb_file_ops without_truncate = *ops;
+        without_truncate.truncate = NULL;
+        file->ops = &without_truncate;
+        result = api->ftruncate(fd, 1);
+        saved_error = api->get_errno();
+        file->ops = ops;
+        TRUNCATE_CHECK(result == -1 && saved_error == CB_EBADF,
+                       "descriptor missing operation uses EBADF");
+    }
+    TRUNCATE_CHECK(api->lseek(fd, 7, CB_SEEK_SET) == 7, "failure offset baseline");
+    resize_failure_countdown = 0;
+    TRUNCATE_CHECK(api->ftruncate(fd, 4096) == -1 && api->get_errno() == CB_ENOMEM &&
+                   api->lseek(fd, 0, CB_SEEK_CUR) == 7 &&
+                   api->fstat(reader, &status) == 0 && status.size == 11 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 11 &&
+                   memcmp(data, snapshot, 11) == 0,
+                   "allocation failure preserves size, data, and offset");
+    resize_failure_countdown = 0;
+    resize_request_size = 0;
+    if (sizeof(size_t) < sizeof(cb_off_t)) {
+        TRUNCATE_CHECK(api->ftruncate(fd, INT64_MAX) == -1 &&
+                       api->get_errno() == CB_EINVAL && resize_request_size == 0 &&
+                       api->truncate(path, INT64_MAX) == -1 &&
+                       api->get_errno() == CB_EINVAL && resize_request_size == 0,
+                       "length wider than size_t never reaches allocator");
+        TRUNCATE_CHECK(api->ftruncate(fd, (cb_off_t)SIZE_MAX) == -1 &&
+                       api->get_errno() == CB_ENOMEM && resize_request_size == SIZE_MAX,
+                       "maximum representable length does not wrap capacity growth");
+    } else {
+        TRUNCATE_CHECK(api->truncate(path, INT64_MAX) == -1 &&
+                       api->get_errno() == CB_ENOMEM &&
+                       (uint64_t)resize_request_size >= (uint64_t)INT64_MAX,
+                       "capacity arithmetic does not wrap before failed allocation");
+    }
+    TRUNCATE_CHECK(api->fstat(reader, &status) == 0 && status.size == 11 &&
+                   api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 11 &&
+                   memcmp(data, snapshot, 11) == 0,
+                   "oversized failure preserves bytes");
+    resize_failure_countdown = 0;
+    TRUNCATE_CHECK(api->ftruncate(fd, 11) == 0 && api->ftruncate(fd, 0) == 0 &&
+                   api->ftruncate(fd, 11) == 0 && resize_failure_countdown == 0,
+                   "same size, shrink, and spare-capacity regrowth do not allocate");
+    resize_failure_countdown = -1;
+    TRUNCATE_CHECK(api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
+                   api->read(reader, data, sizeof(data)) == 11,
+                   "read regrowth after zero shrink");
+    for (index = 0; index < 11; ++index)
+        TRUNCATE_CHECK(data[index] == 0, "zero shrink discards all former bytes");
+    TRUNCATE_CHECK(api->unlink(path) == 0 && api->ftruncate(fd, 4) == 0 &&
+                   api->fstat(reader, &status) == 0 && status.size == 4 &&
+                   api->truncate(path, 1) == -1 && api->get_errno() == CB_ENOENT,
+                   "unlinked open node remains resizable");
+    TRUNCATE_CHECK(api->close(append) == 0 && api->close(duplicate) == 0 &&
+                   api->close(reader) == 0 && api->close(fd) == 0 &&
+                   api->ftruncate(fd, 1) == -1 && api->get_errno() == CB_EBADF,
+                   "close cleanup and closed descriptor");
+    return 0;
+}
+
+static int truncatechild_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    int fd;
+    struct cb_stat_v1 status;
+    unsigned char bytes[8];
+    size_t index;
+    (void)argc; (void)argv; (void)envp;
+    fd = api->open("/tmp/shared-resize", CB_O_RDWR, 0);
+    TRUNCATE_CHECK(fd >= 0 && api->lseek(fd, 3, CB_SEEK_SET) == 3 &&
+                   api->ftruncate(fd, 4) == 0 &&
+                   api->fstat(fd, &status) == 0 && status.size == 4,
+                   "child independent open shrinks shared node");
+    truncate_child_phase = 1;
+    api->yield();
+    TRUNCATE_CHECK(api->fstat(fd, &status) == 0 && status.size == 12 &&
+                   api->lseek(fd, 0, CB_SEEK_CUR) == 3 &&
+                   api->lseek(fd, 4, CB_SEEK_SET) == 4 &&
+                   api->read(fd, bytes, sizeof(bytes)) == 8,
+                   "child sees parent path growth with own offset intact");
+    for (index = 0; index < sizeof(bytes); ++index)
+        TRUNCATE_CHECK(bytes[index] == 0, "shared growth zeros across tasks");
+    truncate_child_phase = 2;
+    return api->close(fd);
+}
+
+static int truncateinterleave_main(const struct cb_api_v1 *api, int argc,
+                                   char *const argv[], char *const envp[])
+{
+    int fd, status;
+    cb_pid_t child;
+    struct cb_stat_v1 metadata;
+    char *child_argv[] = {(char *)"truncatechild", NULL};
+    (void)argc; (void)argv;
+    fd = api->open("/tmp/shared-resize", CB_O_CREAT | CB_O_RDWR, 0600);
+    TRUNCATE_CHECK(fd >= 0 && api->write(fd, "abcdefghij", 10) == 10 &&
+                   api->lseek(fd, 8, CB_SEEK_SET) == 8,
+                   "parent creates shared file");
+    truncate_child_phase = 0;
+    TRUNCATE_CHECK(api->spawn("truncatechild", child_argv, envp, NULL, 0, &child) == 0,
+                   "spawn independent opener");
+    api->yield();
+    TRUNCATE_CHECK(truncate_child_phase == 1 &&
+                   api->fstat(fd, &metadata) == 0 && metadata.size == 4 &&
+                   api->lseek(fd, 0, CB_SEEK_CUR) == 8,
+                   "parent sees child resize across forced interleave");
+    TRUNCATE_CHECK(api->truncate("/tmp/shared-resize", 12) == 0,
+                   "parent path grows shared node");
+    TRUNCATE_CHECK(api->waitpid(child, &status) == child && status == 0 &&
+                   truncate_child_phase == 2,
+                   "child independently observed parent growth");
+    return api->close(fd);
+}
+#undef TRUNCATE_CHECK
+
+static const struct cb_program_v1 truncateprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "truncateprobe", 0,
+    64 * 1024, truncateprobe_main
+};
+static const struct cb_program_v1 truncatechild_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "truncatechild", 0,
+    64 * 1024, truncatechild_main
+};
+static const struct cb_program_v1 truncateinterleave_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "truncateinterleave", 0,
+    64 * 1024, truncateinterleave_main
+};
+
 static void run_case(const char *command, const char *expected_output,
                      int expected_status, int register_test_programs)
 {
@@ -2378,8 +2684,13 @@ static void run_case(const char *command, const char *expected_output,
     if (kernel == NULL)
         fail("kernel creation");
     cb_register_base_programs(kernel);
+    truncate_test_kernel = kernel;
     if (register_test_programs) {
-        if (cb_kernel_register(kernel, &pidcheck_program) < 0 ||
+        if (cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
+            cb_kernel_register(kernel, &truncatechild_program) < 0 ||
+            cb_kernel_register(kernel, &truncateinterleave_program) < 0 ||
+            cb_kernel_register(kernel, &cb_truncate_probe_program) < 0 ||
+            cb_kernel_register(kernel, &pidcheck_program) < 0 ||
             cb_kernel_register(kernel, &execprobe_program) < 0 ||
             cb_kernel_register(kernel, &unlinkprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipeallocprobe_program) < 0 ||
@@ -2552,8 +2863,18 @@ static void test_netbsd_strchr(void)
         fail("NetBSD strchr semantics");
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--truncate") == 0) {
+        test_truncate_vfs_contract();
+        run_case("libctruncateprobe", "", 0, 1);
+        run_case("truncateprobe", "", 0, 1);
+        run_case("truncateinterleave", "", 0, 1);
+        puts("truncate tests passed");
+        return 0;
+    }
+    if (argc != 1)
+        fail("unknown test selection");
     test_netbsd_strlen();
     test_netbsd_strcmp();
     test_netbsd_memcpy();
@@ -2562,6 +2883,7 @@ int main(void)
     test_netbsd_strchr();
     test_host_contract();
     test_vfs_contract();
+    test_truncate_vfs_contract();
     test_registration_contract();
     test_executor_contract();
     test_allocation_cleanup();
@@ -2668,6 +2990,9 @@ int main(void)
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
+    run_case("libctruncateprobe", "", 0, 1);
+    run_case("truncateprobe", "", 0, 1);
+    run_case("truncateinterleave", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);
     run_case("abiprobe", "", 0, 1);
     run_case("overflowprobe", "", 0, 1);

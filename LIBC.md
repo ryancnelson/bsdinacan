@@ -41,7 +41,8 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 ## Implemented first slice
 
 - `unistd.h`: `read`, `write`, `close`, standard descriptor numbers, and a
-  task-local `environ` lvalue.
+  task-local `environ` lvalue; `off_t`, `truncate`, and `ftruncate` for regular
+  file resizing. `off_t` uses the signed 64-bit runtime offset type.
 - `unistd.h`: a task-local `getopt` for flag-only optstrings — including the
   empty optstring pinned `printenv` needs — with isolated
   `optind`/`optarg`/`opterr`/`optopt`, reset on exec, and a real diagnostic

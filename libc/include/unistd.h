@@ -4,6 +4,7 @@
 #include "cannedbsd/libc.h"
 
 typedef cb_ssize_t ssize_t;
+typedef cb_off_t off_t;
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
@@ -12,6 +13,8 @@ typedef cb_ssize_t ssize_t;
 #define read cb_libc_read
 #define write cb_libc_write
 #define close cb_libc_close
+#define truncate cb_libc_truncate
+#define ftruncate cb_libc_ftruncate
 
 #define environ (*cb_libc_environ_location())
 
