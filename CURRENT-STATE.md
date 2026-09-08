@@ -56,14 +56,18 @@ PID/preferences, saves a fresh result and screenshot, exits the guest program,
 and selects normal guest shutdown. A prototype cold cycle took 12.7 seconds;
 the project version with staging/receipt/slot checks took 15.4 seconds.
 
-MAC-02's exact CI artifact passed three independent cold guest runs. The
-reviewed root/task scheduler path avoids the intermittent error28 cause;
-MAC-05 tracks direct task/task service resumption as a separate follow-up.
-Claude is working on FS-01 design and PENV-03 review corrections. Antigravity is
-fixing PORT-01 review findings; VFS-01 also needs corrections. Failed exact-head
-CI statuses override earlier worker claims of green. Those branches remain
-unmerged. MAC-03 guest-owned optional screenshot mode needs separate runtime
-acceptance before integration.
+MAC-01, MAC-02, MAC-04, and MAC-05 are merged on main at `5374fad`.
+Woodpecker #54 passed all three workflows, and its exact artifact passed the
+System 7 startup suite with a fresh result, screenshot, normal shutdown, and
+slot release. MAC-05 also passed its dedicated nested-task service tests.
+
+PENV-02 (exit), PENV-03 (bounded getopt), PENV-04 (bounded stdio), and PORT-01
+(adapter conformance) passed individual review and Woodpecker gates. Their
+combined integration is undergoing fresh CI and guest acceptance. Claude is
+implementing PENV-05; Antigravity is correcting VFS-01. Codex workers are
+implementing FS-01 and correcting MAC-03 screenshot encoding. MAC-03 remains
+unaccepted until the guest-owned PICT decodes visibly and failure handling is
+verified.
 
 ## Current evidence
 

@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns `FS-01-design` and the `PENV-03` review
-corrections; Antigravity owns the `PORT-01` review corrections. Codex owns
-`MAC-03`, `MAC-04`, serialized guest acceptance, and integration. `PENV-02`,
-`PENV-04`, `VFS-01`, `MAC-01`, and `MAC-02` are awaiting integration gates.
-Do not duplicate these claims.
+**Current assignments:** Claude owns `PENV-05` on the combined PENV integration
+base. Antigravity owns `VFS-01` corrections. Codex workers own `FS-01` and
+`MAC-03`; the coordinator owns exact-artifact guest acceptance and integration.
+`PENV-02`, `PENV-03`, `PENV-04`, and `PORT-01` are reviewed and combined for
+integration validation. `MAC-01`, `MAC-02`, `MAC-04`, and `MAC-05` are on main.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -68,7 +68,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-01 — repeatable Basilisk II artifact acceptance
 
-- **Status:** Implemented and verified; awaiting integration
+- **Status:** Done; merged after Woodpecker and exact-artifact guest acceptance
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a host-side runner can stage and identify the exact Woodpecker
@@ -82,7 +82,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-02 — System 7 private-stack and Toolbox safety
 
-- **Status:** Implemented on `work/MAC-02`; repeated guest acceptance in progress
+- **Status:** Done; merged after Woodpecker and exact-artifact guest acceptance
 - **Base:** main at `78a1e5b`
 - **Depends on:** none
 - **Hypothesis:** preserving stack-sniffer state and dispatching Toolbox work on
@@ -105,7 +105,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-04 — fast Hammerspoon guest test driver
 
-- **Status:** Claimed on `work/MAC-04`; working local prototype being integrated
+- **Status:** Done; merged after Woodpecker and exact-artifact guest acceptance
 - **Base:** MAC-01 at `5c013c5`
 - **Depends on:** MAC-01 integration
 - **Hypothesis:** image-matched actions remove manual mouse and tool-call delays.
@@ -118,7 +118,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-05 — resume the actual Toolbox-service requester
 
-- **Status:** Assigned to Codex worker; independent review found the reproducer
+- **Status:** Done; merged after Woodpecker and exact-artifact guest acceptance
 - **Base:** MAC-02 at `9a3e4db`
 - **Depends on:** MAC-02 integration
 - **Hypothesis:** a service requested after root → A → B must resume B,
@@ -133,7 +133,7 @@ independent backlog items while the emulator is occupied.
 
 ### FS-01-design — review the regular-file resize contract
 
-- **Status:** Assigned to Claude on `work/FS-01-design`
+- **Status:** Design reviewed at `937c61a`; implementation assigned to Codex
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** a bounded design can resolve FS-01's API and ownership questions.
@@ -184,7 +184,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-05 — `errx(3)` diagnostic
 
-- **Status:** Blocked on PENV-02 and PENV-04
+- **Status:** Claimed by Claude on `work/PENV-05`; reviewed dependencies combined
 - **Base:** integrated dependencies
 - **Hypothesis:** the bounded formatter plus exit can provide printenv's exact
   fatal diagnostic without a general stdio implementation.
