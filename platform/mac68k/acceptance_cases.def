@@ -54,3 +54,5 @@ CB_MAC_CASE("getoptargs missing", "argprobe: option requires an argument -- n\n"
 CB_MAC_CASE("getoptargs lifecycle", "", 0)
 CB_MAC_CASE("stdinprobe", "", 0)
 CB_MAC_CASE("stdincompat", "O", 0)
+CB_MAC_CASE("fileprobe", "", 0)
+CB_MAC_CASE("filecompat", "", 0)

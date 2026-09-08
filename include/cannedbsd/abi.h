@@ -154,10 +154,16 @@ struct cb_input_state_v1 {
     uint32_t struct_size;
     int stdin_eof;
     int stdin_error;
+    int stdin_closed;
+    void *input_streams; /* Opaque libc-owned list; cleared before heap reclaim. */
 };
 #define CB_INPUT_STATE_V1_MIN_SIZE \
     (offsetof(struct cb_input_state_v1, stdin_error) + \
      sizeof(((struct cb_input_state_v1 *)0)->stdin_error))
+
+#define CB_INPUT_STREAMS_V1_MIN_SIZE \
+    (offsetof(struct cb_input_state_v1, input_streams) + \
+     sizeof(((struct cb_input_state_v1 *)0)->input_streams))
 
 struct cb_api_v1 {
     uint32_t abi_version;

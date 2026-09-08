@@ -475,4 +475,22 @@ if nm -u "$stdin_object" | matches '[[:space:]]U[[:space:]]+(stdin|stdout|stderr
     exit 1
 fi
 
+file_source=tests/libc_file_probe.c
+file_object=$build_path/libc_file_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$file_source"; then
+    echo 'FAIL: file source uses private names' >&2
+    exit 1
+fi
+for symbol in fopen fclose getc feof ferror errno_location; do
+    if nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+       ! nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: file probe lacks private $symbol boundary" >&2
+        exit 1
+    fi
+done
+if nm -u "$file_object" | matches '[[:space:]]U[[:space:]]+(stdin|stdout|stderr)$'; then
+    echo 'FAIL: file probe imports host stdio' >&2
+    exit 1
+fi
+
 echo 'external libc source boundary passed'

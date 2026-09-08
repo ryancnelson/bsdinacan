@@ -9,11 +9,14 @@
 
 struct cb_libc_file {
     int descriptor;
+    int eof;
+    int error;
+    struct cb_libc_file *next;
 };
 
-static struct cb_libc_file stdin_file = {0};
-static struct cb_libc_file stdout_file = {1};
-static struct cb_libc_file stderr_file = {2};
+static struct cb_libc_file stdin_file = {0, 0, 0, NULL};
+static struct cb_libc_file stdout_file = {1, 0, 0, NULL};
+static struct cb_libc_file stderr_file = {2, 0, 0, NULL};
 struct cb_libc_file *const cb_libc_stdin_stream = &stdin_file;
 struct cb_libc_file *const cb_libc_stdout_stream = &stdout_file;
 struct cb_libc_file *const cb_libc_stderr_stream = &stderr_file;
@@ -297,54 +300,179 @@ static struct cb_input_state_v1 *input_state(void)
     return state;
 }
 
-int cb_libc_getc(struct cb_libc_file *stream)
+/* Stage 1 remains sufficient for stdin reads/status. Ownership operations and
+ * dynamic pointers need the independently guarded stage 2 tail. */
+static int input_streams_available(const struct cb_input_state_v1 *state)
+{
+    return state->struct_size >= CB_INPUT_STREAMS_V1_MIN_SIZE;
+}
+
+static struct cb_libc_file *find_input_stream(struct cb_input_state_v1 *state,
+                                             struct cb_libc_file *stream,
+                                             struct cb_libc_file **previous)
+{
+    struct cb_libc_file *node = state->input_streams;
+    *previous = NULL;
+    while (node != NULL) {
+        if (node == stream)
+            return node;
+        *previous = node;
+        node = node->next;
+    }
+    return NULL;
+}
+
+struct input_reference {
+    int descriptor;
+    int *eof;
+    int *error;
+};
+
+static int resolve_input(struct cb_libc_file *stream, struct input_reference *ref)
 {
     struct cb_input_state_v1 *state;
-    unsigned char byte;
-    cb_ssize_t result;
-    int saved_errno = bound_api->get_errno();
-    if (stream != cb_libc_stdin_stream) {
+    struct cb_libc_file *node, *previous;
+    if (stream == NULL || stream == cb_libc_stdout_stream ||
+        stream == cb_libc_stderr_stream) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    state = input_state();
+    if (state == NULL || (stream != cb_libc_stdin_stream &&
+                         !input_streams_available(state))) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    if (stream == cb_libc_stdin_stream) {
+        if (input_streams_available(state) && state->stdin_closed) {
+            bound_api->set_errno(CB_EINVAL);
+            return -1;
+        }
+        ref->descriptor = 0;
+        ref->eof = &state->stdin_eof;
+        ref->error = &state->stdin_error;
+        return 0;
+    }
+    /* Only traverse owned nodes. Never dereference the supplied identity. */
+    node = find_input_stream(state, stream, &previous);
+    if (node == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    ref->descriptor = node->descriptor;
+    ref->eof = &node->eof;
+    ref->error = &node->error;
+    return 0;
+}
+
+struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode)
+{
+    struct cb_input_state_v1 *state;
+    struct cb_libc_file *stream;
+    int descriptor, saved_errno = bound_api->get_errno();
+    if (path == NULL || mode == NULL ||
+        (cb_libc_strcmp(mode, "r") != 0 && cb_libc_strcmp(mode, "rb") != 0)) {
+        bound_api->set_errno(CB_EINVAL);
+        return NULL;
+    }
+    state = input_state();
+    if (state == NULL || !input_streams_available(state)) {
+        bound_api->set_errno(CB_ENOSYS);
+        return NULL;
+    }
+    /* Startup's mandatory prefix guarantees open/close/allocate/release. */
+    descriptor = bound_api->open(path, CB_O_RDONLY, 0);
+    if (descriptor < 0)
+        return NULL;
+    stream = bound_api->allocate(sizeof(*stream));
+    if (stream == NULL) {
+        bound_api->close(descriptor);
+        bound_api->set_errno(CB_ENOMEM);
+        return NULL;
+    }
+    stream->descriptor = descriptor;
+    stream->eof = stream->error = 0;
+    stream->next = state->input_streams;
+    state->input_streams = stream;
+    bound_api->set_errno(saved_errno);
+    return stream;
+}
+
+int cb_libc_fclose(struct cb_libc_file *stream)
+{
+    struct cb_input_state_v1 *state;
+    struct cb_libc_file *node, *previous;
+    int result, error, saved_errno = bound_api->get_errno();
+    if (stream == NULL || stream == cb_libc_stdout_stream ||
+        stream == cb_libc_stderr_stream) {
         bound_api->set_errno(CB_EINVAL);
         return EOF;
     }
     state = input_state();
-    if (state == NULL) {
+    if (state == NULL || !input_streams_available(state)) {
         bound_api->set_errno(CB_ENOSYS);
         return EOF;
     }
-    if (state->stdin_eof)
+    if (stream == cb_libc_stdin_stream) {
+        if (state->stdin_closed) {
+            bound_api->set_errno(CB_EINVAL);
+            return EOF;
+        }
+        state->stdin_closed = 1;
+        result = bound_api->close(0);
+        error = bound_api->get_errno();
+    } else {
+        node = find_input_stream(state, stream, &previous);
+        if (node == NULL) {
+            bound_api->set_errno(CB_EINVAL);
+            return EOF;
+        }
+        if (previous == NULL)
+            state->input_streams = node->next;
+        else
+            previous->next = node->next;
+        result = bound_api->close(node->descriptor);
+        error = bound_api->get_errno();
+        bound_api->release(node);
+    }
+    bound_api->set_errno(result < 0 ? error : saved_errno);
+    return result < 0 ? EOF : 0;
+}
+
+int cb_libc_getc(struct cb_libc_file *stream)
+{
+    struct input_reference ref;
+    unsigned char byte;
+    cb_ssize_t result;
+    int saved_errno = bound_api->get_errno();
+    if (resolve_input(stream, &ref) < 0)
         return EOF;
-    result = bound_api->read(0, &byte, 1);
+    if (*ref.eof)
+        return EOF;
+    result = bound_api->read(ref.descriptor, &byte, 1);
     if (result < 0) {
-        state->stdin_error = 1;
+        *ref.error = 1;
         return EOF;
     }
     if (result > 1) {
-        state->stdin_error = 1;
+        *ref.error = 1;
         bound_api->set_errno(CB_EIO);
         return EOF;
     }
     if (result == 0)
-        state->stdin_eof = 1;
+        *ref.eof = 1;
     bound_api->set_errno(saved_errno);
     return result == 0 ? EOF : (int)byte;
 }
 
 int cb_libc_feof(struct cb_libc_file *stream)
 {
-    struct cb_input_state_v1 *state;
+    struct input_reference ref;
     if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream)
         return 0;
-    if (stream != cb_libc_stdin_stream) {
-        bound_api->set_errno(CB_EINVAL);
+    if (resolve_input(stream, &ref) < 0)
         return 0;
-    }
-    state = input_state();
-    if (state == NULL) {
-        bound_api->set_errno(CB_ENOSYS);
-        return 0;
-    }
-    return state->stdin_eof;
+    return *ref.eof;
 }
 
 static struct cb_stdio_state_v1 *stdio_state(void)
@@ -789,17 +917,11 @@ int cb_libc_fflush(struct cb_libc_file *stream)
 int cb_libc_ferror(struct cb_libc_file *stream)
 {
     struct cb_stdio_state_v1 *state;
-    if (stream == cb_libc_stdin_stream) {
-        struct cb_input_state_v1 *input = input_state();
-        if (input == NULL) {
-            bound_api->set_errno(CB_ENOSYS);
-            return 1;
-        }
-        return input->stdin_error;
-    }
     if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
-        bound_api->set_errno(CB_EINVAL);
-        return 1;
+        struct input_reference ref;
+        if (resolve_input(stream, &ref) < 0)
+            return 1;
+        return *ref.error;
     }
     state = stdio_state();
     if (state == NULL) {
