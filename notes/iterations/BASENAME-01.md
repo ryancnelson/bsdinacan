@@ -1,12 +1,13 @@
 # BASENAME-01: `basename(3)` libc and command
 
-- Status: implemented and green on Woodpecker's exact `ci`, `mac68k`,
-  and `mac-automation` checks (see "Woodpecker results" below). Local
-  `make ci` was not run (host Docker outage; see "Local verification
-  limitation") -- Woodpecker's real Alpine runner caught one genuine bug
-  in this iteration's own test file that host `clang -fsyntax-only`
-  could not (a logic error, not a syntax one); see "First Woodpecker
-  attempt found a real bug" below.
+- Status: done. Final commit `fd42d36` is green on Woodpecker's exact
+  `ci`, `mac68k`, and `mac-automation` checks (see "Woodpecker results"
+  below). Local `make ci` was not run (host Docker outage; see "Local
+  verification limitation") -- Woodpecker's real Alpine runner caught
+  two genuine bugs host `clang -fsyntax-only` could not (a test logic
+  error, then a missing shell/Mac-runner registration), each fixed in
+  its own commit; see the two "Woodpecker attempt found..." sections
+  below for exactly what each caught and how it was fixed.
 - Base SHA: `6e83f00` (`origin/main`, freshly fetched -- confirmed
   directly: `cb_api_v1`'s actual current tail is `closedir`
   (VFS-03's directory-iteration work, merged after `dirname` but before
@@ -214,20 +215,16 @@ versa -- no remaining asymmetry between the two commands' wiring.
   directory` -- `cb_basename_program` was never registered with the
   shell); `mac-automation` and `mac68k` both `success` again (a
   boot-time registration gap is invisible to a compile-only check).
-- (Fill in the next commit's exact three results here once observed --
-  do not claim green before seeing it.)
+- `fd42d36` (the shell/Mac-runner registration fix): `ci`,
+  `mac-automation`, and `mac68k` all `success`. This is the reported
+  final commit for this iteration.
 
 ## Remaining risk or follow-up
 
-- Full `make ci` (native `test`, `sanitize`, `analyze`, `check-*`) has
-  not yet been observed to pass on this exact commit -- only host
-  `clang -fsyntax-only` per file, which cannot catch link-time symbol
-  mismatches, `CB_MAX_PROGRAMS` capacity overflow at runtime, or any
-  sanitizer finding. This must be confirmed via Woodpecker before this
-  item is considered done, and reported honestly if it is not yet green
-  when this note is read.
-- `mac68k` and `mac-automation` Woodpecker results are likewise not yet
-  observed on this commit.
+- Full `make ci` was never run locally (host Docker outage throughout
+  this task); confirmed instead via Woodpecker's real Alpine runner on
+  the final commit `fd42d36` (`ci`, `mac68k`, and `mac-automation` all
+  `success`).
 - Guest acceptance (AGENTS.md step 7) is explicitly coordinator-owned
   per this task's direction; not attempted here.
 - `realpath(3)` and any other `libgen.h` surface remain out of scope,
