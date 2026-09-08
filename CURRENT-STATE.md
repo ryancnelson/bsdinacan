@@ -24,10 +24,11 @@ terminal fault or complete nonblocking/signal support is claimed.
 
 Claude implements HEAD-02 failure characterization. Antigravity implements the
 reviewed synthetic tee executor-state prerequisite; the reviewed next-utility audit identifies tee as a
-candidate, blocked on real signal disposition, per-execution list state and
-finite raw-write progress. Resetting a global or adding a signal stub is not
-acceptance. WRITE-02 is accepted. Codex coordinates STAT-01, independent reviews and
-serialized Mac acceptance while preparing the remaining signal contract.
+candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
+acceptance. WRITE-02 is accepted. STAT-01 has clean feature review and all three
+checks on d5bbcf2; its combined integration and fresh Mac acceptance are pending.
+The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
+the Solaris integration priority. Solaris qualification is pending under notes/CI.md.
 
 ## What this is
 

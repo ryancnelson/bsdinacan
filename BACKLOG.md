@@ -1401,12 +1401,13 @@ accepted. Future stream or integer extensions still require explicit design.
 - **Accept:** exact actual lifecycle references, no duplicate list freeing or
   dangling-pointer inspection, safe inner-context delegation, failed/successful
   exec and allocation rollback, deterministic pre-teardown ownership assertions.
-  No tee import or implementation authorized by this design task. Signal and
-  raw-write progress remain separate prerequisites.
+  No tee import or implementation authorized by this design task. Signal remains
+  a separate prerequisite; WRITE-02 now supplies accepted raw-write progress.
 
 ### STAT-01 — private default file-creation mode for tee
 
-- **Status:** Claimed by Codex worker on `work/STAT-01`
+- **Status:** Reviewed d5bbcf2; exact #347 all three checks passed; combined
+  integration and fresh Mac acceptance pending; Solaris qualification pending
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 source audit
 - **Scope:** private sys/stat.h exposes only the DEFFILEMODE integer constant
@@ -1438,7 +1439,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### SIG-01-design — define honest interrupt behavior before tee -i
 
-- **Status:** Claimed by Codex on `work/SIG-01-design`; documentation only
+- **Status:** Reviewed b2425a2; documentation only; integration checks pending
 - **Base:** main
 - **Depends on:** reviewed NEXT-UTIL-02 audit
 - **Scope:** define a bounded task-owned interrupt/disposition contract and real
