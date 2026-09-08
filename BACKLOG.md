@@ -248,7 +248,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### TERM-01 — terminal mode contract
 
-- **Status:** Blocked on TERM-01-design corrections (IO-01 is Done)
+- **Status:** Design complete; implement only the separate stages below
 - **Base:** integrated dependency
 - **Hypothesis:** task-visible termios state can implement canonical/raw input,
   echo, erase, and EOF over a deterministic console adapter.
@@ -763,7 +763,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-01-design — actual host terminal capability contract
 
-- **Status:** Changes requested from Antigravity; implementation blocked
+- **Status:** Reviewed staged design merged at `d3884af`; live integration blocked on output service
 - **Base:** main
 - **Accept:** actual Mac canonical-buffer and Linux inherited-tty inventory;
   shared core terminal owner, optional raw capability, readiness/EOF/overflow
@@ -810,12 +810,47 @@ with an ID, dependencies, red test, and acceptance boundary above.
 - **Accept:** ordinary-source edge cases, independent interleaved task results,
   old-size/null-callback behavior, exact CI and direct fresh Mac acceptance.
 
-### TERM-01-design outstanding review
+### TERM-02 — console classification and honest fallback
 
-Before implementation, specify bounded input queues that still process erase
-and terminators at capacity; reject unsupported timing modes atomically; avoid
-assuming a missing raw capability implies canonical host input. Specify exact
-host-state restoration on teardown and boot failure, old host/API size guards,
-and who drains input before readiness checks. Include overflow, transitions,
-empty-VEOF readiness, fallback and restoration tests. Review `11d4699` is not
-approval to implement the current proposal.
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** TERM-01-design (Done)
+- **Scope:** first stage of the reviewed terminal design: shared console owner,
+  private isatty classification, optional public-call guards, and honest ENOSYS
+  attribute fallback. Existing input/poll behavior remains the regression
+  contract; no real host enters raw mode and no output-wait ABI is introduced.
+- **Accept:** console/dup/child classification, file/pipe/invalid descriptors,
+  old-size and individually absent operations, ordinary source symbols, exact
+  CI and fresh Mac fallback evidence. Add only errors demonstrated missing.
+
+### TERM-03 — isolated canonical engine
+
+- **Status:** Blocked on TERM-02
+- **Base:** integrated dependency
+- **Scope:** deterministic queue/record/erase/EOF transitions without live host
+  routing, following the accepted terminal design's fixed storage bounds.
+- **Accept:** delimiter processing at capacity, one-shot versus persistent EOF,
+  short-read ordering, bounded echo acknowledgments and backpressure retention.
+
+### TERM-04 — attribute validation and mode transitions
+
+- **Status:** Blocked on TERM-03
+- **Base:** integrated dependency
+- **Scope:** atomic supported-attribute updates and repeated raw/canonical
+  transitions over the isolated engine. Real hosts still use fallback.
+- **Accept:** rejected modes preserve all state, task sharing, 2048-byte input
+  and three-byte echo bounds, ordering through repeated mode changes.
+
+### TERM-05-design — bounded host output service
+
+- **Status:** Ready for design only
+- **Base:** main
+- **Scope:** resolve the explicitly open output progress, completion and
+  cancellation contract before scheduler or raw-adapter implementation.
+- **Accept:** retries independent of stdin, bounded waits/writes, finite
+  deadlines, preserved echo/input under backpressure and orderly cleanup.
+  Inventory the real host callbacks; do not advertise a speculative ABI.
+
+Scheduler/mock-lease integration, Linux raw control and Mac raw control remain
+blocked until TERM-04 and TERM-05-design are accepted. Give those later stages
+separate IDs before assigning implementation.
