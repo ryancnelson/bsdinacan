@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+int cb_console_write_probe(const struct cb_host_ops_v1 *host);
+
 struct acceptance_case { const char *command, *expected; int status; };
 static const struct cb_mac_autorun_ops autorun_ops = {
     cb_mac_write_result, cb_mac_capture_screen, cb_mac_write_done
@@ -58,6 +60,13 @@ int main(void)
     passed = cb_mac_context_check() == 0;
     cb_mac_text(passed ? "PASS: independent stacks, 512 yields\n" : "FAIL: contexts\n");
     strcat(result, passed ? "PASS contexts\n" : "FAIL contexts\n");
+    if (passed) {
+        /* This helper owns and destroys its temporary kernel before any of the
+           ordinary case kernels exist; it never replaces a live task's binding. */
+        passed = cb_console_write_probe(cb_mac_host_ops()) == 0;
+        cb_mac_text(passed ? "PASS: portable console write\n" : "FAIL: console write\n");
+        strcat(result, passed ? "PASS consolewrite\n" : "FAIL consolewrite\n");
+    }
     for (index = 0; passed && index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int status = -1;
         cb_mac_text("$ "); cb_mac_text(cases[index].command); cb_mac_text("\n");
