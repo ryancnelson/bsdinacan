@@ -26,7 +26,7 @@ static cb_ssize_t injected_write(int fd, const void *data, size_t length)
     unsigned call = write_calls++;
     if (fd != 1 && fd != 2) return -1;
     int idx = fd - 1;
-    
+
     runtime_api->set_errno(CB_EBADF); /* disturb errno to prove preservation */
 
     if (write_plan == 0) { /* Full write */
@@ -73,7 +73,7 @@ static cb_ssize_t injected_write(int fd, const void *data, size_t length)
     if (write_plan == 5) { /* oversized positive return */
         return (cb_ssize_t)((uint64_t)length + 1ULL);
     }
-    
+
     return -1;
 }
 
@@ -94,12 +94,12 @@ static int injected_main(const struct cb_api_v1 *api, int argc,
     runtime_api = api;
     copy.write = injected_write;
     copy.stdio_state_location = injected_stdio;
-    
+
     /* Global state init */
     memset(&global_state, 0, sizeof(global_state));
     global_state.abi_version = CB_ABI_VERSION_V1;
     global_state.struct_size = sizeof(global_state);
-    
+
 
     if (strcmp(argv[1], "state_version") == 0) {
         global_state.abi_version = 2;
