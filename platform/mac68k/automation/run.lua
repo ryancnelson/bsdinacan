@@ -71,6 +71,13 @@ local function finish(ok,why)
  if not ok then snap(R.dir..'/failure.png') end
 end
 R.stop=function() finish(false,'Stopped; guest left running') end
+local desktopPreflight=dofile(root..'desktop-preflight.lua')
+local function desktopReady()
+ local ok,why=desktopPreflight(hs.caffeinate and hs.caffeinate.sessionProperties)
+ if not ok then finish(false,'Desktop preflight: '..why..'; guest was not launched') end
+ return ok
+end
+if not desktopReady() then return end
 local function focused(frame)
  local a=app(); local w=a and a:mainWindow(); if not w or not a:isFrontmost() then return false end
  local f=w:frame(); return f.x==frame.x and f.y==frame.y and f.w==frame.w and f.h==frame.h
@@ -240,6 +247,7 @@ beginBoot=function()
 if hs.application.find('BasiliskII') then
  finish(false,'Another guest started during matcher initialization; guest was not launched'); return
 end
+if not desktopReady() then return end
 R.launch=hs.task.new('/usr/bin/open',function(code) if code~=0 then finish(false,'Basilisk launch failed') end end,{'-na',cfg.app,'--args','--config',cfg.prefs})
 assert(R.launch:start()); log('Boot started'); after(.15,booted)
 after(cfg.timeout or 60,function() finish(false,'Timed out; guest left running for inspection') end)
