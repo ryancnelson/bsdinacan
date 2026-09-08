@@ -13,10 +13,10 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements CONV-01. Antigravity implements
-FWRITE-01; the coordinator worker implements STDIN-03. Codex owns review,
-integration and serialized guest acceptance. ERR-02 is accepted at `6f860c4`
-with 54 fresh Mac records, retaining the accepted echo/getopt milestone.
+**Current assignments:** Claude audits the head stack/resource boundary in
+PORT32-01. Antigravity implements FWRITE-01. Codex owns review, integration and
+serialized guest acceptance. CONV-01 and STDIN-03 are accepted at `ff08dd5`
+with 62 fresh Mac records, retaining all earlier accepted behavior.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -958,7 +958,7 @@ review or to satisfy this measured command's dependencies.
 
 ### HEAD-01 — unchanged NetBSD head feasibility milestone
 
-- **Status:** Deferred; stream input and argument-parsing prerequisites are unassigned
+- **Status:** Awaiting FWRITE-01 acceptance and PORT32-01 stack/resource review
 - **Base:** integrated dependencies
 - **Depends on:** a reviewed dependency plan based on the measured audit
 - **Hypothesis:** real stream input, count conversion and argument-taking getopt
@@ -1129,7 +1129,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-03 — fread complete-element counts and overflow
 
-- **Status:** Claimed by coordinator worker on `work/STDIN-03`
+- **Status:** Done at `ff08dd5`; exact #301 all three CI checks and 62-record guest acceptance
 - **Base:** main after dependency acceptance
 - **Depends on:** STDIN-02, reviewed STDIN-01-design
 - **Scope:** stage 3 of the reviewed design: bounded read accumulation,
@@ -1165,7 +1165,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### CONV-01 — pinned strtoimax and its bounded C-locale prerequisites
 
-- **Status:** Claimed by Claude on `work/CONV-01`
+- **Status:** Done at `ff08dd5`; exact #301 all three CI checks and 62-record guest acceptance
 - **Base:** coordinator `work/warn-stdin-integration` after reviewed design integration
 - **Depends on:** reviewed CONV-01-design `fe51f3d`
 - **Scope:** unchanged pinned strtoimax.c and _strtol.h, private inttypes/ctype
@@ -1183,7 +1183,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### HEAD-01-testplan — exact command fixtures for the next utility
 
-- **Status:** Reviewed with coordinator pipe-API correction in `32ac5ca`; docs CI pending
+- **Status:** Done with coordinator pipe-API correction in `32ac5ca`; exact #295 all three CI checks passed
 - **Base:** main after accepted strcpy `bb1190c`
 - **Depends on:** reviewed HEAD-01 plan and CONV-01-design
 - **Scope:** derive concrete input bytes, argv, stdout/stderr and status fixtures
@@ -1210,3 +1210,22 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** receipt/manifest identity, no current slot, fresh open-file check,
   ordinary copied file and exact deletion boundary; preserve newest/failed/live
   runs, seed, ROM and all non-boot evidence. Documentation CI; no guest required.
+
+### PORT32-01 — audit the next utility's 32-bit resource boundary
+
+- **Status:** Claimed by Claude on `work/PORT32-01`
+- **Base:** main
+- **Depends on:** reviewed HEAD-01-testplan; existing classic Mac target
+- **Scope:** Documentation-only audit in `notes/iterations/PORT32-01.md`.
+  Trace the actual task stack allocation and requested_stack_size path on Linux
+  and Mac, the pinned head automatic buffer, RAMFS file size/allocation limits,
+  and the descriptor redirection API needed to validate a 65538-byte result.
+  Cite current code locations and distinguish measured facts from unexecuted
+  predictions. Use real declared APIs; do not invent helpers. Propose the
+  smallest concrete Linux and Mac acceptance fixture for the head import.
+- **Red:** Existing default 64 KiB stack cannot be assumed sufficient for the
+  source's 65536-byte automatic buffer plus call frames.
+- **Accept:** Reviewable stack/resource and fixture plan with exact arithmetic,
+  pending measurements clearly labeled, no runtime changes, unchanged captures,
+  and no claim of new platform support. This supports the user's required
+  32-bit direction; 16-bit work remains deferred. Run publication and exact CI.

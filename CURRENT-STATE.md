@@ -24,6 +24,21 @@ evidence required at handoff. `BACKLOG.md` is the authoritative worker queue;
 One behavior change per loop. If it cannot be demonstrated by a focused test,
 it is not done.
 
+## Latest accepted head prerequisites, 2026-09-08
+
+Bounded unbuffered fread and pinned NetBSD strtoimax with C-locale ctype helpers
+are accepted at `ff08dd5c22f6c74de0bed5afce7a9798d666b84b`. Independent feature
+and integration reviews passed; exact Woodpecker #301 passed ci, mac68k and
+mac-automation. Fresh Basilisk II guest `run-3c7aibdj` passed all 62 records in
+22.43 seconds from cold boot through normal shutdown and slot release.
+The complete fresh transcript and screenshot were inspected; the bound receipt
+confirms the app and both guest disks closed. Archive SHA256:
+`f863c4c70f2518c9bf4f23f6aab33f147eb4cc62b50bc80f01e4ec22d8770e37`.
+
+Antigravity implements the remaining fwrite prerequisite; Claude audits the
+head stack/resource boundary as PORT32-01. The unchanged head import remains
+pending both. 32-bit classic Mac execution remains a merge gate.
+
 ## Latest accepted file-stream prerequisite, 2026-09-08
 
 Read-only fopen/fclose and owned input wrappers are accepted at
@@ -36,9 +51,8 @@ were verified. Archive SHA256:
 
 Stream acquisition rollback and exec/exit cleanup are observed before teardown;
 non-CLOEXEC descriptor inheritance and the original stdin/output ABI remain
-intact. STDIN-03 now implements fread and the shared overflow error mapping.
-Numeric conversion is undergoing Mac-wiring/test corrections; fwrite and the
-unchanged head import remain pending prerequisites.
+intact. The later accepted fread and numeric conversion milestone is recorded
+above; fwrite and the unchanged head import remain pending.
 
 ## Latest accepted string prerequisite, 2026-09-08
 

@@ -241,3 +241,16 @@ correction from `CONV-01-design`'s own review, guest acceptance is
 recorded here as **pending** -- not "not required" -- until the
 coordinator runs the exact built `mac68k` artifact in Basilisk II. That
 remains the coordinator's own action, not claimed here.
+
+## Coordinator acceptance, 2026-09-08
+
+Integrated with the other reviewed head prerequisites at
+`ff08dd5c22f6c74de0bed5afce7a9798d666b84b`. Exact Woodpecker #301 passed all
+three workflows. Fresh guest `run-3c7aibdj` passed all 62 records; the full
+transcript and screenshot were inspected. Cold automated cycle: 22.43 seconds,
+including normal app/guest shutdown, verified closed disks and slot release.
+Artifact archive SHA256:
+`f863c4c70f2518c9bf4f23f6aab33f147eb4cc62b50bc80f01e4ec22d8770e37`.
+Merged to main only after these gates. The first CONV integration attempt
+failed protocol tests because its manifest contained an extra blank line;
+removing that line restored all 18 protocol tests before this accepted build.
