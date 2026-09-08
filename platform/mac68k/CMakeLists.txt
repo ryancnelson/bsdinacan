@@ -24,7 +24,7 @@ target_compile_definitions(cb_memmove PRIVATE CANNEDBSD_BUILDING_LIBC_MEMMOVE)
 target_compile_definitions(cb_memcmp PRIVATE CANNEDBSD_BUILDING_LIBC_MEMCMP)
 
 add_application(CannedBSD CREATOR "CnBD"
-    main.c host_mac.c context.S test_context.c application.r
+    main.c host_mac.c root_dispatch.c context.S test_context.c application.r
     ${ROOT}/src/core.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
@@ -35,4 +35,7 @@ target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
-target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug)
+# Lazy LoadSeg performs Toolbox work and must never run on a task stack.
+# A single resident CODE segment keeps all runtime calls free of that trap.
+target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug
+    -Wl,--mac-single)

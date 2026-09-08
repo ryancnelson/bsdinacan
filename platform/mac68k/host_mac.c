@@ -1,4 +1,5 @@
 #include "host_mac.h"
+#include "root_dispatch.h"
 
 #include <Quickdraw.h>
 #include <Fonts.h>
@@ -13,15 +14,18 @@
 #include <Processes.h>
 #include <string.h>
 #include <limits.h>
+#include <stddef.h>
 
 struct cb_host_context {
     uint32_t *saved_sp;
+    uint32_t saved_stack_low; /* context.S offset 4: System 7 StkLowPt. */
     void *stack;
     void (*entry)(void *);
     void *argument;
 };
 
-extern void cb_mac_context_swap(struct cb_host_context *, struct cb_host_context *);
+typedef char context_stack_low_offset[
+    offsetof(struct cb_host_context, saved_stack_low) == 4 ? 1 : -1];
 extern void cb_mac_context_seed(uint32_t *);
 
 static WindowPtr window;
@@ -36,8 +40,15 @@ static char input[1024];
 static size_t input_used, input_ready, input_read;
 static uint32_t last_ticks;
 static uint64_t elapsed_ticks;
-static struct cb_host_context *root_context;
-static int on_root_stack = 1;
+static struct cb_mac_dispatch dispatch;
+static int display_dirty;
+
+/* Toolbox requests are serviced on the original application stack and then
+ * resume the requesting task without returning to the kernel scheduler. */
+static void on_root(void (*function)(void *), void *argument)
+{
+    cb_mac_dispatch_call(&dispatch, function, argument);
+}
 
 static void redraw(void)
 {
@@ -82,42 +93,67 @@ static void append_text(const char *text, size_t count)
         display_text[display_used++] = ch;
     }
     display_text[display_used] = '\0';
-    if (window != NULL) InvalRect(&window->portRect);
+    display_dirty = 1;
 }
 
 void cb_mac_text(const char *text) { append_text(text, strlen(text)); }
 
-static void *host_allocate(size_t size)
+struct memory_call { void *pointer; size_t size; void *result; };
+
+static void allocate_on_root(void *argument)
 {
-    if (size > INT32_MAX) return NULL;
-    return NewPtr((Size)(size ? size : 1));
+    struct memory_call *call = argument;
+    call->result = NewPtr((Size)(call->size ? call->size : 1));
 }
 
+static void *host_allocate(size_t size)
+{
+    struct memory_call call = {NULL, size, NULL};
+    if (size > INT32_MAX) return NULL;
+    on_root(allocate_on_root, &call);
+    return call.result;
+}
+
+static void release_on_root(void *pointer) { DisposePtr((Ptr)pointer); }
 static void host_release(void *pointer)
 {
-    if (pointer != NULL) DisposePtr((Ptr)pointer);
+    if (pointer != NULL) on_root(release_on_root, pointer);
+}
+
+static void resize_on_root(void *argument)
+{
+    struct memory_call *call = argument;
+    Size old_size;
+    call->result = host_allocate(call->size);
+    if (call->result == NULL) return;
+    old_size = GetPtrSize((Ptr)call->pointer);
+    memcpy(call->result, call->pointer,
+           (size_t)old_size < call->size ? (size_t)old_size : call->size);
+    host_release(call->pointer);
 }
 
 static void *host_resize(void *pointer, size_t size)
 {
-    void *replacement;
-    Size old_size;
+    struct memory_call call = {pointer, size, NULL};
     if (pointer == NULL) return host_allocate(size);
     if (size == 0) { host_release(pointer); return NULL; }
-    replacement = host_allocate(size);
-    if (replacement == NULL) return NULL;
-    old_size = GetPtrSize((Ptr)pointer);
-    memcpy(replacement, pointer, (size_t)old_size < size ? (size_t)old_size : size);
-    host_release(pointer);
-    return replacement;
+    if (size > INT32_MAX) return NULL;
+    on_root(resize_on_root, &call);
+    return call.result;
 }
 
-static void host_fatal(const char *message)
+static void fatal_on_root(void *argument)
 {
+    const char *message = argument;
     cb_mac_text("\nFATAL: "); cb_mac_text(message); cb_mac_text("\n");
     cb_mac_write_result(display_text);
     while (!quit_requested) cb_mac_pump(-1);
     ExitToShell();
+}
+
+static void host_fatal(const char *message)
+{
+    on_root(fatal_on_root, (void *)message);
 }
 
 static void context_entry(struct cb_host_context *context)
@@ -135,16 +171,15 @@ static struct cb_host_context *new_context(void)
 
 static struct cb_host_context *context_root(void)
 {
-    root_context = new_context();
-    on_root_stack = 1;
-    return root_context;
+    dispatch.root = new_context();
+    dispatch.active = dispatch.root;
+    return dispatch.root;
 }
 
 static void context_switch(struct cb_host_context *from,
                            struct cb_host_context *to)
 {
-    on_root_stack = to == root_context;
-    cb_mac_context_swap(from, to);
+    cb_mac_dispatch_switch(&dispatch, from, to);
 }
 
 static struct cb_host_context *context_create(void (*entry)(void *),
@@ -173,7 +208,7 @@ static struct cb_host_context *context_create(void (*entry)(void *),
 static void context_destroy(struct cb_host_context *context)
 {
     if (context == NULL) return;
-    if (context == root_context) { root_context = NULL; on_root_stack = 1; }
+    if (context == dispatch.root) dispatch.root = dispatch.active = NULL;
     host_release(context->stack);
     host_release(context);
 }
@@ -182,10 +217,15 @@ void cb_mac_pump(int timeout_ms)
 {
     EventRecord event;
     unsigned long ticks = timeout_ms < 0 ? 1 : (unsigned long)timeout_ms * 60 / 1000;
-    /* System 7 checks the application stack during WaitNextEvent. The core
-     * polls again on its root scheduler stack before waking blocked readers;
-     * task-side nonblocking polls only inspect already buffered input. */
-    if (!on_root_stack) return;
+    /* Toolbox event handling belongs on the original application stack.
+     * The core polls there before waking blocked readers; task-side polls
+     * only inspect already buffered input. VBL sniffer state is managed
+     * separately by the assembly context boundary. */
+    if (dispatch.active != dispatch.root) return;
+    if (display_dirty && window != NULL) {
+        InvalRect(&window->portRect);
+        display_dirty = 0;
+    }
     if (WaitNextEvent(everyEvent, &event, ticks, NULL)) {
         if (event.what == updateEvt) {
             BeginUpdate(window); redraw(); EndUpdate(window);
@@ -250,9 +290,11 @@ static cb_ssize_t console_write(int stream, const void *buffer, size_t count)
     return (cb_ssize_t)count;
 }
 
+static void ticks_on_root(void *result) { *(uint32_t *)result = TickCount(); }
 static uint64_t monotonic_millis(void)
 {
-    uint32_t ticks = TickCount();
+    uint32_t ticks;
+    on_root(ticks_on_root, &ticks);
     elapsed_ticks += (uint32_t)(ticks - last_ticks);
     last_ticks = ticks;
     return elapsed_ticks * 1000 / 60;

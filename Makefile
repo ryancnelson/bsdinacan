@@ -153,6 +153,7 @@ check-publication:
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) check-architecture
 	$(TEST_PROGRAM)
+	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_launcher.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_one_process.sh
 	BUILD_PATH='$(BUILD)' tests/test_libc_source.sh

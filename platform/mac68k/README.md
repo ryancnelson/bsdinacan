@@ -115,7 +115,14 @@ health. Use the same verified HFS artifact and fresh evidence procedure for both
 
 Memory uses non-relocatable Toolbox pointers. The application heap is expanded
 before entering any coroutine stack. Cooperative stack switching saves
-the 68K C ABI's callee-saved registers, including the A5 application world.
+the 68K C ABI's callee-saved registers, including the A5 application world,
+and the System 7 `StkLowPt` stack-sniffer state. The VBL sniffer is disabled
+only while a private heap-backed stack is active, then restored on the original
+application stack. Toolbox calls requested by a task are serviced synchronously
+on that original stack before the same task resumes. The context acceptance
+check holds both private stacks across VBL ticks and exercises memory requests.
+The executable uses Retro68's single-segment mode, so lazy code loading cannot
+invoke Toolbox traps on task stacks; CI checks the emitted CODE resources.
 The default compiler ABI uses software floating point. The host pumps Toolbox
 events on the original scheduler stack and provides line-buffered ASCII input.
 TickCount supplies monotonic time; UTC wall time is unavailable and returns
