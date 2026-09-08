@@ -155,3 +155,53 @@ import-only `namespace.h` avoids pulling NetBSD's complete internal namespace
 into cannedBSD; the upstream `index` alias is not part of the advertised libc
 surface. Direct and ordinary-source tests cover first match, later match,
 terminal NUL, absence, and conversion of the search `int` to `char`.
+
+## NetBSD `printenv`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/printenv/printenv.c`
+- Local path: `upstream/netbsd/usr.bin/printenv/printenv.c`
+- SHA-256: `d355c07fc5a351d38e2f8552899b456f1300a61408ebf2e2af47c5f52de974db`
+- Embedded RCS identifier: `$NetBSD: printenv.c,v 1.12 2011/09/06 18:26:55 joerg Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. It is the first pinned command
+to require the full dependency ladder built across `PENV-01`
+(task-local `environ`), `PENV-02` (`exit`/`__dead`), `PENV-03` (empty-option
+`getopt`), `PENV-04` (bounded `printf`/`fprintf`), and `PENV-05` (`errx`); no
+new libc surface was added to make it compile. The build renames `main` to
+`cb_printenv_main`, cannedBSD headers supply the `sys/cdefs.h`, `stdlib.h`,
+`stdio.h`, `string.h`, `unistd.h`, and `err.h` surface it uses, and
+`commands/printenv_module.c` supplies the native-program descriptor,
+registered alongside `wc` and `yes` in `cb_register_base_programs`. A new,
+minimal import-only `libc/include/sys/types.h` (transitively pulling in
+`stddef.h`/`stdint.h`) satisfies the source's `#include <sys/types.h>`; no
+type from it is otherwise exercised.
+
+One narrow, documented toolchain concession: the source's local
+`extern char **environ;` redeclaration inside `main` (a redundant safety net
+common in older BSD code, harmless on a system where `environ` is a real
+extern variable) expands, once `environ` becomes the macro
+`(*cb_libc_environ_location())` needed for task-local semantics, into a
+declarator that both GCC and Clang parse as an unprototyped
+redeclaration of `cb_libc_environ_location` itself — triggering
+`-Wstrict-prototypes`, which is part of both compilers' `-Wall` for C and
+therefore fatal under this project's `-Werror`. `-Wno-strict-prototypes` is
+added to this one file's compile rule only; every other translation unit
+keeps full `-Wstrict-prototypes` coverage. This is a known, narrow,
+compiler-observable consequence of the task-local `environ` design
+(`PENV-01`), not a defect in the pinned source and not a broadening of the
+runtime ABI — the same category of documented toolchain adapter already
+recorded above for `strcmp`/`memcpy`/`memmove`.
+
+`tests/test_netbsd_source.sh` pins the source hash and provenance record
+alongside `yes`, checks the separately compiled object defines the renamed
+entry point, and rejects host-symbol imports for `environ`, `getopt`, `errx`,
+`exit`, and `memcmp` in favor of their private cannedBSD counterparts.
+`tests/test_printenv_behavior.sh` exercises named, missing, empty-valued, and
+enumerate-all lookups, the `=`-in-name diagnostic, the too-many-arguments
+usage diagnostic, pipeline use, and output redirection, entirely through the
+shell against the real registered command — no direct unit-level probe was
+needed since every required behavior is externally observable this way.
