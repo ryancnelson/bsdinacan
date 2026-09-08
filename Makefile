@@ -576,7 +576,15 @@ $(BUILD)/test_acceptance_output: tests/test_acceptance_output.c platform/mac68k/
 check-acceptance-output: $(BUILD)/test_acceptance_output
 	$(BUILD)/test_acceptance_output
 
+$(BUILD)/test_linux_write: tests/test_linux_write.c src/host_linux.c src/internal.h include/cannedbsd/abi.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: check-linux-write
+check-linux-write: $(BUILD)/test_linux_write
+	$(BUILD)/test_linux_write
+
 ci:
+	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py
 	$(MAKE) check-publication
