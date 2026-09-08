@@ -40,14 +40,17 @@ static int api_is_usable(const struct cb_api_v1 *api)
            api->getprogname != NULL;
 }
 
-/* Each of opendir/readdir/closedir checks only its own field, not the
-   other two -- matching cb_vfs_node_ops's per-operation independence
-   (truncate and child_at are each checked on their own). A table can, in
-   principle, carry one of these three as NULL while the other two are
-   present (e.g. a runtime variant omitting closedir alone); bundling all
-   three into one shared availability check would incorrectly reject
-   opendir()/readdir() in that case even though their own fields are
-   perfectly usable. */
+/* Each of opendir/readdir/closedir checks only its own field here, not
+   the other two -- matching cb_vfs_node_ops's per-operation independence
+   (truncate and child_at are each checked on their own): a table missing
+   only readdir must still let opendir()/closedir() work, since readdir's
+   absence alone never prevents acquiring or releasing anything. A table
+   missing only closedir is NOT an equally safe case, despite otherwise
+   following the same per-field shape: closedir is the only thing that
+   can ever release what opendir() acquires, so cb_libc_opendir (below)
+   additionally requires closedir_api_available() itself before it ever
+   calls bound_api->opendir() -- it does not rely on this helper's
+   independence alone. See cb_libc_opendir's own comment for why. */
 static int opendir_api_available(void)
 {
     return bound_api->struct_size >=

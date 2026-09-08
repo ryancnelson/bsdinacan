@@ -306,8 +306,15 @@ cleanup they claim to verify were broken:
    provides `opendir` without `closedir`) -- then split the one bundled
    test into three: `direntopendirnulltableprobe` (only `opendir` `NULL`),
    `direntreaddirnulltableprobe` (only `readdir` `NULL`, `opendir`/
-   `closedir` must still succeed), and `direntclosedirnulltableprobe`
-   (only `closedir` `NULL`, `opendir`/`readdir` must still succeed).
+   `closedir` must still succeed), and, **as of this pass**,
+   `direntclosedirnulltableprobe` (only `closedir` `NULL`). At this point
+   in the review sequence `opendir()`/`readdir()` were still expected to
+   succeed here too -- the sixth review pass below found that this
+   specific case is not actually safe (closedir is the only thing that
+   can release what opendir acquires) and changed `cb_libc_opendir`,
+   and this test's expected outcome, accordingly. Recorded here as it
+   genuinely happened, rather than silently rewritten to look correct
+   from the start.
 
 **Verification that these tests are real, not vacuous**: each of the
 three `dir_close_all` call sites (`api_exit`, `task_finish_exec`,

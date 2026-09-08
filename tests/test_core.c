@@ -3668,7 +3668,7 @@ static void run_case(const char *command, const char *expected_output,
         fail("kernel creation");
     cb_register_base_programs(kernel);
     truncate_test_kernel = kernel;
-    if (register_test_programs) {
+    if (register_test_programs == 1) {
         if (cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
             cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
@@ -3694,17 +3694,6 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &getoptclusterprobe_program) < 0 ||
             cb_kernel_register(kernel, &cb_errxprobe_program) < 0 ||
             cb_kernel_register(kernel, &errxprobe_program) < 0 ||
-            cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
-            cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntopendirnulltableprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntreaddirnulltableprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntclosedirnulltableprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntclosedirrebindprobe_program) < 0 ||
-            cb_kernel_register(kernel, &direntlibcallocfailprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalprobe_program) < 0 ||
             cb_kernel_register(kernel, &terminalpeer_program) < 0 ||
             cb_kernel_register(kernel, &descriptorchild_program) < 0 ||
@@ -3725,6 +3714,29 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &yesreader_program) < 0 ||
             cb_kernel_register(kernel, &yesprobe_program) < 0)
             fail("test program registration");
+    } else if (register_test_programs == 2) {
+        /* Scoped fixture for the dirent probes, mirroring this project's
+           existing Mac-acceptance fixture split: the general fixture
+           above is at CB_MAX_PROGRAMS's 64-slot ceiling, so new probe
+           growth belongs in a separately scoped registration set rather
+           than raising that production struct's capacity. */
+        if (cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
+            cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
+            cb_kernel_register(kernel,
+                               &direntopendirnulltableprobe_program) < 0 ||
+            cb_kernel_register(kernel,
+                               &direntreaddirnulltableprobe_program) < 0 ||
+            cb_kernel_register(kernel,
+                               &direntclosedirnulltableprobe_program) < 0 ||
+            cb_kernel_register(kernel,
+                               &direntclosedirrebindprobe_program) < 0 ||
+            cb_kernel_register(kernel,
+                               &direntlibcallocfailprobe_program) < 0)
+            fail("dirent test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -4178,16 +4190,16 @@ int main(int argc, char **argv)
     run_case("getopterrprobe", "", 0, 1);
     run_case("getoptclusterprobe", "", 0, 1);
     run_case("errxprobe", "", 0, 1);
-    run_case("libcdirentprobe", "", 0, 1);
-    run_case("direntbasicprobe", "", 0, 1);
-    run_case("direntmutationprobe", "", 0, 1);
-    run_case("direntisolationprobe", "", 0, 1);
-    run_case("direntoldtableprobe", "", 0, 1);
-    run_case("direntopendirnulltableprobe", "", 0, 1);
-    run_case("direntreaddirnulltableprobe", "", 0, 1);
-    run_case("direntclosedirnulltableprobe", "", 0, 1);
-    run_case("direntclosedirrebindprobe", "", 0, 1);
-    run_case("direntlibcallocfailprobe", "", 0, 1);
+    run_case("libcdirentprobe", "", 0, 2);
+    run_case("direntbasicprobe", "", 0, 2);
+    run_case("direntmutationprobe", "", 0, 2);
+    run_case("direntisolationprobe", "", 0, 2);
+    run_case("direntoldtableprobe", "", 0, 2);
+    run_case("direntopendirnulltableprobe", "", 0, 2);
+    run_case("direntreaddirnulltableprobe", "", 0, 2);
+    run_case("direntclosedirnulltableprobe", "", 0, 2);
+    run_case("direntclosedirrebindprobe", "", 0, 2);
+    run_case("direntlibcallocfailprobe", "", 0, 2);
     run_case("terminalprobe", "", 0, 1);
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
