@@ -22,7 +22,8 @@ FWRITE-01 was accepted at `885d83c` with 64 records.
 
 Solaris testing is now required for shared behavior changes under the transition
 policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
-coordinate Solaris validation; SOLARIS-01 is the next unassigned worker task.
+coordinate Solaris validation; Claude has claimed SOLARIS-01 for source work
+after the HEAD-02 review corrections.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -31,7 +32,8 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
-- **Status:** Ready; highest-priority unassigned implementation task by user direction (2026-09-08)
+- **Status:** Claimed by Claude on `work/SOLARIS-01`; source work follows
+  HEAD-02 review corrections; shared rig ownership/acceptance pending
 - **Base:** freshly fetched main
 - **Depends on:** none; existing Linux and Mac gates remain mandatory
 - **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
