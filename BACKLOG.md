@@ -1210,3 +1210,22 @@ stream ownership and cross-target integer contracts still require explicit desig
 - **Accept:** receipt/manifest identity, no current slot, fresh open-file check,
   ordinary copied file and exact deletion boundary; preserve newest/failed/live
   runs, seed, ROM and all non-boot evidence. Documentation CI; no guest required.
+
+### PORT32-01 — audit the next utility's 32-bit resource boundary
+
+- **Status:** Claimed by Claude on `work/PORT32-01`
+- **Base:** main
+- **Depends on:** reviewed HEAD-01-testplan; existing classic Mac target
+- **Scope:** Documentation-only audit in `notes/iterations/PORT32-01.md`.
+  Trace the actual task stack allocation and requested_stack_size path on Linux
+  and Mac, the pinned head automatic buffer, RAMFS file size/allocation limits,
+  and the descriptor redirection API needed to validate a 65538-byte result.
+  Cite current code locations and distinguish measured facts from unexecuted
+  predictions. Use real declared APIs; do not invent helpers. Propose the
+  smallest concrete Linux and Mac acceptance fixture for the head import.
+- **Red:** Existing default 64 KiB stack cannot be assumed sufficient for the
+  source's 65536-byte automatic buffer plus call frames.
+- **Accept:** Reviewable stack/resource and fixture plan with exact arithmetic,
+  pending measurements clearly labeled, no runtime changes, unchanged captures,
+  and no claim of new platform support. This supports the user's required
+  32-bit direction; 16-bit work remains deferred. Run publication and exact CI.
