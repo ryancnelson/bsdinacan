@@ -783,3 +783,17 @@ with an ID, dependencies, red test, and acceptance boundary above.
   verify a protected HFS fixture and exact CI artifact in the guest; no core
   mount or resumable directory-stream claims. A concrete compile blocker is
   a useful negative result, not permission to invent ABI types.
+
+### MAC-11 — reject locked-host guest launches
+
+- **Status:** Claimed by Codex on `work/MAC-11`
+- **Base:** main
+- **Depends on:** MAC-06, MAC-09
+- **Scope:** Hammerspoon session preflight before matcher startup and immediately
+  before guest launch. A positively locked session must fail without launching,
+  accepting, or releasing the staged guest slot. Handle real unlocked session
+  dictionaries explicitly; an absent lock key alone must not be interpreted as
+  a documented false value.
+- **Acceptance:** deterministic locked, unlocked, unknown and lock-during-startup
+  cases; exact Woodpecker gates; fresh unlocked guest regression when available.
+  Keep the existing locked-host run and its disk ownership undisturbed.

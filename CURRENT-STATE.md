@@ -73,8 +73,8 @@ MAC-07 adds direct libc/getopt/truncate guest probes.
 The former Documents-based runtime stalled on iCloud-evicted NumPy modules
 and shared files. Runtime, staging, scratch, and verified clean seed now live
 outside iCloud. Matcher readiness is required before boot. MAC-03's positive and failure cases are verified and merged. Claude is
-implementing directory iteration; Antigravity's polling changes are in review
-and it is designing executable VFS nodes.
+implementing directory iteration; Antigravity is implementing executable VFS
+nodes. Polling is merged; current runtime changes still require review and guest acceptance.
 
 ## Current evidence
 
@@ -349,8 +349,8 @@ gate and Retro68 cross-build on the final evidence commit.
 
 ## What's next
 
-Directory iteration and polling are the active runtime loops. Executable VFS
-nodes have a separate design task. The reviewed MacPerl/GUSI audit identifies
+Directory iteration and executable VFS nodes are under implementation review.
+Polling is merged with seventeen-check Mac acceptance at `819a964`. The reviewed MacPerl/GUSI audit identifies
 MoreFiles as a candidate for a bounded future Mac host filesystem probe, with
 source pins and license distinctions recorded in `notes/iterations/REUSE-01.md`.
 The original bounded bootstrap `wc` remains scaffolding.
@@ -423,3 +423,18 @@ acceptance. All three #118 workflows passed; seventeen fresh guest checks
 completed in 15.31 seconds with screenshot and normal shutdown. The MoreFiles
 compile diagnostic is a negative feasibility result. A smaller wrapper using
 real SDK catalog records is the next isolated host experiment.
+
+
+## Pending acceptance and review
+
+The REUSE-03 catalog experiment at `1365553` passed all three Woodpecker #132
+workflows. Its first guest run at `a66308b` produced twelve passing checks and
+one failing native catalog-error assertion; that evidence was retained. The
+follow-up corrects that assertion against the raw native call and adds desktop
+metadata to the read-only fixture. Fresh guest acceptance is still pending;
+a locked host prevented inspection of the new run. No host filesystem adapter
+has been accepted or merged. MAC-11 adds a prelaunch session check.
+
+VFS-03 and VFS-02 remain unmerged while cleanup/capability and executable-node
+ownership/contract review findings are addressed. Their CI results alone do
+not establish guest acceptance. LIBGEN-01 and TERM-01 remain design reviews.
