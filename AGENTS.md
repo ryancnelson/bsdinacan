@@ -59,14 +59,16 @@ unless the coordinating prompt explicitly asks for it.
    and structure-size handling, task ownership, cleanup, host-OS leakage,
    overflow, and tests that assert implementation details instead of behavior.
 6. Commit one behavior change and push the feature branch. Wait for both the
-   Linux `ci` and `mac68k` Woodpecker workflows on the exact commit. A local
+   Linux `ci`, `mac68k`, and applicable `mac-automation` Woodpecker workflows
+   on the exact commit. See `notes/CI.md` for actual step logs. A local
    build is not Woodpecker evidence.
 7. For every runtime, libc, VFS, shell, command, or `platform/mac68k` behavior
    change, test the exact `mac68k` Woodpecker artifact in the shared Basilisk II
    System 7 guest. Verify `SHA256SUMS`, remove the prior result file, require a
    newly written `ALL PASS`, and record the commit, checksum, and guest result
-   in the iteration note. Only one worker may control noVNC at a time; the
-   coordinator assigns that serialized guest-test slot. Documentation-only and
+   in the iteration note. Only one worker may control the guest at a time; the coordinator assigns
+   that serialized slot. Use the checked-in Hammerspoon runner and staging
+   protocol; see `platform/mac68k/automation/README.md`. Documentation-only and
    Linux-host-only changes may record guest acceptance as not required with a
    reason.
 
