@@ -58,7 +58,7 @@ I fetched `uniq.c`, `cut.c`, `x_cut.c`, and `tee.c` from the pinned NetBSD repos
 - **Missing Interfaces (Compile Evidence):**
   - `<sys/stat.h>` header, specifically the `DEFFILEMODE` constant used for file creation.
   - `<signal.h>` header, specifically the `signal()` prototype, and the `SIGINT` / `SIG_IGN` constants.
-- **Supported Interfaces Validated:** 
+- **Supported Interfaces Validated:**
   - `open`, `read`, `write`, `close`, `STDIN_FILENO`, `STDOUT_FILENO` (raw I/O bypasses the need for buffered write streams).
   - `err`, `warn`, `fprintf`, `malloc`, `getopt`, `setlocale`.
 - **Adapter Progress Contract Required (Source Inspection):**
