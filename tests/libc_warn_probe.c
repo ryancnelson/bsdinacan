@@ -37,7 +37,7 @@ int main(int argc, char **argv)
         }
         return 0;
     }
-    
+
     if (write(STDOUT_FILENO, "continued\n", 10) != 10) return 3;
     return 0;
 }

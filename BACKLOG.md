@@ -1073,7 +1073,7 @@ stream ownership and cross-target integer contracts still require explicit desig
 
 ### STDIN-01-design — owned read-only streams for unchanged head
 
-- **Status:** Claimed by coordinator worker on `work/STDIN-01-design`; design only
+- **Status:** Reviewed clean at `5fcc687`; all three exact #262 CI checks passed
 - **Base:** main
 - **Depends on:** HEAD-01 dependency plan, STDOUT-01 (Done)
 - **Scope:** design unbuffered stdin/fopen/getc/fread/feof/fclose and input ferror
@@ -1084,3 +1084,33 @@ stream ownership and cross-target integer contracts still require explicit desig
   versus error and ownership test matrix; explicit task/exec/rebind contracts and
   feof(stdout) errno preservation. Separate fwrite and write-mode buffering work.
   No runtime implementation or guest acceptance claim in this design task.
+
+### STDIN-01 — task-owned stdin and input indicators
+
+- **Status:** Claimed by coordinator worker on `work/STDIN-01`
+- **Base:** coordinator integration branch `work/warn-stdin-integration`
+- **Depends on:** reviewed STDIN-01-design `5fcc687`
+- **Scope:** stage 1 of the reviewed design: separate optional input-state
+  accessor, immutable stdin, getc, feof and input ferror, with lifecycle resets.
+  Preserve the existing output ABI minimum and every accepted output behavior.
+  No fopen/fclose/fread or dynamic wrappers in this step.
+- **Red:** actual byte 255 versus EOF, clean EOF versus injected EIO, sticky
+  task-owned flags under real interleaving, and successful versus failed exec.
+- **Accept:** independent old-size/null/version guards before I/O; errno
+  preservation, feof(stdout), rebind recovery, ordinary native/Mac probe,
+  full exact CI, independent review and coordinator-owned fresh guest test.
+
+### STRCPY-01 — private strcpy required by head obsolete arguments
+
+- **Status:** Claimed by Antigravity on `work/STRCPY-01`
+- **Base:** main
+- **Depends on:** reviewed HEAD-01 plan; ARGV-01 (Done)
+- **Scope:** pinned unchanged NetBSD strcpy with private declaration/renaming,
+  source hash/license and existing string import conventions. The caller owns
+  sufficient nonoverlapping destination storage. No broader string API.
+- **Red:** ordinary-source behavior test for destination identity, exact bytes
+  including terminating NUL, empty string and unsigned-byte data; distinguish
+  missing-symbol setup from a behavioral negative control.
+- **Accept:** canaries stay intact, input stays unchanged, no host strcpy or
+  compiler substitution leakage, strict source fence and both build systems,
+  exact CI and coordinator-owned Mac acceptance. Preserve all existing cases.
