@@ -269,4 +269,18 @@ if ! matches 'cb_libc_err\([^;]*\)\s*__dead' libc/include/err.h; then
     exit 1
 fi
 
+terminal_source=tests/libc_terminal_probe.c
+terminal_object=$build_path/libc_terminal_probe.o
+if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$terminal_source"; then
+    echo 'FAIL: terminal source probe uses private names' >&2
+    exit 1
+fi
+for symbol in isatty tcgetattr tcsetattr; do
+    if nm -u "$terminal_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
+            ! nm -u "$terminal_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        printf 'FAIL: ordinary terminal probe does not use private %s\n' "$symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'external libc source boundary passed'

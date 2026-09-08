@@ -2894,6 +2894,7 @@ extern int clocklossprobe_main(int argc, char **argv);
 CB_LIBC_PROGRAM(clocklossprobe_program, "clocklossprobe",
                 clocklossprobe_main);
 
+extern const struct cb_program_v1 cb_terminal_probe_program;
 extern int normalpollprobe_main(int argc, char **argv);
 extern int oldpollprobe_main(int argc, char **argv);
 
@@ -2988,8 +2989,26 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+enum test_fixture {
+    FIXTURE_BASE = 0,
+    FIXTURE_FULL = 1,
+    FIXTURE_MAC = 2
+};
+
+/* Keep the shared Mac suite independent of the full 64-slot native fixture.
+ * Every new shared probe must be explicitly registered here and in Mac main. */
+static int register_mac_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
+           cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 ? 0 : -1;
+}
+
 static void run_case(const char *command, const char *expected_output,
-                     int expected_status, int register_test_programs)
+                     int expected_status, enum test_fixture fixture)
 {
     struct cb_host_ops_v1 host = *cb_linux_host_ops();
     struct cb_kernel *kernel;
@@ -3009,7 +3028,10 @@ static void run_case(const char *command, const char *expected_output,
         fail("kernel creation");
     cb_register_base_programs(kernel);
     truncate_test_kernel = kernel;
-    if (register_test_programs) {
+    if (fixture == FIXTURE_MAC) {
+        if (register_mac_probes(kernel) != 0)
+            fail("Mac probe registration");
+    } else if (fixture == FIXTURE_FULL) {
         if (cb_kernel_register(kernel, &cb_err_probe_program) < 0 ||
             cb_kernel_register(kernel, &err_short_program) < 0 ||
             cb_kernel_register(kernel, &err_interleave_program) < 0 ||
@@ -3394,7 +3416,8 @@ static void test_err(void)
 
 static void test_mac_acceptance(void)
 {
-#define CB_MAC_CASE(command, expected, status) run_case(command, expected, status, 1);
+#define CB_MAC_CASE(command, expected, status) \
+    run_case(command, expected, status, FIXTURE_MAC);
 #include "../platform/mac68k/acceptance_cases.def"
 #undef CB_MAC_CASE
 }
@@ -3498,6 +3521,8 @@ static void test_poll_runnable_timeout(void)
     printf("runnable timeout test passed\n");
 }
 
+void cb_test_terminal(void);
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--err") == 0) {
@@ -3508,6 +3533,11 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--mac-acceptance") == 0) {
         test_mac_acceptance();
         puts("Mac acceptance command probes passed");
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--terminal") == 0) {
+        cb_test_terminal();
+        puts("terminal tests passed");
         return 0;
     }
     if (argc == 2 && strcmp(argv[1], "--poll") == 0) {
@@ -3650,6 +3680,7 @@ int main(int argc, char **argv)
     run_case("descriptorprobe", "", 0, 1);
     run_case("processprobe", "", 0, 1);
     run_case("libctruncateprobe", "", 0, 1);
+    cb_test_terminal();
     run_case("normalpollprobe", "", 0, 1);
     run_case("oldpollprobe", "", 0, 1);
     test_poll_clockloss();

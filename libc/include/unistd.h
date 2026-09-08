@@ -10,6 +10,7 @@ typedef cb_off_t off_t;
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
 
+#define isatty cb_libc_isatty
 #define pipe cb_libc_pipe
 #define read cb_libc_read
 #define write cb_libc_write

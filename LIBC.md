@@ -50,6 +50,15 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   `getopt_long`, no GNU `::`-optional-argument extension, and no `:`
   required-argument convention: that is untested surface this iteration
   does not claim.
+- `unistd.h`: `isatty` classifies the emulated console, including inherited and
+  duplicated descriptors. Valid files/pipes report `ENOTTY`, invalid descriptors
+  `EBADF`. This does not assert that Linux inherited stdin is a physical tty.
+- `termios.h`: `tcgetattr` and `tcsetattr` explicitly report `ENOSYS` for every
+  non-null console request; no raw adapter or attribute profile is implemented.
+  The reserved private structure carries version/size, four flag words and four
+  control bytes. No flags or control-character indices are advertised yet.
+  Descriptor errors precede null-buffer `EINVAL`; unsupported optional API
+  fields report `ENOSYS`. Legacy input remains unchanged.
 - `fcntl.h`: `open` plus read/write, append, create, and truncate flags.
 - `stdlib.h`: `malloc`, `calloc`, `realloc`, and `free`.
 - `stdlib.h`: `EXIT_SUCCESS` and `EXIT_FAILURE`.
@@ -87,7 +96,7 @@ unprefixed host-facing I/O or allocation symbols.
 
 This is not a complete libc and the bootstrap command is not NetBSD `wc`.
 The stdio subset is deliberately unbuffered; most string functions, directory
-traversal, time, signals, terminal control, locale, and the rest of ISO C/POSIX
+traversal, time, signals, terminal attribute control, locale, and the rest of ISO C/POSIX
 libc remain absent.
 
 ## Program heap ownership

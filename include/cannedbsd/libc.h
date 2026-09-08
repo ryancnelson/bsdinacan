@@ -27,6 +27,10 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
+int cb_libc_isatty(int descriptor);
+int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes);
+int cb_libc_tcsetattr(int descriptor, int action,
+                      const struct cb_termios_v1 *attributes);
 int cb_libc_pipe(int fds[2]);
 int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout);
 void *cb_libc_malloc(size_t size);
