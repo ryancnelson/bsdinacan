@@ -17,7 +17,7 @@ their paths do not overlap.
 regression corrections. Codex owns serialized guest acceptance and the measured
 utility roadmap. VFS-03 is accepted at `6e83f00`: all three Woodpecker workflows
 (#182) and twenty-nine fresh Mac checks passed. The next measured utility
-milestone is unchanged NetBSD basename; ECHO-01-design is ready in parallel.
+milestone is unchanged NetBSD basename; the reviewed echo prerequisites are ready in parallel.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -26,7 +26,7 @@ independent backlog items while the emulator is occupied.
 
 ### ECHO-01-design — output errors and program identity for unchanged echo
 
-- **Status:** Ready
+- **Status:** Done; reviewed design `d0b5515`, all three exact CI checks passed
 - **Base:** main
 - **Depends on:** PENV-04, ERR-01 (Done)
 - **Hypothesis:** the four observed missing interfaces in pinned NetBSD echo
@@ -916,9 +916,9 @@ review or to satisfy this measured command's dependencies.
 
 ### ECHO-01 — unchanged NetBSD echo after measured prerequisites
 
-- **Status:** Blocked on ECHO-01-design and its separately approved implementation prerequisites
+- **Status:** Blocked on PROGNAME-01 and STDOUT-01
 - **Base:** integrated dependencies
-- **Depends on:** ECHO-01-design; prerequisite IDs to be assigned after review
+- **Depends on:** PROGNAME-01, STDOUT-01
 - **Hypothesis:** unchanged pinned bin/echo/echo.c will correctly report output
   failures through the owned libc stream state as well as reproduce its output.
 - **Red:** exact audited source currently fails compilation on four missing
@@ -944,3 +944,32 @@ review or to satisfy this measured command's dependencies.
   automatic buffer versus the standard 64 KiB task stack before an unchanged
   import. Compile success alone is insufficient. See the utility audit; no
   worker may broaden a ready echo task into implementing head.
+
+### PROGNAME-01 — startup-initialized public program identity
+
+- **Status:** Ready; reserved for Codex
+- **Base:** main
+- **Depends on:** ECHO-01-design (Done)
+- **Scope:** implement the reviewed program-identity section of
+  `notes/iterations/ECHO-01-design.md`: saved startup reference, private public
+  getter selecting the last component, and startup-initialized inert setter.
+- **Red:** argv[0] pointer replacement must not rename the program; restore the
+  vector before teardown. Cover plain/path/empty final component and task/exec
+  isolation, preserving failed-exec identity and current diagnostic cases.
+- **Accept:** no host dependency, independent ordinary probe, exact CI and fresh
+  Mac acceptance. No speculative process-title or mutable-name API.
+
+### STDOUT-01 — task-owned standard-stream errors
+
+- **Status:** Ready; coordinator assignment required
+- **Base:** main
+- **Depends on:** ECHO-01-design (Done)
+- **Scope:** implement reviewed optional versioned stream-state accessor and
+  putchar/fflush/ferror with participation by existing stdio output paths.
+  Follow `notes/iterations/ECHO-01-design.md` exactly for errno, invalid stream,
+  missing/malformed state, unbuffered flush, sticky flags and exec lifetime.
+- **Red:** partial write followed by failure remains visible after successful
+  output, without contaminating stderr or another task; zero progress is EIO.
+- **Accept:** deterministic mock failures and task interleaving, old-size/NULL/
+  bad-state rejection before new output, successful/failed exec tests, ordinary
+  Mac probe, exact CI and guest acceptance. Preserve capacity and existing tests.
