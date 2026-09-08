@@ -879,3 +879,17 @@ separate IDs before assigning implementation.
 The next visible project milestone is the real `dirname` command. Defer broader
 terminal and filesystem feature expansion unless needed to finish an active
 review or to satisfy this measured command's dependencies.
+
+### BASENAME-01 — unchanged NetBSD basename utility and libc prerequisite
+
+- **Status:** Ready; coordinator assignment required
+- **Base:** main after accepted dirname milestone `96d5936`
+- **Depends on:** DIRNAME-01, LOCALE-01 (accepted in main)
+- **Scope:** pinned unchanged libc basename plus command, separate writable
+  task-owned buffer, optional accessor after actual ABI tail, private symbols
+  and existing import shims. See `notes/iterations/BASENAME-01-plan.md`.
+- **Accept:** exact command streams/status including suffix and empty-input
+  distinctions, libc boundary/truncation/input preservation, interleaved tasks,
+  independent retained dirname results, old/null accessor, source pins and
+  actual Mac command/probe registration; exact CI and fresh guest acceptance.
+  Preserve production capacity and every existing executed test.
