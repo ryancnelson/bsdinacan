@@ -56,6 +56,7 @@ static unsigned executor_instance_destroy_count;
 static unsigned executor_program_destroy_count;
 static void fail(const char *message);
 extern const struct cb_program_v1 cb_truncate_probe_program;
+extern const struct cb_program_v1 cb_memory_probe_program;
 
 static int registration_stub_main(const struct cb_api_v1 *api, int argc,
                                   char *const argv[], char *const envp[])
@@ -2770,7 +2771,8 @@ static void run_case(const char *command, const char *expected_output,
     cb_register_base_programs(kernel);
     truncate_test_kernel = kernel;
     if (register_test_programs) {
-        if (cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
+        if (cb_kernel_register(kernel, &cb_memory_probe_program) < 0 ||
+            cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
             cb_kernel_register(kernel, &truncateinterleave_program) < 0 ||
             cb_kernel_register(kernel, &cb_truncate_probe_program) < 0 ||
@@ -2949,8 +2951,20 @@ static void test_netbsd_strchr(void)
         fail("NetBSD strchr semantics");
 }
 
+static void test_mac_acceptance(void)
+{
+#define CB_MAC_CASE(command, expected, status) run_case(command, expected, status, 1);
+#include "../platform/mac68k/acceptance_cases.def"
+#undef CB_MAC_CASE
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--mac-acceptance") == 0) {
+        test_mac_acceptance();
+        puts("Mac acceptance command probes passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--truncate") == 0) {
         test_truncate_vfs_contract();
         run_case("libctruncateprobe", "", 0, 1);
@@ -2961,6 +2975,7 @@ int main(int argc, char **argv)
     }
     if (argc != 1)
         fail("unknown test selection");
+    test_mac_acceptance();
     test_netbsd_strlen();
     test_netbsd_strcmp();
     test_netbsd_memcpy();

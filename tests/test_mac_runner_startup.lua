@@ -7,7 +7,7 @@ local function scenario()
   slot={run_directory=run},manifest={run_directory=run,boot_copy=true,commit='test'}}
  local data={['/local/config']='config',[state..'/slot/active.json']='slot',
   [run..'/manifest.json']='manifest',[run..'/basilisk_prefs']='disk '..run..'/System.dsk\ndisk '..run..'/CannedBSD.dsk\nextfs '..run..'/shared',
-  [run..'/shared/cannedbsd-result.txt']=''}
+  [run..'/shared/cannedbsd-result.txt']='',[run..'/expected-result.txt']='fixture\nALL PASS\n'}
  local env=setmetatable({macTestConfigPath='/local/config'}, {__index=_G})
  env.io={open=function(path,mode)
   if mode=='rb' then

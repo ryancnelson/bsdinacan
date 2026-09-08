@@ -130,3 +130,10 @@ luac -p platform/mac68k/automation/run.lua
 Woodpecker's separate `mac-automation` workflow runs the synthetic matcher tests
 using the pinned Python packages. Linux `ci` and the Retro68 `mac68k` workflow
 remain separate gates; none of these CI workflows drives the user's desktop.
+
+The current suite adds ordinary-source memory, getopt, and truncate probes.
+Staging writes `expected-result.txt` from the same case table compiled into the
+Mac and Linux tests. The driver requires that complete transcript before asking
+`guest.py check` to verify freshness and write the bound receipt; a numerical
+PASS count or an older eight-pass transcript is insufficient. Restage old runs
+before using this driver version.

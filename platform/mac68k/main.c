@@ -3,14 +3,13 @@
 #include <string.h>
 
 struct acceptance_case { const char *command, *expected; int status; };
+extern const struct cb_program_v1 cb_memory_probe_program;
+extern const struct cb_program_v1 cb_getoptprobe_program;
+extern const struct cb_program_v1 cb_truncate_probe_program;
 static const struct acceptance_case cases[] = {
-    {"echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result", "HELLO\n", 0},
-    {"echo -n hello | wc -c", "5\n", 0},
-    {"echo abc | cat | tr a-z A-Z", "ABC\n", 0},
-    {"echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x", "one\ntwo\n", 0},
-    {"false; echo $?", "1\n", 0},
-    {"cd /tmp; pwd", "/tmp\n", 0},
-    {"exit 7", "", 7}
+#define CB_MAC_CASE(command, expected, status) {command, expected, status},
+#include "acceptance_cases.def"
+#undef CB_MAC_CASE
 };
 
 int main(void)
@@ -31,7 +30,10 @@ int main(void)
         cb_mac_capture_begin();
         if (kernel != NULL) {
             cb_register_base_programs(kernel);
-            if (cb_kernel_boot(kernel, cases[index].command) == 0)
+            if (cb_kernel_register(kernel, &cb_memory_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_getoptprobe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_truncate_probe_program) == 0 &&
+                cb_kernel_boot(kernel, cases[index].command) == 0)
                 status = cb_kernel_run(kernel);
             cb_kernel_destroy(kernel);
         }
