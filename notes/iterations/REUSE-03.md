@@ -87,6 +87,7 @@ the probe. A bounded host-only adaptation of the pinned GPL cdrtools initializer
 now builds invisible Desktop DB/DF metadata and includes both in fixture/guest
 expectations. Two independent builds produced identical new fixture bytes:
 `5adc9b2bb9cb9d1d7119ad45dc2d8470e221aee776a6b653d9e788e445e56f58`.
-The original six object IDs remain 16–22 (including nested Sentinel); desktop
+The original seven object IDs remain 16–22 (six root entries plus nested
+Sentinel); desktop
 metadata IDs are 23/24. New exact CI and guest must establish warning-free boot,
 all 13 checks, successful evidence writing and unchanged protected image hash.

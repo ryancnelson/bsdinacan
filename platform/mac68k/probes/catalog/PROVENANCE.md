@@ -55,7 +55,10 @@ Inspected pinned source mirror:
 Source SHA256: `ae26130a602c979ab60d4e7b15c268590d12d2e7035d7807019bca73064b39ad`.
 Original copyright James Pearson 1997–2000 and J. Schilling 2000–2009,
 GPL-2.0-or-later; attribution and license are retained in the already GPL-compatible
-host generator. No code or licensing from this initializer enters the Mac app.
+host generator. `COPYING` reproduces the accompanying upstream GPL-2.0 text
+from `mkisofs/COPYING` at the same pinned revision. That license applies to the
+host fixture generator; it does not replace the retained MoreFiles notices or
+relicense the separate Mac probe. No code from this initializer enters the Mac app.
 
 The source initializes invisible `Desktop DB` (BTFL/DMGR) with an empty database
 header in one volume clump and `Desktop DF` (DTFL/DMGR) as an empty file, intended
