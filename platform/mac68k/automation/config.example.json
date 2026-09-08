@@ -1,0 +1,6 @@
+{
+  "app": "/path/to/BasiliskII.app",
+  "python": "/path/to/mac-test-venv/bin/python",
+  "state": "/path/to/shared-guest-state",
+  "timeout": 60
+}

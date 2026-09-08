@@ -30,6 +30,9 @@ interactive shell in the same window. Type `echo ci | tr a-z A-Z` and observe
 `CI`; type `exit` to return to Finder. The runner checks startup results; record
 the interactive observation separately in the iteration note.
 
+For the calibrated Hammerspoon driver, see [automation/README.md](automation/README.md).
+It uses this staging/evidence protocol and a dedicated desktop applet.
+
 ### Serialized host runner
 
 Python 3 is required; slot release additionally requires `lsof`. All workers
