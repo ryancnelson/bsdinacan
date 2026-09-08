@@ -3,16 +3,17 @@
 This proposes **one worker item**, not an implementation or a new host mount.
 It follows [REUSE-01](REUSE-01.md). The coordinator requested this note in the
 existing `work/REUSE-01` worktree; no shared backlog/status file is changed.
-The queue was checked at `origin/main` `52cc6f9`. REUSE-01's integration
-candidate `ca0cd19` was reported by the coordinator but was not yet main.
+The queue was rechecked at `origin/main` `ca0cd19`; REUSE-01 has landed
+through integration `bbb0adb`. This remains a proposal for coordinator assignment.
 
 ## Proposed backlog entry
 
 ### REUSE-02 — compile and exercise a MoreFiles read-only catalog probe
 
-- **Status:** Proposed for the coordinator to mark Ready after REUSE-01 lands.
+- **Status:** Proposed; REUSE-01 is complete, and the coordinator can assign
+  this bounded implementation after accepting the probe scope.
 - **Base:** freshly fetched `origin/main` containing the REUSE-01 source audit.
-- **Depends on:** REUSE-01; access to the existing pinned Retro68 Woodpecker
+- **Depends on:** REUSE-01 (Done); access to the existing pinned Retro68 Woodpecker
   workflow and a coordinator-assigned System 7 guest slot. No dependency on
   VFS-03 implementation: this is a host-library feasibility probe.
 - **Hypothesis:** the pinned MoreFiles directory/catalog subset can be compiled
@@ -123,7 +124,9 @@ owns guest input. Require these observable assertions:
    manifest. The nested sentinel must not appear. Empty-directory enumeration
    succeeds with zero callbacks. Do not promise undocumented enumeration order.
 2. Check catalog type, data/resource-fork lengths and returned file/directory
-   IDs. IDs must be nonzero, distinct for distinct fixture objects, and stable
+   IDs (`ioFlNum` for files and `ioDrDirID` for directories). Do not use
+   `GetDirectoryID` as a file-ID query: its file case returns the parent ID.
+   IDs must be nonzero, distinct for distinct fixture objects, and stable
    over two scans of the same mounted fixture. Match pre-recorded IDs too if
    the deterministic fixture builder supplies them; do not compare host-inode
    numbers or require IDs to survive rebuilding the HFS image.
@@ -140,6 +143,10 @@ owns guest input. Require these observable assertions:
    returns `dirNFErr` for a regular file and `paramErr` for a null callback.
    Resolve the missing-name expectation from the called File Manager API and
    fixture path; do not hide unexpected errors with a broad success whitelist.
+   Upstream `IterateDirectoryLevel` itself normalizes enumeration `fnfErr` and
+   `afpAccessDenied` to `noErr`. This local HFS probe therefore does not establish
+   access-denial propagation for a later host adapter; that requires its own
+   contract and explicit denied-access test.
 6. The fixture remains unchanged. Verify read-only protection before boot and
    its entire image SHA256 again after verified clean guest shutdown. Result
    evidence goes to the separate run share, never onto the fixture. If host or
