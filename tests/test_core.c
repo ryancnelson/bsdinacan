@@ -3064,20 +3064,23 @@ static int yesprobe_main(const struct cb_api_v1 *api, int argc,
     int descriptors[2];
     char *yes_argv[] = {(char *)"yes", (char *)"ok", NULL};
     char *reader_argv[] = {(char *)"yesreader", NULL};
-    /* {0}, not {{0}}: the doubly-braced form zero-fills correctly on
-       every compiler tried so far, but GCC 3.4.6 (found via a real
-       Solaris 9 guest build) warns "missing initializer" for the
-       nested struct's remaining fields under -Wextra. The single-brace
-       form is the more portable idiom for zero-initializing an array
-       of structs and is unambiguous under C99's own aggregate-
-       initialization rules. */
-    struct cb_spawn_action_v1 yes_actions[3] = {0};
-    struct cb_spawn_action_v1 reader_actions[3] = {0};
+    /* Zero-initialized via memset below, not a static initializer:
+       GCC 3.4.6 (found via a real Solaris 9 guest build) warns on this
+       array-of-structs zero-init either way -- "missing braces around
+       initializer" for the single-brace `= {0}` form, and "missing
+       initializer" (for the nested struct's remaining fields) for the
+       double-brace `= {{0}}` form. memset is unambiguous and
+       warning-free on every pinned toolchain (Linux, Retro68 Mac68k,
+       this guest). */
+    struct cb_spawn_action_v1 yes_actions[3];
+    struct cb_spawn_action_v1 reader_actions[3];
     cb_pid_t yes_pid;
     cb_pid_t reader_pid;
     int yes_status;
     int reader_status;
     size_t index;
+    memset(yes_actions, 0, sizeof(yes_actions));
+    memset(reader_actions, 0, sizeof(reader_actions));
     (void)argc;
     (void)argv;
     if (api->pipe(descriptors) < 0)
@@ -3123,10 +3126,13 @@ static int stdioepipeprobe_main(const struct cb_api_v1 *api, int argc,
 {
     int descriptors[2];
     char *child_argv[] = {(char *)"stdioprobe", (char *)"pipe", NULL};
-    struct cb_spawn_action_v1 actions[3] = {0};
+    /* memset, not a static initializer -- see yesprobe_main's own
+       comment above for why. */
+    struct cb_spawn_action_v1 actions[3];
     cb_pid_t child;
     int status;
     size_t index;
+    memset(actions, 0, sizeof(actions));
     (void)argc;
     (void)argv;
 
