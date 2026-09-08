@@ -248,7 +248,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### TERM-01 — terminal mode contract
 
-- **Status:** Blocked on IO-01
+- **Status:** Blocked on TERM-01-design corrections (IO-01 is Done)
 - **Base:** integrated dependency
 - **Hypothesis:** task-visible termios state can implement canonical/raw input,
   echo, erase, and EOF over a deterministic console adapter.
@@ -756,14 +756,14 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### LIBGEN-01-design — dirname source and result lifetime
 
-- **Status:** Claimed by Claude; after VFS-03 acceptance fixes
+- **Status:** Done; reviewed design merged at `89afe30`
 - **Base:** main
 - **Accept:** pinned source inventory, path edge cases, task-local result
   lifetime, cleanup, C-locale dependency and a bounded deterministic test plan.
 
 ### TERM-01-design — actual host terminal capability contract
 
-- **Status:** Antigravity design under review
+- **Status:** Changes requested from Antigravity; implementation blocked
 - **Base:** main
 - **Accept:** actual Mac canonical-buffer and Linux inherited-tty inventory;
   shared core terminal owner, optional raw capability, readiness/EOF/overflow
@@ -786,7 +786,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-11 — reject locked-host guest launches
 
-- **Status:** Claimed by Codex on `work/MAC-11`
+- **Status:** Reviewed at `6888f0d`, all three #138 gates green; unlocked guest regression pending
 - **Base:** main
 - **Depends on:** MAC-06, MAC-09
 - **Scope:** Hammerspoon session preflight before matcher startup and immediately
@@ -797,3 +797,25 @@ with an ID, dependencies, red test, and acceptance boundary above.
 - **Acceptance:** deterministic locked, unlocked, unknown and lock-during-startup
   cases; exact Woodpecker gates; fresh unlocked guest regression when available.
   Keep the existing locked-host run and its disk ownership undisturbed.
+
+### LIBGEN-01 — task-local dirname
+
+- **Status:** Ready; reserved for Claude after VFS-03 fixes
+- **Base:** main
+- **Depends on:** LIBGEN-01-design (Done), ERR-01 (Done)
+- **Scope:** implement the reviewed `notes/iterations/LIBGEN-01-design.md`.
+  Preserve the pinned NetBSD source, use import-only `PATH_MAX == CB_PATH_MAX`,
+  copy into inline task-owned storage with existing strlen/memcpy, and append
+  an optional accessor after the actual ABI tail. No locale or strlcpy work.
+- **Accept:** ordinary-source edge cases, independent interleaved task results,
+  old-size/null-callback behavior, exact CI and direct fresh Mac acceptance.
+
+### TERM-01-design outstanding review
+
+Before implementation, specify bounded input queues that still process erase
+and terminators at capacity; reject unsupported timing modes atomically; avoid
+assuming a missing raw capability implies canonical host input. Specify exact
+host-state restoration on teardown and boot failure, old host/API size guards,
+and who drains input before readiness checks. Include overflow, transitions,
+empty-VEOF readiness, fallback and restoration tests. Review `11d4699` is not
+approval to implement the current proposal.
