@@ -51,3 +51,5 @@ hydration blocking Hammerspoon itself.
   This verifies this host action against that failure; it is not acceptance of
   the new feature commit's guest artifact.
 - Exact feature artifact guest acceptance and main merge remain coordinator-owned.
+
+Coordinator confirmed all three exact Woodpecker #75 workflows succeeded.

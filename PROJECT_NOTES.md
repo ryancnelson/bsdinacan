@@ -744,3 +744,17 @@ The first staged MAC-02 run (`9a3e4db`, archive
 returned fresh ALL PASS and shut down in 14.262 seconds. Repeated cold-run
 acceptance is in progress; this is startup regression/context coverage, not
 execution of every new libc probe.
+
+## Historical reuse lead: MacPerl and GUSI
+
+MacPerl author Matthias Neeracher described implementing stat/opendir families,
+path handling and BSD sockets over classic Mac protocols. GUSI is the relevant
+POSIX/pthreads/sockets library. Audit its source before writing new Mac host
+filesystem or networking adapters; distinguish host Mac operations from
+cannedBSD's internal task descriptors, VFS and process lifecycle.
+
+Sources: [author's 1996 account](https://www.foo.be/docs/tpj/issues/vol1_2/tpj0102-0005.html),
+[GUSI project](https://sourceforge.net/projects/gusi/),
+[MacPerl release history](https://sourceforge.net/p/macperl/news/).
+REUSE-01 will identify exact modules, licenses and 68K/Retro68 constraints;
+no claim of a drop-in dependency has been made.

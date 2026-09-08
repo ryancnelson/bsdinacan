@@ -395,3 +395,17 @@ provenance evidence.
 - The public GitHub repository and Woodpecker project are active. Successful
   pipelines prove the GitHub webhook, Alpine agent, and canonical gate end to
   end. Every push remains subject to that gate.
+
+## Accepted integration, 2026-09-07 evening
+
+Main `c93e2ba` includes pinned NetBSD printenv, reviewed mount routing,
+guest-owned screenshot/completion support, and direct memory/getopt/truncate
+probes. Woodpecker #77 passed all three workflows. Exact archive SHA256
+`18eab40bbaefad2ec8b5580d7f199650fa06135457fee9fbbe0bf7c7697a6d20`
+ran fifteen named checks in System 7, including named/missing/empty/invalid
+printenv inputs. Run `run-sdonh80f` completed with a fresh screenshot, normal
+shutdown and slot release in 14.29 seconds.
+
+Current work: fix polling errno and finite-deadline scheduling; implement
+owned directory iteration; complete optional fully automatic guest evidence
+collection; audit MacPerl/GUSI source before building more Mac-specific layers.

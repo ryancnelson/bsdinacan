@@ -13,11 +13,11 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude owns `PENV-06`; Antigravity owns the final
-`VFS-01` regression tests and `IO-01-design` corrections. Codex owns `MAC-07`,
-serialized guest acceptance, and integration. PENV-02 through PENV-05, FS-01,
-PORT-01, and MAC-01/02/04/05/06 are merged at `4f80e83` after integration
-Woodpecker #66 and exact-artifact guest smoke acceptance.
+**Current assignments:** Claude owns `VFS-03` directory iteration and its
+reviewed design corrections. Antigravity owns `IO-01` polling corrections.
+Codex owns `MAC-09` autorun integration, `REUSE-01` MacPerl/GUSI source audit,
+serialized guest acceptance, and integration. Main is `c93e2ba`, with fifteen
+actual guest checks accepted after Woodpecker #77.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -41,7 +41,7 @@ independent backlog items while the emulator is occupied.
 
 ### VFS-01 — two-mount routing boundary
 
-- **Status:** Claimed on `work/VFS-01`
+- **Status:** Done; merged at `c93e2ba` after review, CI, and exact guest acceptance
 - **Base:** main
 - **Depends on:** none
 - **Hypothesis:** path traversal can cross a mount boundary without exposing a
@@ -94,7 +94,7 @@ independent backlog items while the emulator is occupied.
 
 ### MAC-03 — guest-owned screenshot and autorun completion
 
-- **Status:** Implemented on `work/MAC-03`; CI and guest acceptance pending
+- **Status:** Done; merged at `c93e2ba` after review, CI, and exact guest acceptance
 - **Base:** MAC-02 at `9a3e4db`
 - **Depends on:** MAC-02 integration
 - **Hypothesis:** an opt-in guest mode can flush results and an actual pixel
@@ -194,7 +194,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### PENV-06 — unchanged NetBSD `printenv`
 
-- **Status:** Claimed by Claude on `work/PENV-06`; dependencies merged
+- **Status:** Done; merged at `c93e2ba` after review, CI, and exact guest acceptance
 - **Base:** integrated dependencies
 - **Hypothesis:** the exact pinned NetBSD source will compile unchanged and run
   entirely through the cannedBSD libc and runtime.
@@ -218,7 +218,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### VFS-03 — directory iteration and libc `dirent`
 
-- **Status:** Blocked on VFS-01
+- **Status:** Claimed by Claude; directory ownership and mutation contract being corrected
 - **Base:** main plus VFS-01
 - **Hypothesis:** a versioned node iterator can expose directories without
   leaking RAMFS representation.
@@ -228,7 +228,7 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### IO-01 — public descriptor polling
 
-- **Status:** Blocked pending design review
+- **Status:** Claimed by Antigravity; errno/deadline regressions under correction
 - **Base:** main
 - **Hypothesis:** the existing readiness seam can implement poll without host
   descriptors or busy waiting.
@@ -655,7 +655,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### MAC-07 — direct libc and filesystem guest coverage
 
-- **Status:** Claimed by Codex on `work/MAC-07`
+- **Status:** Done; merged at `c93e2ba` after review, CI, and exact guest acceptance
 - **Base:** `4f80e83`
 - **Depends on:** PENV-03 and FS-01 (Done)
 - **Hypothesis:** identical ordinary-source probes can run on Linux and System 7
@@ -673,3 +673,37 @@ with an ID, dependencies, red test, and acceptance boundary above.
   deterministic descriptor polling without host descriptors or busy waiting.
 - **Accept:** finite deadlines must never silently become infinite; specify
   task ownership, masks/errors, clock loss, wake/cancel and overflow behavior.
+
+### MAC-08 — image-matched failure-window closure
+
+- **Status:** Reviewed; live close verified; integration checks pending
+- **Base:** main
+- **Accept:** match the cannedBSD title/go-away box, validate staged PID and
+  focus, retain before/after evidence; no automatic shutdown or pass claim.
+
+### MAC-09 — supported guest-owned autorun cycle
+
+- **Status:** Claimed by Codex on `work/MAC-09`
+- **Base:** `c93e2ba`
+- **Accept:** stage all marker/evidence files before boot; validate exact fresh
+  results, completion and readable screenshot; observe app closure, then normal
+  shutdown. Failures retain the guest and never produce acceptance.
+
+### REUSE-01 — MacPerl/GUSI source reuse audit
+
+- **Status:** Claimed by Codex on `work/REUSE-01`
+- **Base:** main
+- **Hypothesis:** historical MacPerl and GUSI already implement useful classic
+  Mac filesystem, networking and compatibility operations.
+- **Accept:** identify concrete source modules, pinned provenance, actual
+  licenses, System 7/68K/Retro68 constraints, and map reuse candidates to host
+  adapters versus cannedBSD-owned task/VFS semantics. No runtime import until
+  code and integration requirements are understood.
+
+### VFS-03-design — directory lifetime and mutation contract
+
+- **Status:** Claimed by Claude; corrections feed VFS-03 implementation
+- **Base:** main
+- **Accept:** task-owned handles release node references on close/exit/exec;
+  mutation promises match the algorithm; directory names preserve existing
+  path-length support; independent streams and failure cleanup are testable.
