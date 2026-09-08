@@ -16,6 +16,9 @@ enum cb_libc_open_flag {
     CB_LIBC_O_TRUNC = 0x0400
 };
 
+enum cb_libc_locale_category { CB_LIBC_LC_ALL = 0 };
+char *cb_libc_setlocale(int category, const char *locale);
+
 typedef int (*cb_libc_main_fn)(int argc, char *argv[]);
 struct cb_libc_file;
 

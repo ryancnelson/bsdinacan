@@ -389,3 +389,42 @@ int cb_libc_tcsetattr(int descriptor, int action,
     }
     return bound_api->tcsetattr(descriptor, action, attributes);
 }
+
+static int locale_is_c(const char *name)
+{
+    return cb_libc_strcmp(name, "C") == 0 || cb_libc_strcmp(name, "POSIX") == 0;
+}
+
+char *cb_libc_setlocale(int category, const char *locale)
+{
+    static const char *const category_variables[] = {
+        "LC_COLLATE", "LC_CTYPE", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+        "LC_MESSAGES"
+    };
+    const char *selected;
+    size_t index;
+    if (category != CB_LIBC_LC_ALL)
+        return NULL;
+    /* Every successful operation denotes the same immutable C profile. The
+     * borrowed result is not caller-writable, as for ordinary setlocale. */
+    if (locale == NULL)
+        return (char *)"C";
+    if (*locale != '\0')
+        return locale_is_c(locale) ? (char *)"C" : NULL;
+    /* getenv is in the existing mandatory-size prefix, but its callback was
+     * never mandatory for libc startup. Do not fall back to the host. */
+    if (bound_api == NULL || bound_api->getenv == NULL)
+        return NULL;
+    selected = bound_api->getenv("LC_ALL");
+    if (selected != NULL && *selected != '\0')
+        return locale_is_c(selected) ? (char *)"C" : NULL;
+    for (index = 0; index < sizeof(category_variables) /
+                              sizeof(category_variables[0]); ++index) {
+        selected = bound_api->getenv(category_variables[index]);
+        if (selected == NULL || *selected == '\0')
+            selected = bound_api->getenv("LANG");
+        if (selected != NULL && *selected != '\0' && !locale_is_c(selected))
+            return NULL;
+    }
+    return (char *)"C";
+}

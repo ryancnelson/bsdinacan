@@ -15,3 +15,6 @@ CB_MAC_CASE("printenv FOO=bar", "printenv: Invalid environment variable FOO=bar\
 CB_MAC_CASE("libcerrprobe", "libcerrprobe: path alpha %: no such file or directory\n", 7)
 CB_MAC_CASE("normalpollprobe", "", 0)
 CB_MAC_CASE("libcterminalprobe", "", 0)
+CB_MAC_CASE("libclocaleprobe", "", 0)
+CB_MAC_CASE("export LC_ALL=C; export LANG=unsupported; libclocaleenv 1", "", 0)
+CB_MAC_CASE("export LANG=C; export LC_TIME=unsupported; libclocaleenv 0", "", 0)
