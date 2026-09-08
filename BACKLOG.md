@@ -13,8 +13,8 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude is finishing BASENAME-01 review and preparing
-ECHO-01. Antigravity owns STDOUT-01 in its isolated worktree. Codex owns
+**Current assignments:** Codex is integrating reviewed BASENAME-01 while Claude
+prepares ECHO-01. Antigravity owns STDOUT-01 in its isolated worktree. Codex owns
 PROGNAME-01, integration and serialized guest acceptance. VFS-02 is merged at
 `56e79e1`, with all three Woodpecker #203 checks and thirty fresh Mac records.
 
@@ -901,7 +901,7 @@ review or to satisfy this measured command's dependencies.
 
 ### BASENAME-01 — unchanged NetBSD basename utility and libc prerequisite
 
-- **Status:** Claimed by Claude on `work/BASENAME-01`
+- **Status:** Reviewed feature `234f395` in `work/BASENAME-01-integration`; combined CI and guest acceptance pending
 - **Base:** main after accepted dirname milestone `96d5936`
 - **Depends on:** DIRNAME-01, LOCALE-01 (accepted in main)
 - **Scope:** pinned unchanged libc basename plus command, separate writable

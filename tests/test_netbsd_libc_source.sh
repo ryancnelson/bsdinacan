@@ -36,6 +36,9 @@ strchr_hash=ebe71501c3aa96b35445642eeb72ab6c73f0fa561ce83b9f78d4c0e06c155cb9
 dirname_source=upstream/netbsd/lib/libc/gen/dirname.c
 dirname_object=$build_path/netbsd_dirname.o
 dirname_hash=05ad1f66a7a5a4ceee33fe767a3410c60aa76e4ed670b5d57ab9198a0a2a892b
+basename_source=upstream/netbsd/lib/libc/gen/basename.c
+basename_object=$build_path/netbsd_basename.o
+basename_hash=f6202a8d1a89118f4743a2aa5880bc985ed8a6ca01b1c4ca654d789ff14adb87
 
 if [[ ! -f $source_file ]]; then
     echo "FAIL: pinned NetBSD strlen source is missing: $source_file" >&2
@@ -245,6 +248,34 @@ fi
 if ! nm -u "$build_path/cb_libc.o" |
         matches '[[:space:]]U[[:space:]]+cb_libc_dirname_upstream$'; then
     echo 'FAIL: cannedBSD dirname veneer does not use the imported dirname' >&2
+    exit 1
+fi
+if [[ ! -f $basename_source ]] ||
+        [[ $(sha256sum "$basename_source" | awk '{print $1}') != "$basename_hash" ]]; then
+    echo 'FAIL: pinned NetBSD basename source is missing or changed' >&2
+    exit 1
+fi
+if ! matches "$basename_hash" "$provenance_file"; then
+    echo 'FAIL: NetBSD basename provenance does not match the pin' >&2
+    exit 1
+fi
+if [[ ! -f $basename_object ]] ||
+        ! nm "$basename_object" |
+            matches '[[:space:]]T[[:space:]]+cb_libc_basename_upstream$'; then
+    echo 'FAIL: NetBSD basename was not compiled under its private link name' >&2
+    exit 1
+fi
+if nm -u "$basename_object" | matches '[[:space:]]U[[:space:]]+basename$'; then
+    echo 'FAIL: NetBSD basename object imports host basename' >&2
+    exit 1
+fi
+if ! ar t "$archive_file" | matches '^netbsd_basename\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD basename' >&2
+    exit 1
+fi
+if ! nm -u "$build_path/cb_libc.o" |
+        matches '[[:space:]]U[[:space:]]+cb_libc_basename_upstream$'; then
+    echo 'FAIL: cannedBSD basename veneer does not use the imported basename' >&2
     exit 1
 fi
 

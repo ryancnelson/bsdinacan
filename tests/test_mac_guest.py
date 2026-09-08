@@ -57,7 +57,7 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 31)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 38)
         self.assertIn('PASS normalpollprobe\n', expected)
         for probe in ['libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
                       'libcerrprobe', 'export GUEST=mac; printenv GUEST',
@@ -65,7 +65,10 @@ class GuestTests(unittest.TestCase):
                       'export EMPTY=; printenv EMPTY', 'printenv FOO=bar',
                       'libcdirnameprobe', 'libcdirentprobe', 'libcprognameprobe', 'vfsexecprobe', 'dirname /tmp/example', 'dirname ////',
                       'dirname -- -leading/dash', 'dirname -x',
-                      'dirname /a/b/c | cat', "dirname ''"]:
+                      'dirname /a/b/c | cat', "dirname ''",
+                      'libcbasenameprobe', 'basename /tmp/example.txt .txt',
+                      'basename foo foo', 'basename -- -foo', 'basename -x',
+                      'basename /a/b/c | cat', "basename ''"]:
             self.assertIn('PASS ' + probe + '\n', expected)
 
     def test_autorun_stage_precreates_evidence_before_timestamp(self):

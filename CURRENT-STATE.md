@@ -34,7 +34,10 @@ Fresh Basilisk II acceptance `run-u4ko4rto` produced twenty-eight PASS records,
 including six dirname command cases, a reviewed screenshot, and verified normal
 shutdown with the guest slot released. The automated cycle took 15.48 seconds.
 
-BASENAME-01 is in final review, with Claude preparing ECHO-01 next.
+BASENAME-01 feature `234f395` is integrated for validation on
+`work/BASENAME-01-integration`, based on accepted PROGNAME-01 `a7acb54`.
+The combined suite has thirty-eight Mac records; exact CI and guest acceptance
+remain pending. Claude is preparing ECHO-01 next.
 Antigravity owns STDOUT-01; Codex owns PROGNAME-01. VFS-02 is now accepted at
 `56e79e1dc1f26ef0e2ed6ecd581f8ffe419e6655`: Woodpecker #203 passed all three
 workflows, and fresh guest run `run-0t8ymt4d` passed thirty records in a

@@ -1510,6 +1510,11 @@ static char *api_dirname_buffer_location(void)
     return active_kernel->current->dirname_buffer;
 }
 
+static char *api_basename_buffer_location(void)
+{
+    return active_kernel->current->basename_buffer;
+}
+
 static int api_opendir(const char *path)
 {
     struct cb_task *task = active_kernel->current;
@@ -1746,6 +1751,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->opendir = api_opendir;
     api->readdir = api_readdir;
     api->closedir = api_closedir;
+    api->basename_buffer_location = api_basename_buffer_location;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

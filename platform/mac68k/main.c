@@ -11,6 +11,7 @@ extern const struct cb_program_v1 cb_progname_probe_program;
 extern const struct cb_program_v1 cb_vfs_executable_probe_program;
 extern const struct cb_program_v1 cb_direntprobe_program;
 extern const struct cb_program_v1 cb_dirname_probe_program;
+extern const struct cb_program_v1 cb_basename_probe_program;
 extern const struct cb_program_v1 cb_locale_probe_program;
 extern const struct cb_program_v1 cb_locale_env_probe_program;
 extern const struct cb_program_v1 cb_terminal_probe_program;
@@ -54,6 +55,7 @@ int main(void)
                 cb_kernel_register(kernel, &cb_vfs_executable_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_direntprobe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_dirname_probe_program) == 0 &&
+                cb_kernel_register(kernel, &cb_basename_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_locale_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_locale_env_probe_program) == 0 &&
                 cb_kernel_register(kernel, &cb_terminal_probe_program) == 0 &&
