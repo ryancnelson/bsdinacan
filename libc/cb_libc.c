@@ -337,10 +337,5 @@ int cb_libc_poll(struct cb_pollfd *fds, size_t nfds, int timeout)
         bound_api->set_errno(CB_ENOSYS);
         return -1;
     }
-    int result = bound_api->poll(fds, nfds, timeout);
-    if (result < 0) {
-        bound_api->set_errno(-result);
-        return -1;
-    }
-    return result;
+    return bound_api->poll(fds, nfds, timeout);
 }

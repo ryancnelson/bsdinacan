@@ -2367,6 +2367,67 @@ static const struct cb_program_v1 pipezeroprobe_program = {
     64 * 1024, pipezeroprobe_main
 };
 
+
+static int poll_wake_write_fd;
+
+static int pollwakepeer_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    char byte = 'x';
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    for (int i = 0; i < 50; i++) {
+        api->yield();
+    }
+    if (api->write(poll_wake_write_fd, &byte, 1) != 1) return 1;
+    return 0;
+}
+
+static int pollwakeprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    char *peer_argv[] = {(char *)"pollwakepeer", NULL};
+    struct cb_spawn_action_v1 close_reader;
+    cb_pid_t peer;
+    int descriptors[2];
+    int status;
+    struct cb_pollfd pfd;
+    (void)argc;
+    (void)argv;
+
+    if (api->pipe(descriptors) < 0) return 91;
+    poll_wake_write_fd = descriptors[1];
+    
+    close_reader.abi_version = CB_ABI_VERSION_V1;
+    close_reader.struct_size = sizeof(close_reader);
+    close_reader.type = CB_SPAWN_CLOSE;
+    close_reader.from_fd = descriptors[0];
+    
+    if (api->spawn(peer_argv[0], peer_argv, envp, &close_reader, 1, &peer) < 0) return 92;
+    if (api->close(descriptors[1]) < 0) return 93;
+    
+    pfd.fd = descriptors[0];
+    pfd.events = CB_POLLIN;
+    /* Block until the peer writes */
+    if (api->poll(&pfd, 1, 5000) != 1) return 94;
+    if (!(pfd.revents & CB_POLLIN)) return 95;
+    
+    if (api->waitpid(peer, &status) != peer || status != 0) return 96;
+    if (api->close(descriptors[0]) < 0) return 97;
+    return 0;
+}
+
+static const struct cb_program_v1 pollwakepeer_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pollwakepeer", 0,
+    64 * 1024, pollwakepeer_main
+};
+
+static const struct cb_program_v1 pollwakeprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pollwakeprobe", 0,
+    64 * 1024, pollwakeprobe_main
+};
+
 static const struct cb_program_v1 pipeedgepeer_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pipeedgepeer", 0,
     64 * 1024, pipeedgepeer_main
@@ -2736,6 +2797,18 @@ static int truncateinterleave_main(const struct cb_api_v1 *api, int argc,
 #undef TRUNCATE_CHECK
 
 
+
+extern int clocklossprobe_main(int argc, char **argv);
+extern int runnabletimeoutprobe_main(int argc, char **argv);
+extern int yieldingspinner_main(int argc, char **argv);
+
+CB_LIBC_PROGRAM(clocklossprobe_program, "clocklossprobe",
+                clocklossprobe_main);
+CB_LIBC_PROGRAM(runnabletimeoutprobe_program, "runnabletimeoutprobe",
+                runnabletimeoutprobe_main);
+CB_LIBC_PROGRAM(yieldingspinner_program, "yieldingspinner",
+                yieldingspinner_main);
+
 extern int normalpollprobe_main(int argc, char **argv);
 extern int oldpollprobe_main(int argc, char **argv);
 
@@ -2792,6 +2865,9 @@ static void run_case(const char *command, const char *expected_output,
     truncate_test_kernel = kernel;
     if (register_test_programs) {
         if (cb_kernel_register(kernel, &normalpollprobe_program) < 0 ||
+            cb_kernel_register(kernel, &clocklossprobe_program) < 0 ||
+            cb_kernel_register(kernel, &runnabletimeoutprobe_program) < 0 ||
+            cb_kernel_register(kernel, &yieldingspinner_program) < 0 ||
             cb_kernel_register(kernel, &oldpollprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncateprobe_program) < 0 ||
             cb_kernel_register(kernel, &truncatechild_program) < 0 ||
@@ -2804,6 +2880,8 @@ static void run_case(const char *command, const char *expected_output,
             cb_kernel_register(kernel, &pipezeropeer_program) < 0 ||
             cb_kernel_register(kernel, &pipezeroprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipeedgepeer_program) < 0 ||
+            cb_kernel_register(kernel, &pollwakepeer_program) < 0 ||
+            cb_kernel_register(kernel, &pollwakeprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipeedgeprobe_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacitypeer_program) < 0 ||
             cb_kernel_register(kernel, &pipecapacityprobe_program) < 0 ||
@@ -2972,6 +3050,89 @@ static void test_netbsd_strchr(void)
         fail("NetBSD strchr semantics");
 }
 
+
+static uint64_t mock_clock_time = 1000;
+static int mock_clock_calls = 0;
+static int console_poll_negative_one_seen = 0;
+
+static uint64_t clockloss_monotonic(void)
+{
+    mock_clock_calls++;
+    if (mock_clock_calls > 1) {
+        return 0; /* Clock vanishes! */
+    }
+    return mock_clock_time;
+}
+
+static int clockloss_console_poll(int timeout)
+{
+    if (timeout == -1) {
+        console_poll_negative_one_seen = 1;
+    }
+    return 0; 
+}
+
+static void test_poll_clockloss(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+    
+    mock_clock_calls = 0;
+    console_poll_negative_one_seen = 0;
+    host.monotonic_millis = clockloss_monotonic;
+    host.console_poll = clockloss_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+    
+    kernel = cb_kernel_create(&host);
+    if (!kernel) fail("clockloss kernel");
+    cb_register_base_programs(kernel);
+    cb_kernel_register(kernel, &clocklossprobe_program);
+    
+    if (cb_kernel_boot(kernel, "clocklossprobe") < 0) fail("clockloss boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) fail("clockloss failed");
+    if (console_poll_negative_one_seen) fail("clockloss passed -1 to console_poll");
+    cb_kernel_destroy(kernel);
+    printf("clockloss test passed\n");
+}
+
+static uint64_t advancing_clock_monotonic(void)
+{
+    mock_clock_time += 1;
+    return mock_clock_time;
+}
+
+static void test_poll_runnable_timeout(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    int status;
+    
+    mock_clock_time = 1000;
+    console_poll_ready = 0;
+    
+    host.monotonic_millis = advancing_clock_monotonic;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+    reset_console(NULL);
+    
+    kernel = cb_kernel_create(&host);
+    if (!kernel) fail("runnabletimeout kernel");
+    cb_register_base_programs(kernel);
+    cb_kernel_register(kernel, &runnabletimeoutprobe_program);
+    cb_kernel_register(kernel, &yieldingspinner_program);
+    
+    if (cb_kernel_boot(kernel, "yieldingspinner & runnabletimeoutprobe") < 0) fail("runnabletimeout boot");
+    status = cb_kernel_run(kernel);
+    if (status != 0) { printf("runnabletimeout status: %d\n", status); fail("runnabletimeout failed"); }
+    cb_kernel_destroy(kernel);
+    printf("runnable timeout test passed\n");
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--truncate") == 0) {
@@ -2979,6 +3140,8 @@ int main(int argc, char **argv)
         run_case("libctruncateprobe", "", 0, 1);
         run_case("normalpollprobe", "", 0, 1);
         run_case("oldpollprobe", "", 0, 1);
+        test_poll_clockloss();
+        test_poll_runnable_timeout();
         run_case("truncateprobe", "", 0, 1);
         run_case("truncateinterleave", "", 0, 1);
         puts("truncate tests passed");
@@ -3092,6 +3255,7 @@ int main(int argc, char **argv)
     run_case("pipeallocprobe", "", 0, 1);
     run_case("pipezeroprobe", "", 0, 1);
     run_case("pipeedgeprobe", "", 0, 1);
+    run_case("pollwakeprobe", "", 0, 1);
     run_case("pipecapacityprobe", "", 0, 1);
     run_case("environprobe", "", 0, 1);
     run_case("exitwaitprobe", "", 0, 1);
@@ -3105,6 +3269,8 @@ int main(int argc, char **argv)
     run_case("libctruncateprobe", "", 0, 1);
     run_case("normalpollprobe", "", 0, 1);
         run_case("oldpollprobe", "", 0, 1);
+        test_poll_clockloss();
+        test_poll_runnable_timeout();
         run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
     run_case("ramfsprobe", "", 0, 1);

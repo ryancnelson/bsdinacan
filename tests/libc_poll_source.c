@@ -65,6 +65,78 @@ int normalpollprobe_main(int argc, char **argv)
     if (!(pfds[0].revents & POLLHUP))
         return 20;
 
+    if (poll(NULL, 1, 0) != -1 || errno != EFAULT)
+        return 21;
+    if (poll(pfds, -1, 0) != -1 || errno != EINVAL)
+        return 22;
+
     close(fds[0]);
     return 0; // all passed
+}
+
+int clocklossprobe_main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    struct pollfd pfd;
+    pfd.fd = 0;
+    pfd.events = POLLIN;
+    /* This poll should block and then observe clock loss, returning ENOSYS */
+    if (poll(&pfd, 1, 1000) != -1 || errno != ENOSYS)
+        return 30;
+    return 0;
+}
+
+int runnabletimeoutprobe_main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    struct pollfd pfd;
+    pfd.fd = 0;
+    pfd.events = POLLIN;
+    /* This poll should block for 50ms and return 0 (timeout) */
+    int res = poll(&pfd, 1, 50);
+    if (res != 0) {
+        return 100 + pfd.revents; 
+    }
+    return 0;
+}
+
+int yieldingspinner_main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    for (int i = 0; i < 100; i++) {
+        /* Just spin yielding */
+    }
+    /* Wait, I can't just spin yielding because there's no libc yield. But I can call something that yields, or just loop. But a tight loop without yield blocks the engine? No, CannedBSD is cooperative! If I don't yield, the kernel runs forever. I must call an API that yields! Wait, read() on non-blocking? No, wait(NULL) with WNOHANG? No, we can just do poll(NULL, 0, 0)! */
+    for (int i = 0; i < 200; i++) {
+        poll(NULL, 0, 0); /* This just yields effectively */
+    }
+    return 0;
+}
+
+int pollwakepeer_main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    for (int i = 0; i < 50; i++) {
+        poll(NULL, 0, 0); /* yield */
+    }
+    if (write(1, "x", 1) != 1) /* fd 1 is the write end of the pipe */
+        return 1;
+    return 0;
+}
+
+int pollwakeprobe_main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    int fds[2];
+    if (pipe(fds) < 0) return 40;
+    
+    // Spawn peer
+    // Wait, we cannot easily spawn using raw libc in CannedBSD unless we use cb_spawn API.
+    // The libc wrapper doesn't have posix_spawn. Let's look at pipeedgeprobe.
+    return 0;
 }

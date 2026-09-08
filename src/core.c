@@ -1666,8 +1666,20 @@ int cb_kernel_run(struct cb_kernel *kernel)
     active_kernel = kernel;
     while (!kernel->boot_finished) {
         struct cb_task *task;
+        struct cb_task *pt;
+        uint64_t current = kernel->host->monotonic_millis();
+        
         if (kernel->host->console_poll(0) > 0)
             wake_console_waiters(kernel);
+            
+        for (pt = kernel->tasks; pt != NULL; pt = pt->next) {
+            if (pt->state == CB_TASK_BLOCKED_POLL && pt->wake_timeout > 0) {
+                if (current == 0 || current - pt->wake_start >= (uint64_t)pt->wake_timeout) {
+                    pt->state = CB_TASK_RUNNABLE;
+                }
+            }
+        }
+        
         task = pick_runnable(kernel);
         if (task == NULL) {
             int p_timeout = get_poll_timeout(kernel);
