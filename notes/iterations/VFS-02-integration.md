@@ -46,3 +46,14 @@ the caller's PID output untouched. This remains part of the existing
 The ordinary errno probe is linked on both Linux and Mac and called through
 the libc entry boundary inside that shared probe. Exact corrected CI and
 guest acceptance remain pending.
+
+A separate full validation run exposed an existing source-fence race:
+`nm | rg -q` sometimes returned pipeline status 141 although rg found the
+required symbol. The real sanitized libc object reproduced six failures
+in 200 iterations, with individual statuses `141 0`. The NetBSD libc
+source fence now drains matches, following the existing ordinary-source
+fence's helper, while retaining `pipefail` and every assertion. No runtime
+code changes are involved in this reliability correction.
+The corrected helper passed 200/200 repetitions with the same real
+object; an absent-symbol fixture still failed with status 1, and a producer
+failure remained status 7 despite matching output.
