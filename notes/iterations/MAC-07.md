@@ -57,3 +57,13 @@ Old staged runs must be restaged for the new driver.
 No portable runtime or libc implementation changes, no upstream source edits,
 and no emulator control are part of this task. These probes run before the
 interactive shell; failures still withhold ALL PASS and leave the window open.
+
+## Integration follow-up
+
+The integrated suite adds four `printenv` cases, for fifteen PASS records:
+one context check and fourteen commands. Woodpecker #76 on `9851ecf` caught
+the protocol test's obsolete eleven-record assertion before compiling Linux.
+The test now requires fifteen records and explicitly checks all four added
+commands. `python3 tests/test_mac_guest.py` reproduced `15 != 11` before the
+fix and passed all thirteen tests afterward. The integrated full CI gate and
+exact guest acceptance remain pending on the follow-up commit.
