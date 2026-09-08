@@ -144,3 +144,16 @@ available: the Woodpecker API's rerun endpoint returned `401`
 unauthorized), and the honest outcome will be recorded here once that
 run completes -- this is not being reported as green until it is
 actually confirmed green on the exact pushed commit.
+
+**Outcome**: the follow-up commit (`efcaaa4`) came back `success` on
+all three Woodpecker checks (`ci`, `mac-automation`, `mac68k`) --
+`nm -u build/sanitize/cb_libc.o | grep cb_libc_dirname_upstream`
+passed cleanly through all three rebuild-and-check cycles this time,
+including the `check-build-modes` cycle that failed on `1c9f28e`. The
+failure did not reproduce against an unchanged source tree, so this
+confirms transient CI-runner nondeterminism on `1c9f28e`, not a real
+bug in this preparation commit or in the dirname veneer itself.
+ECHO-01 preparation is therefore green as of `efcaaa4`, with the
+scope explicitly limited to what this note already describes:
+vendoring plus documentation only, no compile rule, no registration,
+pending `PROGNAME-01`/`STDOUT-01`.
