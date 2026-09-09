@@ -16,9 +16,10 @@
 # reference (work/SOLARIS-01-reference, a28f9ed) used as its own
 # "test-runtime" gate.
 #
-# This script has not yet been executed against a live Solaris 9 guest
-# in this worktree; it is prepared, not qualified. See
-# notes/iterations/SOLARIS-01.md.
+# The worker reports a fresh native PASS on 698541f. Coordinator
+# verification of the source archive, full transcript, and successful
+# toolchain environment remains pending; main integration is not yet
+# accepted. See SOLARIS9.md and notes/iterations/SOLARIS-01.md.
 set -eu
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

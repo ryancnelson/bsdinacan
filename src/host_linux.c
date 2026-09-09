@@ -80,8 +80,9 @@ static struct cb_host_context *host_context_create(void (*entry)(void *),
        compatibility notes. Reconciled from work/SOLARIS-01-reference
        (a28f9ed): a canary there confirmed the original high-stack
        convention resumes correctly in-guest, and that the ordinary
-       base-stack convention crashes under it. Not independently
-       re-verified in this worktree pending guest access. */
+       base-stack convention crashes under it. The worker reports a
+       fresh native runtime PASS on 698541f; coordinator verification
+       of the full source/archive evidence remains pending. */
     context->native.uc_stack.ss_sp = (char *)context->stack + stack_size - 8;
 #else
     context->native.uc_stack.ss_sp = context->stack;
