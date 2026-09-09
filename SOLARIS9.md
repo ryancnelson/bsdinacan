@@ -150,3 +150,21 @@ issues named above
 (`ramfs_open`, `run_pipeline`, `src/vfs.c` path resolution) are real and
 still open on current `main`; they are out of scope for this task and
 not fixed here.
+
+## Verified native invocation
+
+The coordinator has verified the retained native evidence for full commit
+`698541f1ce96df7c600b463875548af6281f446f`; see the final coordinator section
+in `notes/iterations/SOLARIS-01.md` for archive and full-log hashes. The guest
+used `PATH=/usr/local/bin:/usr/ccs/bin:/usr/bin:/usr/sbin`, resolving GCC 3.4.6
+and GNU Make 3.81 from `/usr/local/bin`. From the extracted source directory:
+
+```sh
+PATH=/usr/local/bin:/usr/ccs/bin:/usr/bin:/usr/sbin
+export PATH
+CC=gcc MAKE=make /bin/ksh tools/solaris9-build.sh
+```
+
+The captured run passed the complete shared core and launcher gates and all
+three output assertions. This verifies that candidate's native execution;
+main integration and future automated SOLARIS-02 CI remain separate gates.

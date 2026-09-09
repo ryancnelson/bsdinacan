@@ -463,3 +463,40 @@ a historical result promoted forward. Per `notes/CI.md`'s own
 transition policy, this is manual/serialized acceptance ahead of
 SOLARIS-02's future automated CI; the coordinator owns the actual
 integration decision and any handoff/runbook publication from here.
+
+## Coordinator evidence verification and Mac acceptance
+
+Native-tested commit: `698541f1ce96df7c600b463875548af6281f446f`.
+The retained staged gzip archive has SHA256
+`fd612db0c1c05cf6fd2df66d8b55adcc207af28a7704f0ece2d359281c184325`.
+The coordinator compared all 326 archived regular files byte-for-byte against
+that commit: zero missing, changed or extra files. The remote staged archive
+has the same digest. Staged ISO SHA256:
+`c0e5198b33a03ae9d959966c4fe51f5893c05024a02206551d589fac27a8bbb1`.
+
+Retained full raw console capture SHA256:
+`05c7e0d383480ac1edef0ef3fba30aa857c5990d61b83ad40b03d8c60db9f54b`.
+Cleaned derivative SHA256:
+`4ffdba5d00ba05db787f4a9921b5e885845d086f2cf91f5bc5b21a24fbaf483d`.
+Both are preserved with the source archive, toolchain capture and invocation
+record under the coordinator's SOLARIS-02 worktree in
+`evidence/SOLARIS-01-698541f/`. Hash verification passed. The full log contains
+GCC 3.4.6 and GNU Make 3.81 identity, clean rebuild commands, all core tests,
+launcher tests, and the final Solaris PASS. The successful environment used
+`PATH=/usr/local/bin:/usr/ccs/bin:/usr/bin:/usr/sbin`, `CC=gcc`, `MAKE=make`;
+both compiler and GNU make resolve under `/usr/local/bin`. Guest command:
+`/bin/ksh tools/solaris9-build.sh` from the fresh extracted source directory.
+The script's three output assertions precede its final PASS under `set -eu`.
+
+Independent review of `4060ab01e4cf960eee70b20512867b50e4b26073` found no
+runtime blocker or weakened coverage. #394 (native parent) and #395 (note-only
+child) each passed ci, mac68k and mac-automation. Fresh exact #395 Mac artifact
+passed all 67 records plus ALL PASS in `run-a_8sjg00`; screenshot inspected,
+normal application and guest shutdown verified, disks closed and slot released.
+Elapsed 21.68 seconds. Archive SHA256:
+`c31de39713ec5629a76e9c0eed53be72976c4d603be72675a6984b749e9f6877`.
+
+The subsequent runbook correction changes documentation and source comments
+only; an independent lexical comparison confirmed executable C tokens and
+non-comment shell lines unchanged. Main integration remains subject to the
+coordinator's final exact integration CI and Mac artifact gates.
