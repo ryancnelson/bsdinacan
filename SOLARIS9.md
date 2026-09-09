@@ -1,19 +1,15 @@
 # Solaris 9 SPARC portability gate (integration pending)
 
-Status: **native PASS reported; evidence verification and main integration
-acceptance pending**. The worker reports a fresh native build and runtime
-PASS on `698541f1ce96df7c600b463875548af6281f446f`, which merged main
-`eaff869`. Commit `4060ab01e4cf960eee70b20512867b50e4b26073` only records
-that result. Woodpecker's Linux `ci`, `mac68k`, and `mac-automation` workflows
-succeeded on both commits (#394 and #395 respectively).
-
-The coordinator has not yet verified the staged source archive SHA256,
-full native transcript, and exact successful toolchain environment. These
-must be recovered from the actual run, not inferred from its final PASS
-excerpt. Exact Mac guest acceptance of the shared-source changes and main
-integration also remain pending. See `notes/iterations/SOLARIS-01.md` for
-the worker's chronological record; its earlier preparation-only sections
-are historical.
+Status: **native evidence verified; final main integration pending**.
+The native build and runtime passed at
+`698541f1ce96df7c600b463875548af6281f446f`, containing main `eaff869`.
+The coordinator verified all 326 staged source files against that commit and
+retained the complete raw transcript, hashes and compiler environment. Its
+note-only child `4060ab0` passed all three Woodpecker workflows (#395) and
+fresh Mac acceptance: 67 records, normal shutdown, 21.68 seconds. See
+`notes/iterations/SOLARIS-01.md` for exact evidence; earlier preparation
+sections there are historical. Final integration CI and Mac acceptance remain
+separate gates before main advances.
 
 ## What this adds
 
@@ -78,15 +74,11 @@ incorrectly claimed `VFS-02`/`VFS-03` superseded them; that claim was
 unverified and wrong, and has been corrected here after actually
 reading the current source.
 
-## Build entry point (successful environment still to be recorded)
+## Build entry point
 
-The reported native run used `tools/solaris9-build.sh`. The script defaults
-`CC` to `gcc` and `MAKE` to `make`, requires GNU make, and uses `dirname --`
-while locating the checkout. The exact successful `PATH`, compiler/make
-selection, and invocation have not yet been recorded here. Do not assume
-the guest's default `make` or pathname utilities satisfy those requirements;
-recover the actual working environment from the run before treating this
-as a reproducible invocation.
+Use the verified invocation below. GNU make and the compatible pathname tools
+must resolve through the recorded PATH; do not assume the stock guest defaults.
+The script defaults CC to gcc and MAKE to make.
 
 Uses the Makefile's `CC`/`CPPFLAGS`/`CFLAGS` override points and the added
 `HEAD_STACKFLAGS` override (empty for GCC 3.4.6, which lacks
@@ -102,9 +94,8 @@ assertions the historical reference used as its own `test-runtime`
 gate -- see the script's own comments. Requires GCC 3.4.6, GNU make
 3.81, and `librt` in the guest; see the historical reference's own
 qualification notes for package provenance (Sunfreeware Solaris 9
-SPARC archives). The final native transcript and actual compiler/make
-version output still need to be verified and attached to the acceptance
-record; the historical package description alone does not establish them.
+SPARC archives). The final native transcript and compiler/make version capture are verified
+and identified by hash in the coordinator acceptance record.
 
 `-Ilibc/include` is deliberately **not** added to this script's global
 `CPPFLAGS`: that directory holds private NetBSD-import veneer headers
@@ -136,10 +127,8 @@ compilation unit -- not what the veneer is for.
 
 ## Not claimed
 
-No completed coordinator acceptance, independently verified source archive
-identity, automated Solaris CI gate, or Solaris compiler stack-usage report
-is claimed here. The worker's native PASS is reported above with its pending
-evidence checks.
+Final main integration, automated Solaris CI and a Solaris compiler stack-usage
+report remain pending. Native source identity and execution are verified.
 
 `CB_MAX_PROGRAMS`'s 64-slot capacity, WRITE retry/error semantics, and the
 public ABI are unchanged. Test repairs retain the LP64 bounds assertions,

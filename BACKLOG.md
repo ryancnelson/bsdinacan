@@ -16,14 +16,14 @@ their paths do not overlap.
 **Current assignments:** SOLARIS-01 is frozen at
 `4060ab01e4cf960eee70b20512867b50e4b26073` for independent review and fresh Mac
 acceptance. Claude reports native Solaris PASS for its runtime parent `698541f`;
-coordinator verification and integration remain pending. Claude now owns
+native evidence is now verified; final integration remains pending. Claude now owns
 SOLARIS-02 in a separate worktree based on that dependency commit. Antigravity
 revises FORMAT-01-design. Codex reviews the Solaris port, tests the exact Mac
 artifact, and maintains integration and backlog records.
 
 TEE-STATE-01 is accepted on Linux/Mac with 67 records. TERM-03 is implemented
 at `995f94f` but remains unmerged: pipeline #389 Linux failed in clone setup
-before tests, and final review plus guest qualification remain pending. Keep
+before tests, and guest qualification remains pending; independent code review is clean. Keep
 shared runtime main changes behind the first Solaris qualification.
 
 Solaris testing is required for shared behavior changes under the transition
@@ -946,7 +946,7 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-03 — isolated canonical engine
 
-- **Status:** Implemented at `995f94f`, held for final review and qualification;
+- **Status:** Implemented at `995f94f`, reviewed clean and held for qualification;
   #389 Linux clone setup failed before source execution. TERM-02 is accepted.
   Isolated engine only; current host routing remains unchanged.
 - **Base:** integrated dependency

@@ -61,8 +61,8 @@ terminal fault or complete nonblocking/signal support is claimed.
 SOLARIS-01 is frozen at `4060ab0` for independent review and fresh exact-artifact
 Mac acceptance. Woodpecker #395 passed ci, mac68k and mac-automation. Claude
 reports fresh native Solaris 9 PASS on runtime parent `698541f`, containing the
-current 67-record main; the coordinator is checking source identity and complete
-evidence before integration. This is not yet an accepted main merge.
+current 67-record main; the coordinator has verified source identity and complete
+evidence; final integration CI and Mac gates remain pending. This is not yet an accepted main merge.
 
 Claude is assigned the serialized SOLARIS-02 CI runner in a separate worktree
 based on that frozen dependency. Antigravity is correcting FORMAT-01-design
@@ -71,7 +71,7 @@ and terminal design review are already integrated.
 
 TERM-03 is implemented at `995f94f` but unmerged. Its #389 Linux workflow failed
 in clone setup before source execution; mac68k and mac-automation succeeded.
-Final review and guest qualification remain pending. Keep shared runtime main
+Independent code review is clean; guest qualification remains pending. Keep shared runtime main
 changes behind first Solaris qualification. SIG-01 implementation and actual
 tee import remain blocked on their documented prerequisites.
 
