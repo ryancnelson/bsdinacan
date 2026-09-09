@@ -13,18 +13,21 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
-TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements isolated TERM-03
-from the accepted terminal design; Antigravity audits imported-source provenance.
-Codex coordinates reviews,
-integration, backlog updates and serialized guest acceptance. HEAD-01
-is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
-FWRITE-01 was accepted at `885d83c` with 64 records.
+**Current assignments:** SOLARIS-01 is frozen at
+`4060ab01e4cf960eee70b20512867b50e4b26073` for independent review and fresh Mac
+acceptance. Claude reports native Solaris PASS for its runtime parent `698541f`;
+coordinator verification and integration remain pending. Claude now owns
+SOLARIS-02 in a separate worktree based on that dependency commit. Antigravity
+revises FORMAT-01-design. Codex reviews the Solaris port, tests the exact Mac
+artifact, and maintains integration and backlog records.
 
-Solaris testing is now required for shared behavior changes under the transition
-policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
-coordinate Solaris validation; Claude has claimed SOLARIS-01 for source work
-after the completed HEAD-02 review corrections.
+TEE-STATE-01 is accepted on Linux/Mac with 67 records. TERM-03 is implemented
+at `995f94f` but remains unmerged: pipeline #389 Linux failed in clone setup
+before tests, and final review plus guest qualification remain pending. Keep
+shared runtime main changes behind the first Solaris qualification.
+
+Solaris testing is required for shared behavior changes under the transition
+policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -33,8 +36,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
-- **Status:** Claimed by Claude on `work/SOLARIS-01`; source work follows
-  HEAD-02 review corrections; shared rig ownership/acceptance pending
+- **Status:** In coordinator review at `4060ab0`; native PASS reported at
+  `698541f`, exact Woodpecker #395 all three successful; fresh Mac acceptance
+  and integration pending.
 - **Base:** freshly fetched main
 - **Depends on:** none; existing Linux and Mac gates remain mandatory
 - **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
@@ -64,8 +68,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-02 — serialized exact-commit Solaris CI
 
-- **Status:** Blocked on SOLARIS-01; next Solaris task after integration
-- **Base:** main with accepted SOLARIS-01
+- **Status:** Claimed by Claude; development may proceed against the frozen
+  SOLARIS-01 dependency, integration remains blocked on its acceptance.
+- **Base:** coordinator override `4060ab01e4cf960eee70b20512867b50e4b26073`
 - **Depends on:** SOLARIS-01
 - **Hypothesis:** a trusted CI runner can test an exact source commit in the
   existing guest and reject stale output, missing completion and failed probes.
@@ -80,6 +85,17 @@ independent backlog items while the emulator is occupied.
   untrusted PR code must not receive infrastructure credentials. A skipped,
   unreachable or occupied guest cannot produce a passing Solaris result.
   Record an actual green exact-commit CI run before declaring automation done.
+
+### FORMAT-01-design — bounded signed decimal formatting for uniq
+
+- **Status:** Claimed by Antigravity on `work/FORMAT-01-design`; revision under review.
+- **Base:** existing feature base; preserve the worktree and record its full SHA.
+- **Scope:** own iteration note only; no formatter implementation or uniq import.
+- **Accept:** inspect the pinned cached uniq source and current formatter; specify
+  `%d`, decimal width 1..32, safe INT_MIN conversion, exact unsupported-format
+  errors, positive short-write retries, saved errno, and bounded return-count
+  overflow tests. Record real source hashes and distinguish existing capabilities
+  from missing prerequisites. Follow Solaris and tee priority for implementation.
 
 ### ECHO-01-design — output errors and program identity for unchanged echo
 
@@ -930,7 +946,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-03 — isolated canonical engine
 
-- **Status:** Claimed by Codex on `work/TERM-03`; TERM-02 is accepted.
+- **Status:** Implemented at `995f94f`, held for final review and qualification;
+  #389 Linux clone setup failed before source execution. TERM-02 is accepted.
   Isolated engine only; current host routing remains unchanged.
 - **Base:** integrated dependency
 - **Scope:** deterministic queue/record/erase/EOF transitions without live host

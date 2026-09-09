@@ -56,20 +56,24 @@ fix. The shared portable test observed the old nonempty zero-return failure
 before its guard. These are bounded deterministic callback tests; no real
 terminal fault or complete nonblocking/signal support is claimed.
 
-## Active work after head acceptance
+## Active work, 2026-09-08 evening
 
-HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
-SOLARIS-01. The synthetic tee-state replacement is accepted on Linux/Mac. A Codex
-worker implements the isolated TERM-03 engine after the reviewed TERM-05
-contract correction. Antigravity
-audits import provenance. The reviewed next-utility audit identifies tee as a
-candidate, blocked on real signal disposition and actual command integration. Resetting a global or adding a signal stub is not
-acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
-The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
-the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
-after resolving HEAD-02 review findings. Rig access is verified and the
-coordinator assigned the exclusive Solaris validation slot to Claude; current
-source qualification is still pending. Solaris qualification is pending under notes/CI.md.
+SOLARIS-01 is frozen at `4060ab0` for independent review and fresh exact-artifact
+Mac acceptance. Woodpecker #395 passed ci, mac68k and mac-automation. Claude
+reports fresh native Solaris 9 PASS on runtime parent `698541f`, containing the
+current 67-record main; the coordinator is checking source identity and complete
+evidence before integration. This is not yet an accepted main merge.
+
+Claude is assigned the serialized SOLARIS-02 CI runner in a separate worktree
+based on that frozen dependency. Antigravity is correcting FORMAT-01-design
+against the actual cached uniq source and existing formatter. The import audit
+and terminal design review are already integrated.
+
+TERM-03 is implemented at `995f94f` but unmerged. Its #389 Linux workflow failed
+in clone setup before source execution; mac68k and mac-automation succeeded.
+Final review and guest qualification remain pending. Keep shared runtime main
+changes behind first Solaris qualification. SIG-01 implementation and actual
+tee import remain blocked on their documented prerequisites.
 
 ## What this is
 
