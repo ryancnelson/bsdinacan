@@ -494,8 +494,17 @@ size_t cb_libc_fread(void *buffer, size_t size, size_t count,
     while (done < total) {
         size_t request = total - done;
         cb_ssize_t result;
+#if SIZE_MAX > INT64_MAX
+        /* Tautological on ILP32 (e.g. Solaris 9 SPARC): a 32-bit
+           size_t can never exceed INT64_MAX. Guarded, matching
+           cb_libc_fwrite's identical guard below, to avoid an
+           always-false-comparison diagnostic on those builds -- this
+           is the exact class of warning already observed (unguarded)
+           in the equivalent checks in src/core.c's api_read/api_write
+           when building for a 32-bit target. */
         if ((uint64_t)request > (uint64_t)INT64_MAX)
             request = (size_t)INT64_MAX;
+#endif
         result = read_input(&ref, (unsigned char *)buffer + done, request);
         if (result <= 0)
             break;

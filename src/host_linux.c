@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef CANNEDBSD_SOLARIS9
+#include <sys/time.h> /* gethrtime() */
+#endif
 #include <ucontext.h>
 #include <unistd.h>
 
@@ -71,8 +74,21 @@ static struct cb_host_context *host_context_create(void (*entry)(void *),
         free(context);
         return NULL;
     }
+#ifdef CANNEDBSD_SOLARIS9
+    /* Solaris 9's original makecontext ABI (pre-Solaris 10) takes the
+       high stack address, not the base -- see Oracle's swapcontext(3C)
+       compatibility notes. Reconciled from work/SOLARIS-01-reference
+       (a28f9ed): a canary there confirmed the original high-stack
+       convention resumes correctly in-guest, and that the ordinary
+       base-stack convention crashes under it. The worker reports a
+       fresh native runtime PASS on 698541f; coordinator verification
+       of the full source/archive evidence remains pending. */
+    context->native.uc_stack.ss_sp = (char *)context->stack + stack_size - 8;
+#else
     context->native.uc_stack.ss_sp = context->stack;
+#endif
     context->native.uc_stack.ss_size = context->stack_size;
+    context->native.uc_stack.ss_flags = 0;
     context->native.uc_link = NULL;
     makecontext(&context->native, (void (*)(void))host_context_trampoline, 2,
                 (uintptr_t)entry, (uintptr_t)arg);
@@ -141,11 +157,19 @@ static cb_ssize_t host_console_write(int stream, const void *buffer,
 
 static uint64_t host_monotonic_millis(void)
 {
+#ifdef CANNEDBSD_SOLARIS9
+    /* Solaris 9's clock_gettime(CLOCK_MONOTONIC, ...) support predates
+       this era's libc expectations; gethrtime() is the documented
+       monotonic nanosecond source on this platform. Reconciled from
+       work/SOLARIS-01-reference (a28f9ed). */
+    return (uint64_t)gethrtime() / UINT64_C(1000000);
+#else
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
         return 0;
     return (uint64_t)now.tv_sec * UINT64_C(1000) +
            (uint64_t)now.tv_nsec / UINT64_C(1000000);
+#endif
 }
 
 static uint64_t host_wall_clock_millis(void)

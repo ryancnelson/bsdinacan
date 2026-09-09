@@ -2813,12 +2813,35 @@ static int overflowprobe_main(const struct cb_api_v1 *api, int argc,
                            CB_O_RDWR | CB_O_CREAT | CB_O_TRUNC, 0600);
     if (descriptor < 0)
         return 191;
+#if SIZE_MAX > INT64_MAX
+    /* Only reachable on a host where size_t can actually hold a value
+       exceeding INT64_MAX (e.g. LP64 Linux) -- exercises api_read's/
+       api_write's own INT64_MAX bounds rejection, which must fire
+       before dispatch to RAMFS with this 1-byte buffer against a
+       wildly mismatched huge count. These are in-process VFS calls,
+       not host syscalls. */
     if (api->read(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 192;
     if (api->write(descriptor, &byte, SIZE_MAX) != -1 ||
         api->get_errno() != CB_EINVAL)
         return 193;
+#else
+    /* On ILP32, no size_t count can exceed INT64_MAX. The original
+       test read the empty RAMFS file, received EOF, and returned 192
+       before reaching its huge-count write; it did not observe an
+       out-of-bounds access. Do not pass a huge write count against this
+       1-byte buffer. Instead exercise a representable offset boundary:
+       cb_off_t is fixed-width 64-bit, so SIZE_MAX fits, and a bounded
+       read past the empty file's end must return EOF. */
+    if (api->lseek(descriptor, (cb_off_t)SIZE_MAX, CB_SEEK_SET) !=
+        (cb_off_t)SIZE_MAX)
+        return 192;
+    if (api->read(descriptor, &byte, sizeof(byte)) != 0)
+        return 193;
+    if (api->lseek(descriptor, 0, CB_SEEK_SET) != 0)
+        return 193;
+#endif
     if (api->lseek(descriptor, INT64_MAX, CB_SEEK_SET) != INT64_MAX ||
         api->lseek(descriptor, 1, CB_SEEK_CUR) != -1 ||
         api->get_errno() != CB_EINVAL)
@@ -3035,13 +3058,23 @@ static int yesprobe_main(const struct cb_api_v1 *api, int argc,
     int descriptors[2];
     char *yes_argv[] = {(char *)"yes", (char *)"ok", NULL};
     char *reader_argv[] = {(char *)"yesreader", NULL};
-    struct cb_spawn_action_v1 yes_actions[3] = {{0}};
-    struct cb_spawn_action_v1 reader_actions[3] = {{0}};
+    /* Zero-initialized via memset below, not a static initializer:
+       GCC 3.4.6 (found via a real Solaris 9 guest build) warns on this
+       array-of-structs zero-init either way -- "missing braces around
+       initializer" for the single-brace `= {0}` form, and "missing
+       initializer" (for the nested struct's remaining fields) for the
+       double-brace `= {{0}}` form. memset is unambiguous and
+       warning-free on every pinned toolchain (Linux, Retro68 Mac68k,
+       this guest). */
+    struct cb_spawn_action_v1 yes_actions[3];
+    struct cb_spawn_action_v1 reader_actions[3];
     cb_pid_t yes_pid;
     cb_pid_t reader_pid;
     int yes_status;
     int reader_status;
     size_t index;
+    memset(yes_actions, 0, sizeof(yes_actions));
+    memset(reader_actions, 0, sizeof(reader_actions));
     (void)argc;
     (void)argv;
     if (api->pipe(descriptors) < 0)
@@ -3087,10 +3120,13 @@ static int stdioepipeprobe_main(const struct cb_api_v1 *api, int argc,
 {
     int descriptors[2];
     char *child_argv[] = {(char *)"stdioprobe", (char *)"pipe", NULL};
-    struct cb_spawn_action_v1 actions[3] = {{0}};
+    /* memset, not a static initializer -- see yesprobe_main's own
+       comment above for why. */
+    struct cb_spawn_action_v1 actions[3];
     cb_pid_t child;
     int status;
     size_t index;
+    memset(actions, 0, sizeof(actions));
     (void)argc;
     (void)argv;
 
@@ -3711,21 +3747,32 @@ static int truncateprobe_main(const struct cb_api_v1 *api, int argc,
                    "allocation failure preserves size, data, and offset");
     resize_failure_countdown = 0;
     resize_request_size = 0;
-    if (sizeof(size_t) < sizeof(cb_off_t)) {
-        TRUNCATE_CHECK(api->ftruncate(fd, INT64_MAX) == -1 &&
-                       api->get_errno() == CB_EINVAL && resize_request_size == 0 &&
-                       api->truncate(path, INT64_MAX) == -1 &&
-                       api->get_errno() == CB_EINVAL && resize_request_size == 0,
-                       "length wider than size_t never reaches allocator");
-        TRUNCATE_CHECK(api->ftruncate(fd, (cb_off_t)SIZE_MAX) == -1 &&
-                       api->get_errno() == CB_ENOMEM && resize_request_size == SIZE_MAX,
-                       "maximum representable length does not wrap capacity growth");
-    } else {
-        TRUNCATE_CHECK(api->truncate(path, INT64_MAX) == -1 &&
-                       api->get_errno() == CB_ENOMEM &&
-                       (uint64_t)resize_request_size >= (uint64_t)INT64_MAX,
-                       "capacity arithmetic does not wrap before failed allocation");
-    }
+    /* A runtime `if (sizeof(size_t) < sizeof(cb_off_t))` still requires
+       a C compiler to fully type-check *both* branches, even though
+       only one is ever reachable on a given platform: on ILP32,
+       (uint64_t)resize_request_size >= (uint64_t)INT64_MAX in the
+       LP64-only branch below is still a compile-time tautology GCC
+       3.4.6 warns on (its own range analysis sees through the cast,
+       to resize_request_size's declared 32-bit size_t range) --
+       confirmed via a real Solaris 9 guest build under -Werror, not
+       assumed. A preprocessor #if actually excludes the unreachable
+       branch's code from compilation on that platform, unlike a
+       runtime if/else. */
+#if SIZE_MAX > INT64_MAX
+    TRUNCATE_CHECK(api->truncate(path, INT64_MAX) == -1 &&
+                   api->get_errno() == CB_ENOMEM &&
+                   (uint64_t)resize_request_size >= (uint64_t)INT64_MAX,
+                   "capacity arithmetic does not wrap before failed allocation");
+#else
+    TRUNCATE_CHECK(api->ftruncate(fd, INT64_MAX) == -1 &&
+                   api->get_errno() == CB_EINVAL && resize_request_size == 0 &&
+                   api->truncate(path, INT64_MAX) == -1 &&
+                   api->get_errno() == CB_EINVAL && resize_request_size == 0,
+                   "length wider than size_t never reaches allocator");
+    TRUNCATE_CHECK(api->ftruncate(fd, (cb_off_t)SIZE_MAX) == -1 &&
+                   api->get_errno() == CB_ENOMEM && resize_request_size == SIZE_MAX,
+                   "maximum representable length does not wrap capacity growth");
+#endif
     TRUNCATE_CHECK(api->fstat(reader, &status) == 0 && status.size == 11 &&
                    api->lseek(reader, 0, CB_SEEK_SET) == 0 &&
                    api->read(reader, data, sizeof(data)) == 11 &&
