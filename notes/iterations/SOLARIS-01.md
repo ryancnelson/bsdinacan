@@ -401,3 +401,65 @@ this branch's base (now including `STAT-01` and the corrected
 suite), and the coordinator explicitly authorized merging fresh
 `origin/main` into this branch before that qualification is asserted.
 That merge and re-test follow next, recorded separately below.
+
+## Final qualification: merged `origin/main`, genuine fresh PASS
+
+Merged fresh `origin/main` (`eaff869`, bringing in `STAT-01`, the
+corrected `HEAD-02` with its full `31`-case suite, `tee_state_probe.c`,
+and other work landed since this branch's own base) into
+`work/SOLARIS-01` as a real merge commit (`698541f`, `git merge
+origin/main --no-edit`, auto-merged cleanly -- no conflicts in
+`Makefile` or `tests/test_core.c`). Re-verified before pushing: `make
+test` on the pinned Linux CI toolchain unchanged; `bash
+tests/test_publication.sh` (the real, git-based check, not the
+`.git`-less rsync-copy artifact noted earlier) passes cleanly; the
+pinned Retro68 Mac68k build still succeeds. Pushed; Woodpecker's `ci`,
+`mac-automation`, and `mac68k` all report `success` on `698541f`.
+
+Staged this exact merged commit onto the guest the same way as every
+round before (`ustar` tarball -> Rock-Ridge ISO -> `locking:off` media
+swap -> guest-side `mount`/`cpio` -> `tools/solaris9-build.sh`). Every
+source file newly brought in by the merge (`tests/tee_state_probe.c`,
+the rewritten `tests/head_probe.c`, `libc/include/sys/stat.h`, etc.)
+compiled cleanly on GCC 3.4.6 with no new warnings or errors -- the
+five fixes already made in this branch were sufficient; no sixth
+guest-specific bug surfaced from the newly merged content. A complete,
+uninterrupted run produced this exact, fresh output, captured directly
+from `/var/tmp/sol01merged.log` on the guest immediately after the run
+(paths confirmed absolute, not relative to a stale shell `cwd`, since
+this persistent console session's working directory had drifted from
+an earlier round):
+
+```
+make: warning:  Clock skew detected.  Your build may be incomplete.
+Orequired getopt tests passed
+argv ownership tests passed
+fread tests passed
+file ownership tests passed
+stdin tests passed
+clockloss test passed
+runnable timeout test passed
+all core tests passed
+launcher test passed
+build/bsdinacan:        ELF 32-bit MSB executable SPARC Version 1, dynamically linked, not stripped
+SOLARIS9_CANNEDBSD_TEST=PASS
+```
+
+Confirmed via absolute-path `ls` on the guest (not the drifted relative
+`cwd`): `/var/tmp/sol01merged/build/test_core` (`960028` bytes) and
+`/var/tmp/sol01merged/build/bsdinacan` (`308368` bytes) both exist,
+both freshly dated to this run. Guest: `SunOS solaris 5.9 Generic sun4m
+sparc SUNW,SPARCstation-5`; guest clock read `2026-09-05` at capture
+time (the same pre-existing clock skew noted throughout this branch --
+it affects only the displayed timestamp, not source identity, which is
+confirmed by commit `698541f` being the exact content staged for this
+specific run).
+
+**This is the final Solaris qualification evidence for this task**:
+exact commit (`698541f`), exact guest (the coordinator's assigned
+Solaris 9 sun4m rig), exact fresh transcript above, `SOLARIS9_CANNEDBSD_TEST=PASS`,
+covering the current merged source -- not the older pre-merge base, not
+a historical result promoted forward. Per `notes/CI.md`'s own
+transition policy, this is manual/serialized acceptance ahead of
+SOLARIS-02's future automated CI; the coordinator owns the actual
+integration decision and any handoff/runbook publication from here.
