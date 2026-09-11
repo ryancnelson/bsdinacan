@@ -104,3 +104,31 @@ review and coordinator-owned fresh Mac acceptance are pending. Solaris qualifica
 pending under the required-target policy; the coordinator prioritizes that
 platform gate before merging new shared runtime work. No guest was controlled
 or guest result claimed by this worker.
+
+## Accepted Solaris port integration
+
+At the coordinator's request, merge accepted main
+`adf62f122a675706f0df7681b6cfb0ee2f039062` into the preserved feature `995f94f`.
+The automatic merge had no conflicts. The Solaris stdint adapter, literal
+Solaris 9 context-stack convention, monotonic clock, ILP32 guards/tests and
+HEAD_STACKFLAGS override are retained. Relative to that main, the only code
+changes remain the original isolated engine, its shared test and build/guest
+wiring. Source/probe hashes above are unchanged; no live host routing is added.
+
+The failed feature #389 is retained as infrastructure evidence: Linux stopped
+at clone setup with `could not download plugin-git, binary for this os/arch not
+found`, before source execution. Both Mac workflows succeeded. No empty commit
+or authentication change was used to retry it; this required integration will
+receive fresh exact CI. The merged protocol tests passed all 18 tests, retaining
+68 records and the 64-program limit. After interruption, the original combined
+run had no retained source/CI result, so it was not counted as passing. A fresh
+export of this merged tree passed the focused terminal engine test and complete
+`make LDLIBS=-lucontext SANITIZE_CC=clang ci` (exit 0) on 2026-09-10, using the
+same pinned agent image with GCC 14.2.0 and Clang 20.1.8. Normal, sanitizer,
+source-boundary, build-mode, publication and analyzer checks completed. Byte
+comparison confirmed the engine/Mac wiring unchanged from reviewed `995f94f`
+and accepted Solaris runtime/build files unchanged from `adf62f1`.
+
+Exact pushed-commit CI is pending at this note revision. Mac acceptance and
+native Solaris qualification require separately assigned coordinator slots;
+no old platform result is promoted to acceptance of this new engine.

@@ -105,3 +105,16 @@ pushed CI results are recorded at handoff.
 No guest result is claimed here. Exact-artifact Mac execution is coordinator
 owned. Solaris acceptance remains pending integration under `notes/CI.md`; its
 slot belongs to the separately assigned Solaris worker.
+
+## Coordinator integration acceptance
+
+Reviewed integration `1f906a876998567cbe686eeadc454eb31e24c3e9` passed exact
+Woodpecker #376 ci, mac68k and mac-automation. Fresh Basilisk II run
+`run-on2elfqu` passed all 67 records, including teestate and all prior 66.
+Archive SHA256:
+`a6ec2bca4d2e53d5bb2bb78c0d75cf361c32dde222aeff2cd3cc08cf0a740745`.
+The complete fresh transcript and decoded screenshot were inspected. Receipt
+confirms normal application and guest-disk closure; runner confirms slot
+release after 25.87 seconds from cold start. This accepts the synthetic state
+proof on Linux/Mac, not actual tee or signals. Solaris remains pending
+integration under notes/CI.md.

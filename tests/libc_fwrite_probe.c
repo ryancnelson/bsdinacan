@@ -130,7 +130,17 @@ int main(int argc, char **argv)
     }
 
     if (strcmp(mode, "invalid_streams") == 0) {
-        FILE *bad_stream = (FILE *)&argc;
+        /* Deliberately synthesize a garbage, non-NULL FILE* to exercise
+           fwrite's own validity check -- this is never dereferenced as
+           a real FILE, only compared/passed through, so there is no
+           actual aliasing here. The intermediate (void *) cast avoids
+           GCC 3.4.6's own "type-punning to incomplete type" warning
+           for a direct cast to a pointer-to-incomplete-type (FILE is
+           opaque in this project's headers); found via a real Solaris
+           9 guest build under -Werror, not assumed -- no other pinned
+           toolchain in this project (Linux, Retro68 Mac68k) warns on
+           this line. */
+        FILE *bad_stream = (FILE *)(void *)&argc;
         errno = ENOENT;
         if (fwrite("a", 1, 1, bad_stream) != 0 || errno != EINVAL) return 25;
         return 0;

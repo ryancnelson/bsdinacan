@@ -13,18 +13,21 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** Claude implements SOLARIS-01 after accepted HEAD-02.
-A Codex worker repairs the synthetic TEE-STATE-01 fixture in an isolated
-review worktree; Antigravity audits imported-source provenance.
-Codex coordinates reviews,
-integration, backlog updates and serialized guest acceptance. HEAD-01
-is accepted at `e65e36f` with 65 fresh Mac records, preserving all prior cases;
-FWRITE-01 was accepted at `885d83c` with 64 records.
+**Current assignments:** SOLARIS-01 is frozen at
+`4060ab01e4cf960eee70b20512867b50e4b26073` for independent review and fresh Mac
+acceptance. Claude reports native Solaris PASS for its runtime parent `698541f`;
+native evidence is now verified; final integration remains pending. Claude now owns
+SOLARIS-02 in a separate worktree based on that dependency commit. Antigravity
+revises FORMAT-01-design. Codex reviews the Solaris port, tests the exact Mac
+artifact, and maintains integration and backlog records.
 
-Solaris testing is now required for shared behavior changes under the transition
-policy in `notes/CI.md`. Existing assigned workers retain their IDs and must
-coordinate Solaris validation; Claude has claimed SOLARIS-01 for source work
-after the completed HEAD-02 review corrections.
+TEE-STATE-01 is accepted on Linux/Mac with 67 records. TERM-03 is implemented
+at `995f94f` but remains unmerged: pipeline #389 Linux failed in clone setup
+before tests, and guest qualification remains pending; independent code review is clean. Keep
+shared runtime main changes behind the first Solaris qualification.
+
+Solaris testing is required for shared behavior changes under the transition
+policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
 
 Mac guest acceptance is a serialized gate rather than a worker claim. After a
 required `mac68k` build succeeds, the coordinator assigns one agent to test that
@@ -33,8 +36,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
-- **Status:** Claimed by Claude on `work/SOLARIS-01`; source work follows
-  HEAD-02 review corrections; shared rig ownership/acceptance pending
+- **Status:** In coordinator review at `4060ab0`; native PASS reported at
+  `698541f`, exact Woodpecker #395 all three successful; fresh Mac acceptance
+  and integration pending.
 - **Base:** freshly fetched main
 - **Depends on:** none; existing Linux and Mac gates remain mandatory
 - **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
@@ -64,8 +68,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-02 — serialized exact-commit Solaris CI
 
-- **Status:** Blocked on SOLARIS-01; next Solaris task after integration
-- **Base:** main with accepted SOLARIS-01
+- **Status:** Claimed by Claude; development may proceed against the frozen
+  SOLARIS-01 dependency, integration remains blocked on its acceptance.
+- **Base:** coordinator override `4060ab01e4cf960eee70b20512867b50e4b26073`
 - **Depends on:** SOLARIS-01
 - **Hypothesis:** a trusted CI runner can test an exact source commit in the
   existing guest and reject stale output, missing completion and failed probes.
@@ -80,6 +85,17 @@ independent backlog items while the emulator is occupied.
   untrusted PR code must not receive infrastructure credentials. A skipped,
   unreachable or occupied guest cannot produce a passing Solaris result.
   Record an actual green exact-commit CI run before declaring automation done.
+
+### FORMAT-01-design — bounded signed decimal formatting for uniq
+
+- **Status:** Claimed by Antigravity on `work/FORMAT-01-design`; revision under review.
+- **Base:** existing feature base; preserve the worktree and record its full SHA.
+- **Scope:** own iteration note only; no formatter implementation or uniq import.
+- **Accept:** inspect the pinned cached uniq source and current formatter; specify
+  `%d`, decimal width 1..32, safe INT_MIN conversion, exact unsupported-format
+  errors, positive short-write retries, saved errno, and bounded return-count
+  overflow tests. Record real source hashes and distinguish existing capabilities
+  from missing prerequisites. Follow Solaris and tee priority for implementation.
 
 ### ECHO-01-design — output errors and program identity for unchanged echo
 
@@ -336,7 +352,8 @@ must not implement a blocked item merely because its design looks obvious.
 
 ### NET-01 — mock connect-only byte stream
 
-- **Status:** Blocked on IO-01
+- **Status:** Deferred behind current portability and utility milestones;
+  IO-01 is accepted, so polling is no longer a dependency blocker
 - **Base:** integrated dependency
 - **Hypothesis:** a socket-like descriptor over a mock transport can establish
   portable stream semantics before any real host network adapter exists.
@@ -744,7 +761,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### IO-01-design — polling and deadline contract
 
-- **Status:** Claimed by Antigravity; review corrections in progress
+- **Status:** Superseded historical proposal; accepted IO-01 at 819a964
+  supplies the polling contract. The unmerged old design is not itself accepted.
 - **Base:** main
 - **Hypothesis:** explicit readiness and unavailable-clock behavior can unblock
   deterministic descriptor polling without host descriptors or busy waiting.
@@ -928,7 +946,9 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-03 — isolated canonical engine
 
-- **Status:** Blocked on TERM-02
+- **Status:** Implemented at `995f94f`, reviewed clean and held for qualification;
+  #389 Linux clone setup failed before source execution. TERM-02 is accepted.
+  Isolated engine only; current host routing remains unchanged.
 - **Base:** integrated dependency
 - **Scope:** deterministic queue/record/erase/EOF transitions without live host
   routing, following the accepted terminal design's fixed storage bounds.
@@ -946,7 +966,8 @@ with an ID, dependencies, red test, and acceptance boundary above.
 
 ### TERM-05-design — bounded host output service
 
-- **Status:** Ready for design only
+- **Status:** Design review complete at a283eef; exact #380 all three checks
+  passed. See TERM-05-design-review note; implementation remains separately gated.
 - **Base:** main
 - **Scope:** resolve the explicitly open output progress, completion and
   cancellation contract before scheduler or raw-adapter implementation.
@@ -1428,10 +1449,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-STATE-01 — synthetic proof of isolated module state
 
-- **Status:** Repair assigned to Codex on `work/TEE-STATE-01-review`; original
-  Antigravity branch frozen after repeated fixture setup failures. Antigravity
-  completed a read-only lifecycle audit. Reviewed replacement df00ae8 is
-  pending exact integration CI and fresh 67-record Mac acceptance.
+- **Status:** Done on Linux/Mac; reviewed replacement integrated as 1f906a8,
+  exact #376 all three checks and fresh run-on2elfqu 67-record acceptance.
+  Solaris qualification pending; original faulty worker branch preserved.
 - **Base:** main
 - **Depends on:** TEE-STATE-01-design
 - **Scope:** implement only the reviewed executor wrapper with a synthetic
@@ -1524,7 +1544,8 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### UPSTREAM-AUDIT-01 — verify imported-source provenance and wiring
 
-- **Status:** Claimed by Antigravity on `work/UPSTREAM-AUDIT-01`; documentation only
+- **Status:** Reviewed audit integrated; 18 declared NetBSD source hashes
+  independently verified, no source mismatch found; documentation only
 - **Base:** freshly fetched main
 - **Scope:** inventory actual imported files versus cannedBSD-owned commands,
   local hashes and pinned revisions, retained license notices, symbol renaming,

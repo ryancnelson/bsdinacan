@@ -1132,10 +1132,17 @@ static cb_ssize_t api_read(int descriptor, void *buffer, size_t count)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+#if SIZE_MAX > INT64_MAX
+    /* On a 32-bit size_t host (e.g. ILP32 Solaris 9 SPARC), size_t can
+       never exceed INT64_MAX, making this comparison a compile-time
+       tautology; guard it so it only exists where it can actually be
+       reached, rather than fire an always-false-comparison diagnostic
+       on 32-bit builds under a strict warnings-as-errors toolchain. */
     if (count > INT64_MAX) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+#endif
     if (count != 0 && buffer == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
@@ -1153,10 +1160,13 @@ static cb_ssize_t api_write(int descriptor, const void *buffer, size_t count)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+#if SIZE_MAX > INT64_MAX
+    /* See api_read's identical guard above: a tautology on ILP32. */
     if (count > INT64_MAX) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;
     }
+#endif
     if (count != 0 && buffer == NULL) {
         cb_task_set_error(task, CB_EINVAL);
         return -1;

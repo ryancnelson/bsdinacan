@@ -4,6 +4,18 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Accepted synthetic tee-state proof, 2026-09-08
+
+Integration `1f906a876998567cbe686eeadc454eb31e24c3e9` passed independent review
+and exact Woodpecker #376 ci, mac68k and mac-automation. Fresh Basilisk II
+`run-on2elfqu` passed all 67 records, retaining the prior 66. The full transcript
+and screenshot were inspected; normal application/guest shutdown and slot
+release completed in 25.87 seconds. Archive SHA256:
+`a6ec2bca4d2e53d5bb2bb78c0d75cf361c32dde222aeff2cd3cc08cf0a740745`.
+The synthetic fixture verifies execution-local list state, exact creation
+failure cleanup, immediate exit cleanup, exec and live-task teardown. It does
+not import tee or implement signals. Solaris qualification remains pending.
+
 ## Accepted head fault characterization, 2026-09-08
 
 Integration `70bedbbe86c9a09d5a39667c3532407c7d104204` passed independent review
@@ -44,19 +56,24 @@ fix. The shared portable test observed the old nonempty zero-return failure
 before its guard. These are bounded deterministic callback tests; no real
 terminal fault or complete nonblocking/signal support is claimed.
 
-## Active work after head acceptance
+## Active work, 2026-09-08 evening
 
-HEAD-02 is accepted on Linux and Mac as recorded above. Claude implements
-SOLARIS-01. Reviewed synthetic tee-state replacement df00ae8 is pending combined CI and
-fresh 67-record Mac acceptance; a Codex worker completed its repair. Antigravity
-audits import provenance. The reviewed next-utility audit identifies tee as a
-candidate, blocked on real signal disposition and per-execution list state. Resetting a global or adding a signal stub is not
-acceptance. WRITE-02 is accepted. STAT-01 is accepted on Linux and Mac as recorded above.
-The SIG-01 design b2425a2 is reviewed; implementation remains unassigned behind
-the Solaris integration priority. Claude has claimed SOLARIS-01 for source work
-after resolving HEAD-02 review findings. Rig access is verified and the
-coordinator assigned the exclusive Solaris validation slot to Claude; current
-source qualification is still pending. Solaris qualification is pending under notes/CI.md.
+SOLARIS-01 is frozen at `4060ab0` for independent review and fresh exact-artifact
+Mac acceptance. Woodpecker #395 passed ci, mac68k and mac-automation. Claude
+reports fresh native Solaris 9 PASS on runtime parent `698541f`, containing the
+current 67-record main; the coordinator has verified source identity and complete
+evidence; final integration CI and Mac gates remain pending. This is not yet an accepted main merge.
+
+Claude is assigned the serialized SOLARIS-02 CI runner in a separate worktree
+based on that frozen dependency. Antigravity is correcting FORMAT-01-design
+against the actual cached uniq source and existing formatter. The import audit
+and terminal design review are already integrated.
+
+TERM-03 is implemented at `995f94f` but unmerged. Its #389 Linux workflow failed
+in clone setup before source execution; mac68k and mac-automation succeeded.
+Independent code review is clean; guest qualification remains pending. Keep shared runtime main
+changes behind first Solaris qualification. SIG-01 implementation and actual
+tee import remain blocked on their documented prerequisites.
 
 ## What this is
 
@@ -82,7 +99,7 @@ it is not done.
 ## Solaris portability priority, 2026-09-08
 
 The user requires the Solaris 9 SPARC rig for ongoing testing and CI. SOLARIS-01
-is the highest-priority unassigned task; SOLARIS-02 follows with serialized CI.
+is claimed by Claude as the highest-priority portability task; SOLARIS-02 follows with serialized CI.
 The earlier local port is preserved as reference, but current-main Solaris
 acceptance is pending integration. Existing assigned workers continue their IDs
 and report that outstanding gate under `notes/CI.md`; Linux and Mac requirements
@@ -115,7 +132,7 @@ The [PORT32-01 audit](notes/iterations/PORT32-01.md) is historical at `731b447`;
 its reviewed RAMFS analysis is retained, with exploratory stack claims bounded.
 
 **Current assignments:** Claude implements SOLARIS-01; HEAD-02 is accepted
-on Linux and Mac, with Solaris qualification pending. A Codex worker repairs TEE-STATE-01 in a separate worktree; Antigravity
+on Linux and Mac, with Solaris qualification pending. TEE-STATE-01 is accepted on Linux/Mac. A Codex worker implements the isolated TERM-03 engine; Antigravity
 audits imported-source provenance after completing the lifecycle trace. Codex
 coordinates independent reviews,
 integration, backlog updates and serialized exact-artifact guest acceptance. See `BACKLOG.md`
