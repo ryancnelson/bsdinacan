@@ -18,7 +18,7 @@ source/log verification, exact #398 all-three CI and fresh 67-record Mac
 acceptance. Claude implements SOLARIS-02, correcting reviewed runner failures
 with offline controls before further live staging. Codex advances TERM-03
 against accepted Solaris main and coordinates review/qualification. Antigravity
-writes SIG-01-matrix; FORMAT-01-design is frozen for review.
+writes SIG-01-matrix; FORMAT-01-design is reviewed; implementation remains a later utility prerequisite.
 
 TEE-STATE-01 is accepted with the 67-record runtime. TERM-03 adds a proposed
 68th record and has independent code review; old #389 Linux failed in clone
@@ -97,7 +97,8 @@ independent backlog items while the emulator is occupied.
 
 ### FORMAT-01-design — bounded signed decimal formatting for uniq
 
-- **Status:** Claimed by Antigravity on `work/FORMAT-01-design`; revision under review.
+- **Status:** Done; reviewed design `fda45c5` with exact #404 all-three CI success.
+  Runtime implementation remains unassigned after signal/tee priority.
 - **Base:** existing feature base; preserve the worktree and record its full SHA.
 - **Scope:** own iteration note only; no formatter implementation or uniq import.
 - **Accept:** inspect the pinned cached uniq source and current formatter; specify

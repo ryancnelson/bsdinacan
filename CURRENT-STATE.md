@@ -79,8 +79,8 @@ further live staging. Automated Solaris CI is not accepted yet.
 TERM-03 `995f94f` passed independent code review. Its old #389 Linux clone
 failure remains recorded; the worker is now integrating accepted Solaris main
 in the feature tree for fresh exact CI and native/Mac qualification.
-Antigravity writes the SIG-01 acceptance matrix; FORMAT-01-design is frozen
-for review. Actual signal support and tee import remain future work.
+Antigravity writes the SIG-01 acceptance matrix; FORMAT-01-design `fda45c5` is reviewed with exact #404 all-three CI success;
+its bounded signed-decimal conversion and falsifiable tests remain unimplemented. Actual signal support and tee import remain future work.
 
 ## What this is
 
