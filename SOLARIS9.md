@@ -1,6 +1,6 @@
-# Solaris 9 SPARC portability gate (integration pending)
+# Solaris 9 SPARC portability gate
 
-Status: **native evidence verified; final main integration pending**.
+Status: **accepted on main `adf62f1`**.
 The native build and runtime passed at
 `698541f1ce96df7c600b463875548af6281f446f`, containing main `eaff869`.
 The coordinator verified all 326 staged source files against that commit and
@@ -8,8 +8,8 @@ retained the complete raw transcript, hashes and compiler environment. Its
 note-only child `4060ab0` passed all three Woodpecker workflows (#395) and
 fresh Mac acceptance: 67 records, normal shutdown, 21.68 seconds. See
 `notes/iterations/SOLARIS-01.md` for exact evidence; earlier preparation
-sections there are historical. Final integration CI and Mac acceptance remain
-separate gates before main advances.
+sections there are historical. Final integration #398 passed all three CI workflows and a fresh
+67-record Mac run with verified normal shutdown in 22.16 seconds.
 
 ## What this adds
 
@@ -127,8 +127,9 @@ compilation unit -- not what the veneer is for.
 
 ## Not claimed
 
-Final main integration, automated Solaris CI and a Solaris compiler stack-usage
-report remain pending. Native source identity and execution are verified.
+Automated Solaris CI and a Solaris compiler stack-usage report are not
+provided by this milestone. Native source identity, execution and final main
+integration are verified.
 
 `CB_MAX_PROGRAMS`'s 64-slot capacity, WRITE retry/error semantics, and the
 public ABI are unchanged. Test repairs retain the LP64 bounds assertions,
@@ -155,5 +156,5 @@ CC=gcc MAKE=make /bin/ksh tools/solaris9-build.sh
 ```
 
 The captured run passed the complete shared core and launcher gates and all
-three output assertions. This verifies that candidate's native execution;
-main integration and future automated SOLARIS-02 CI remain separate gates.
+three output assertions. This native runtime was integrated on main `adf62f1` after exact CI and
+Mac acceptance. Automated SOLARIS-02 CI remains a separate unfinished gate.

@@ -13,18 +13,16 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** SOLARIS-01 is frozen at
-`4060ab01e4cf960eee70b20512867b50e4b26073` for independent review and fresh Mac
-acceptance. Claude reports native Solaris PASS for its runtime parent `698541f`;
-native evidence is now verified; final integration remains pending. Claude now owns
-SOLARIS-02 in a separate worktree based on that dependency commit. Antigravity
-revises FORMAT-01-design. Codex reviews the Solaris port, tests the exact Mac
-artifact, and maintains integration and backlog records.
+**Current assignments:** SOLARIS-01 is accepted on main `adf62f1` with native
+source/log verification, exact #398 all-three CI and fresh 67-record Mac
+acceptance. Claude implements SOLARIS-02, correcting reviewed runner failures
+with offline controls before further live staging. Codex advances TERM-03
+against accepted Solaris main and coordinates review/qualification. Antigravity
+writes SIG-01-matrix; FORMAT-01-design is frozen for review.
 
-TEE-STATE-01 is accepted on Linux/Mac with 67 records. TERM-03 is implemented
-at `995f94f` but remains unmerged: pipeline #389 Linux failed in clone setup
-before tests, and guest qualification remains pending; independent code review is clean. Keep
-shared runtime main changes behind the first Solaris qualification.
+TEE-STATE-01 is accepted with the 67-record runtime. TERM-03 adds a proposed
+68th record and has independent code review; old #389 Linux failed in clone
+setup before tests. Its merged feature requires fresh CI and Solaris/Mac gates.
 
 Solaris testing is required for shared behavior changes under the transition
 policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
@@ -36,9 +34,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
-- **Status:** In coordinator review at `4060ab0`; native PASS reported at
-  `698541f`, exact Woodpecker #395 all three successful; fresh Mac acceptance
-  and integration pending.
+- **Status:** Done on main `adf62f1`; native runtime parent `698541f` verified,
+  exact #398 all three successful, fresh Mac run-rcnizgak 67 records, normal
+  shutdown in 22.16 seconds. See iteration note for archive/log identity.
 - **Base:** freshly fetched main
 - **Depends on:** none; existing Linux and Mac gates remain mandatory
 - **Hypothesis:** the current runtime and ordinary-source probes can pass a clean
@@ -69,7 +67,7 @@ independent backlog items while the emulator is occupied.
 ### SOLARIS-02 — serialized exact-commit Solaris CI
 
 - **Status:** Claimed by Claude; development may proceed against the frozen
-  SOLARIS-01 dependency, integration remains blocked on its acceptance.
+  SOLARIS-01 dependency, dependency is accepted; runner implementation and real CI remain pending.
 - **Base:** coordinator override `4060ab01e4cf960eee70b20512867b50e4b26073`
 - **Depends on:** SOLARIS-01
 - **Hypothesis:** a trusted CI runner can test an exact source commit in the
@@ -85,6 +83,17 @@ independent backlog items while the emulator is occupied.
   untrusted PR code must not receive infrastructure credentials. A skipped,
   unreachable or occupied guest cannot produce a passing Solaris result.
   Record an actual green exact-commit CI run before declaring automation done.
+
+### SIG-01-matrix — concrete interrupt acceptance cases
+
+- **Status:** Claimed by Antigravity on `work/SIG-01-matrix`.
+- **Base:** fresh main with accepted SOLARIS-01.
+- **Scope:** own iteration note only; no new runtime/API or rig operations.
+- **Accept:** derive bounded, observable expected cases from accepted SIG-01
+  design for default/ignore, pending delivery/coalescing, spawn/exec lifetime,
+  immediate cleanup before reap, old ABI/executor prefixes, unsupported
+  operations and both exec phases. Mark all cases unexecuted and distinguish
+  proposed symbols from existing implementation. This stocks SIG-01 tests.
 
 ### FORMAT-01-design — bounded signed decimal formatting for uniq
 
@@ -1488,7 +1497,7 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### SIG-01 — cooperative task interrupt disposition and delivery
 
-- **Status:** Blocked on SOLARIS-01 integration; unassigned
+- **Status:** Ready; SOLARIS-01 accepted. Unassigned; coordinate the Solaris rig.
 - **Base:** freshly fetched main
 - **Depends on:** accepted SIG-01-design, SOLARIS-01
 - **Scope:** implement the reviewed narrow SIGINT default/ignore contract in

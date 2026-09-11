@@ -500,3 +500,16 @@ The subsequent runbook correction changes documentation and source comments
 only; an independent lexical comparison confirmed executable C tokens and
 non-comment shell lines unchanged. Main integration remains subject to the
 coordinator's final exact integration CI and Mac artifact gates.
+
+## Final main integration accepted
+
+Main `adf62f122a675706f0df7681b6cfb0ee2f039062` passed final independent review
+and exact #398 ci, mac68k and mac-automation. Its source-token comparison
+preserved the qualified native runtime; subsequent changes were documentation
+and comments. Fresh Mac `run-rcnizgak` passed all 67 records plus ALL PASS,
+screenshot inspected, normal shutdown and closed disks independently checked,
+slot released, 22.16 seconds. Exact archive SHA256:
+`177166a17d439e09db7cdcfff752f0953efbc529d73be8b41fd3c32bfe5aec13`.
+The coordinator pushed main and fast-forwarded the canonical checkout,
+preserving its unrelated untracked worker directories. SOLARIS-02 automated
+CI remains a separate unfinished task.

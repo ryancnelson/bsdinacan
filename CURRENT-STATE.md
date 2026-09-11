@@ -56,24 +56,31 @@ fix. The shared portable test observed the old nonempty zero-return failure
 before its guard. These are bounded deterministic callback tests; no real
 terminal fault or complete nonblocking/signal support is claimed.
 
-## Active work, 2026-09-08 evening
+## Solaris accepted and next work, 2026-09-08 evening
 
-SOLARIS-01 is frozen at `4060ab0` for independent review and fresh exact-artifact
-Mac acceptance. Woodpecker #395 passed ci, mac68k and mac-automation. Claude
-reports fresh native Solaris 9 PASS on runtime parent `698541f`, containing the
-current 67-record main; the coordinator has verified source identity and complete
-evidence; final integration CI and Mac gates remain pending. This is not yet an accepted main merge.
+Main `adf62f122a675706f0df7681b6cfb0ee2f039062` integrates SOLARIS-01.
+Independent review passed; exact Woodpecker #398 ci, mac68k and mac-automation
+all succeeded. Fresh Mac `run-rcnizgak` passed all 67 records plus ALL PASS,
+with screenshot inspected and normal application/guest shutdown, closed disks
+and released slot in 22.16 seconds. Archive SHA256:
+`177166a17d439e09db7cdcfff752f0953efbc529d73be8b41fd3c32bfe5aec13`.
+Native runtime parent `698541f` passed the Solaris 9 GCC 3.4.6 shared core,
+launcher and three output assertions. All 326 staged source files and retained
+full raw log were independently verified; final integration changed only
+documentation/comments relative to that runtime. Detailed hashes are in
+`notes/iterations/SOLARIS-01.md`. Historical pending statements above describe
+those earlier acceptance points and are superseded by this qualification.
 
-Claude is assigned the serialized SOLARIS-02 CI runner in a separate worktree
-based on that frozen dependency. Antigravity is correcting FORMAT-01-design
-against the actual cached uniq source and existing formatter. The import audit
-and terminal design review are already integrated.
+Claude implements SOLARIS-02. Its first runner draft failed coordinator review
+for nonexclusive locking, unsafe media ordering, masked staging failures and
+incomplete timeout/cleanup handling; deterministic controls are required before
+further live staging. Automated Solaris CI is not accepted yet.
 
-TERM-03 is implemented at `995f94f` but unmerged. Its #389 Linux workflow failed
-in clone setup before source execution; mac68k and mac-automation succeeded.
-Independent code review is clean; guest qualification remains pending. Keep shared runtime main
-changes behind first Solaris qualification. SIG-01 implementation and actual
-tee import remain blocked on their documented prerequisites.
+TERM-03 `995f94f` passed independent code review. Its old #389 Linux clone
+failure remains recorded; the worker is now integrating accepted Solaris main
+in the feature tree for fresh exact CI and native/Mac qualification.
+Antigravity writes the SIG-01 acceptance matrix; FORMAT-01-design is frozen
+for review. Actual signal support and tee import remain future work.
 
 ## What this is
 
