@@ -13,16 +13,16 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments:** SOLARIS-01 is accepted on main `adf62f1` with native
-source/log verification, exact #398 all-three CI and fresh 67-record Mac
-acceptance. Claude implements SOLARIS-02, correcting reviewed runner failures
-with offline controls before further live staging. Codex advances TERM-03
-against accepted Solaris main and coordinates review/qualification. Antigravity
-writes SIG-01-matrix; FORMAT-01-design is reviewed; implementation remains a later utility prerequisite.
+**Current assignments (2026-09-12):** SOLARIS-01 is accepted; FORMAT-01 design
+is integrated on main `206bfe4` (documentation only). Codex corrects the rejected
+SOLARIS-02 runner in work/SOLARIS-02-review and reviews the two signal-matrix
+drafts. Claude's and Antigravity's original worktrees are preserved. The locked
+desktop prevents restarting app workers or running Mac acceptance.
 
-TEE-STATE-01 is accepted with the 67-record runtime. TERM-03 adds a proposed
-68th record and has independent code review; old #389 Linux failed in clone
-setup before tests. Its merged feature requires fresh CI and Solaris/Mac gates.
+TERM-03 `fe082eb` has exact #405 all-three CI success after merging accepted
+Solaris source, but still requires fresh 68-record Mac and native Solaris
+qualification. No staged guest or fresh acceptance is claimed. Keep it off main
+until those gates pass. The accepted runtime remains the 67-record milestone.
 
 Solaris testing is required for shared behavior changes under the transition
 policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
@@ -66,8 +66,9 @@ independent backlog items while the emulator is occupied.
 
 ### SOLARIS-02 — serialized exact-commit Solaris CI
 
-- **Status:** Claimed by Claude; development may proceed against the frozen
-  SOLARIS-01 dependency, dependency is accepted; runner implementation and real CI remain pending.
+- **Status:** Corrections claimed by Codex on work/SOLARIS-02-review.
+  Claude candidate f3a38276 is rejected for live use despite existing CI green;
+  actual driver failure controls, independent review and live qualification remain required.
 - **Base:** coordinator override `4060ab01e4cf960eee70b20512867b50e4b26073`
 - **Depends on:** SOLARIS-01
 - **Hypothesis:** a trusted CI runner can test an exact source commit in the

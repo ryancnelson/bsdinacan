@@ -4,6 +4,33 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Coordination checkpoint, 2026-09-12
+
+Main `206bfe4cb4bbe355faf29d214016b71927715430` includes the reviewed
+FORMAT-01 design after exact #408 ci, mac68k and mac-automation succeeded.
+This changes documentation only; signed-decimal formatting is not implemented.
+The accepted runtime remains the qualified 67-record Solaris/Mac milestone.
+
+TERM-03 `fe082ebc52aef40e65a03d16d4c967ac57720852` combines the reviewed
+engine with accepted Solaris changes. Exact #405 passed all three workflows;
+artifact checksum is verified. Its 68-record Mac execution and native Solaris
+qualification remain pending. No new guest was staged or launched while the
+host desktop is locked; newest accepted guest evidence remains run-rcnizgak.
+
+SOLARIS-02 `f3a38276f0616afe59f47ce34ab2a7a57f4de8e0` passed existing #406
+CI, but is rejected for live use after independent offline reproductions.
+The driver can release ownership on timeout, bypass the manual owner record,
+and treat transport failure as completion. Other reproduced faults concern
+staging-output parsing, console echoes and source overwrite before reservation.
+The new tests were not wired into existing CI and omit these driver paths.
+A Codex worker owns corrections in separate work/SOLARIS-02-review, preserving
+Claude's source branch. Live rig operations remain blocked until review and
+meaningful offline controls pass. Automated Solaris CI is not accepted.
+
+The desktop remains locked, preventing new directions to Claude/Antigravity
+and Mac acceptance. Codex workers continue offline fixes and signal-matrix
+review; their running status does not imply either app agent was restarted.
+
 ## Accepted synthetic tee-state proof, 2026-09-08
 
 Integration `1f906a876998567cbe686eeadc454eb31e24c3e9` passed independent review
