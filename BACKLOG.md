@@ -87,7 +87,8 @@ independent backlog items while the emulator is occupied.
 
 ### SIG-01-matrix — concrete interrupt acceptance cases
 
-- **Status:** Claimed by Antigravity on `work/SIG-01-matrix`.
+- **Status:** Done as a reviewed specification (3594f9b plus entry-boundary
+  wording correction); cases are unexecuted and no signals are implemented.
 - **Base:** fresh main with accepted SOLARIS-01.
 - **Scope:** own iteration note only; no new runtime/API or rig operations.
 - **Accept:** derive bounded, observable expected cases from accepted SIG-01

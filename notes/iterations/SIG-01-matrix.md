@@ -58,7 +58,7 @@
 
 ### 9. Pending Interrupts Across Both Exec Phases
 - **Action:** A task is blocked in the `EXEC_PENDING` phase. An internal interrupt is queued.
-  - **Expected:** The task is **not** immediately transitioned to `RUNNABLE`, preventing a fatal return from `api_exec`. The pending bit is recorded. After `task_finish_exec` commits the new image, delivery occurs immediately *before* the new `native_entry` begins, terminating the task with `130`.
+  - **Expected:** The task is **not** immediately transitioned to `RUNNABLE`, preventing a fatal return from `api_exec`. The pending bit is recorded. After `task_finish_exec` commits the new image, delivery occurs inside the new `native_entry`, immediately *before* it invokes the program, terminating the task with `130`.
 
 ### 10. Backend Unsupported Behavior
 - **Action:** An active task with an ignored disposition (or a pending interrupt) calls `api_exec` specifying an executor target that lacks the cooperative-interrupt-delivery bit.
