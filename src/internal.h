@@ -55,7 +55,13 @@ struct cb_executor_ops {
     void (*instance_destroy)(struct cb_execution *execution);
     void (*program_destroy)(struct cb_kernel *kernel,
                             struct cb_program *program);
+    uint32_t capabilities; /* optional; old executor prefix remains valid */
 };
+
+#define CB_EXECUTOR_V1_PREFIX_SIZE offsetof(struct cb_executor_ops, capabilities)
+#define CB_EXECUTOR_COOPERATIVE_INTERRUPT UINT32_C(1)
+#define CB_INTERRUPT_DEFAULT 0
+#define CB_INTERRUPT_IGNORE 1
 
 struct cb_program {
     const struct cb_executor_ops *executor;
@@ -204,6 +210,8 @@ struct cb_task {
     cb_pid_t pid;
     cb_pid_t ppid;
     enum cb_task_state state;
+    int interrupt_disposition;
+    int interrupt_pending;
     struct cb_execution *execution;
     const struct cb_program *program;
     char **argv;
@@ -268,6 +276,13 @@ int cb_kernel_register_executor(struct cb_kernel *kernel,
                                 const void *source);
 int cb_kernel_boot(struct cb_kernel *kernel, const char *command);
 int cb_kernel_run(struct cb_kernel *kernel);
+/* Serialized internal operations; negative project errors, no host signals.
+   The setter preserves task errno; previous is required and written on success. */
+int cb_kernel_request_interrupt(struct cb_kernel *kernel, cb_pid_t pid);
+int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous);
+/* Executor opt-in boundary: target stack only, with kernel current installed. */
+void cb_task_deliver_interrupt(struct cb_task *task);
+int cb_executor_supports_interrupt(const struct cb_executor_ops *executor);
 const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
 
 const struct cb_executor_ops *cb_native_executor(void);

@@ -3,6 +3,7 @@
 
 #include <string.h>
 
+int cb_signal_probe(const struct cb_host_ops_v1 *host);
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 
@@ -72,6 +73,11 @@ int main(void)
         passed = cb_tee_state_probe(cb_mac_host_ops()) == 0;
         cb_mac_text(passed ? "PASS: tee state\n" : "FAIL: tee state\n");
         strcat(result, passed ? "PASS teestate\n" : "FAIL teestate\n");
+    }
+    if (passed) {
+        passed = cb_signal_probe(cb_mac_host_ops()) == 0;
+        cb_mac_text(passed ? "PASS: cooperative interrupts\n" : "FAIL: interrupts\n");
+        strcat(result, passed ? "PASS interrupts\n" : "FAIL interrupts\n");
     }
     for (index = 0; passed && index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int status = -1;

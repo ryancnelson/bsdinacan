@@ -765,7 +765,7 @@ static void test_executor_contract(void)
         lifecycle_suspend,
         lifecycle_request_termination,
         lifecycle_instance_destroy,
-        lifecycle_program_destroy
+        lifecycle_program_destroy, 0
     };
     char source_name[] = "sh";
     struct cb_program_v1 source = {
@@ -789,7 +789,7 @@ static void test_executor_contract(void)
     executor.abi_version = 0;
     expect_invalid_executor(kernel, &executor, &source, "version");
     executor.abi_version = CB_ABI_VERSION_V1;
-    executor.struct_size = sizeof(executor) - 1;
+    executor.struct_size = CB_EXECUTOR_V1_PREFIX_SIZE - 1;
     expect_invalid_executor(kernel, &executor, &source, "size");
 #define EXPECT_NULL_EXECUTOR_CALLBACK(member) do { \
     executor = (struct cb_executor_ops){ \
@@ -797,7 +797,7 @@ static void test_executor_contract(void)
         lifecycle_prepare, lifecycle_instance_create, \
         lifecycle_start_or_resume, lifecycle_suspend, \
         lifecycle_request_termination, lifecycle_instance_destroy, \
-        lifecycle_program_destroy \
+        lifecycle_program_destroy, 0 \
     }; \
     executor.member = NULL; \
     expect_invalid_executor(kernel, &executor, &source, #member); \
@@ -816,7 +816,7 @@ static void test_executor_contract(void)
         lifecycle_prepare, lifecycle_instance_create,
         lifecycle_start_or_resume, lifecycle_suspend,
         lifecycle_request_termination, lifecycle_instance_destroy,
-        lifecycle_program_destroy
+        lifecycle_program_destroy, 0
     };
     executor_delegate = native;
     executor_prepare_count = 0;
@@ -4946,6 +4946,15 @@ static void test_err(void)
     capture_write_limit = (size_t)-1;
 }
 
+int cb_signal_probe(const struct cb_host_ops_v1 *host);
+static void test_signals(void)
+{
+    int result = cb_signal_probe(cb_linux_host_ops());
+    if (result != 0) {
+        fprintf(stderr, "FAIL: signal probe status %d\n", result);
+        exit(1);
+    }
+}
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 static void test_tee_state(void)
 {
@@ -4967,6 +4976,7 @@ static void test_console_write(void)
 
 static void test_mac_acceptance(void)
 {
+    test_signals();
     test_tee_state();
     test_console_write();
 #define CB_MAC_CASE(command, expected, status) \
@@ -5128,6 +5138,10 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--signals") == 0) {
+        test_signals();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--tee-state") == 0) {
         test_tee_state();
         puts("tee state tests passed");
