@@ -17,6 +17,9 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_root"
 source "$repo_root/tools/lib/solaris9-qualify-lib.sh"
 
+test_scratch=$(mktemp -d)
+test_output=$test_scratch/out
+test_error=$test_scratch/err
 pass_count=0
 fail_count=0
 current_test=""
@@ -29,8 +32,8 @@ assert_eq() {
     local desc=$1 expected=$2 actual=$3
     if [ "$expected" = "$actual" ]; then t_ok; else t_fail "$desc: expected [$expected] got [$actual]"; fi
 }
-assert_success() { if "$@" >/tmp/t_out 2>/tmp/t_err; then t_ok; else t_fail "expected success, got exit $?: $(cat /tmp/t_err)"; fi; }
-assert_failure() { if "$@" >/tmp/t_out 2>/tmp/t_err; then t_fail "expected failure, but succeeded: $(cat /tmp/t_out)"; else t_ok; fi; }
+assert_success() { if "$@" >"$test_output" 2>"$test_error"; then t_ok; else t_fail "expected success, got exit $?: $(cat "$test_error")"; fi; }
+assert_failure() { if "$@" >"$test_output" 2>"$test_error"; then t_fail "expected failure, but succeeded: $(cat "$test_output")"; else t_ok; fi; }
 
 # Fake rig filesystem, real directory: gives genuine mkdir atomicity,
 # genuine file read/write semantics -- not a hand-rolled simulation of
@@ -38,7 +41,7 @@ assert_failure() { if "$@" >/tmp/t_out 2>/tmp/t_err; then t_fail "expected failu
 fake_rig=$(mktemp -d)
 fake_rig2=""
 still_flag=""
-trap 'rm -rf "$fake_rig" "$fake_rig2" "$still_flag" /tmp/t_out /tmp/t_err' EXIT
+trap 'rm -rf "$fake_rig" "$fake_rig2" "$still_flag" "$test_scratch"' EXIT
 
 sq_rsh() {
     local _timeout=$1 cmd=$2
@@ -72,13 +75,13 @@ t_begin "release with the wrong token is refused"
 assert_failure sq_release_lock "$fake_rig/coordinator.lock" "token-B"
 
 t_begin "lock directory still exists after a refused release"
-[ -d "$fake_rig/coordinator.lock/holder" ] && t_ok || t_fail "lock holder directory vanished"
+[ -d "$fake_rig/coordinator.lock" ] && t_ok || t_fail "lock holder directory vanished"
 
 t_begin "release with the correct token succeeds"
 assert_success sq_release_lock "$fake_rig/coordinator.lock" "token-A"
 
 t_begin "lock directory is gone after a correct release"
-[ ! -d "$fake_rig/coordinator.lock/holder" ] && t_ok || t_fail "lock holder directory still present"
+[ ! -d "$fake_rig/coordinator.lock" ] && t_ok || t_fail "lock holder directory still present"
 
 t_begin "a fresh acquire succeeds again after a clean release"
 assert_success sq_acquire_lock "$fake_rig/coordinator.lock" "token-C" "owner C"
@@ -86,16 +89,16 @@ sq_release_lock "$fake_rig/coordinator.lock" "token-C" >/dev/null 2>&1
 
 echo "== lock: malformed / stale =="
 fake_rig2=$(mktemp -d)
-mkdir -p "$fake_rig2/coordinator.lock/holder"
+mkdir -p "$fake_rig2/coordinator.lock"
 # Deliberately no owner.txt inside -- a malformed/incomplete lock.
 t_begin "malformed lock (missing owner.txt) is treated as held, not auto-cleared"
 assert_failure sq_acquire_lock "$fake_rig2/coordinator.lock" "token-D" "owner D"
 t_begin "malformed lock directory is left untouched, never deleted"
-[ -d "$fake_rig2/coordinator.lock/holder" ] && t_ok || t_fail "malformed lock was removed"
+[ -d "$fake_rig2/coordinator.lock" ] && t_ok || t_fail "malformed lock was removed"
 
 echo "== source: commit validation =="
 t_begin "sq_archive_source rejects a non-commit ref"
-bogus_blob=$(git -C "$repo_root" hash-object -w --stdin <<<"not a commit")
+bogus_blob=$(git -C "$repo_root" rev-parse HEAD:AGENTS.md)
 assert_failure sq_archive_source "$bogus_blob" "$fake_rig/should-not-exist.tar"
 t_begin "no tar file was produced for the rejected ref"
 [ ! -e "$fake_rig/should-not-exist.tar" ] && t_ok || t_fail "tar file exists despite rejection"
@@ -116,17 +119,17 @@ sq_rscp() { cp "$1" "$2"; printf 'corruption' >> "$2"; }  # simulate silent corr
 assert_failure sq_stage_iso "$fake_rig/real.tar" "$fake_rig/stagehost" "runA"
 sq_rscp() { cp "$1" "$2"; }  # restore
 
-t_begin "a failed staging attempt leaves no half-built isostage behind for the same run id"
-[ ! -d "$fake_rig/stagehost/isostage-runA" ] && t_ok || t_fail "isostage-runA exists despite the copy failing before mkisofs ran"
+t_begin "corrupt-transfer rejection never extracts the reserved namespace"
+[ ! -d "$fake_rig/stagehost/qualify-runA/tree" ] && t_ok || t_fail "isostage-runA exists despite the copy failing before mkisofs ran"
 
 if command -v mkisofs >/dev/null 2>&1; then
     t_begin "sq_stage_iso succeeds end to end with a real mkisofs"
-    if out=$(sq_stage_iso "$fake_rig/real.tar" "$fake_rig/stagehost" "runB" 2>/tmp/t_err); then
+    if out=$(sq_stage_iso "$fake_rig/real.tar" "$fake_rig/stagehost" "runB" 2>"$test_error"); then
         iso_name=$(printf '%s\n' "$out" | sed -n 1p)
         iso_hash=$(printf '%s\n' "$out" | sed -n 2p)
         [ -f "$fake_rig/stagehost/$iso_name" ] && [ -n "$iso_hash" ] && t_ok || t_fail "missing iso or hash: $out"
     else
-        t_fail "$(cat /tmp/t_err)"
+        t_fail "$(cat "$test_error")"
     fi
 
     t_begin "a second stage with the same run id is refused (no silent overwrite)"
@@ -148,25 +151,21 @@ PATH="$fake_bin:$PATH" bash -c '
     sq_rsh() { bash -c "$2"; }
     sq_rscp() { cp "$1" "$2"; }
     sq_stage_iso "'"$fake_rig"'/real.tar" "'"$fake_rig"'/stagehost" "runC"
-' >/tmp/t_out 2>/tmp/t_err
+' >"$test_output" 2>"$test_error"
 rc=$?
 rm -rf "$fake_bin"
 [ "$rc" != 0 ] && t_ok || t_fail "sq_stage_iso reported success despite mkisofs exiting 7"
 
 echo "== media swap: verified unmount before eject =="
 t_begin "sq_swap_media refuses to proceed if the guest still reports /mnt mounted"
-sq_rsh() {
-    local _t=$1 cmd=$2
-    case "$cmd" in
-        *"console.py"*"mount | grep"*) echo "STILL_MOUNTED" ;;
-        *) bash -c "$cmd" ;;
-    esac
-}
+sq_guest() { echo "STILL_MOUNTED"; }
+sq_rsh() { t_fail 'unexpected monitor call on failed unmount'; return 1; }
 assert_failure sq_swap_media "$fake_rig" "drive7" "some.iso"
 
 t_begin "sq_swap_media proceeds only after a confirmed UNMOUNTED state, and verifies block state at each step"
 eject_called=0
 change_called=0
+sq_guest() { echo "SQ_UNMOUNTED"; }
 sq_rsh() {
     local _t=$1 cmd=$2
     case "$cmd" in
@@ -187,9 +186,9 @@ assert_success sq_swap_media "$fake_rig" "drive7" "some.iso"
 
 echo "== poll: bounded timeout never falsely reports success =="
 t_begin "sq_poll_build returns 2 (uncertain) when the guest process never disappears before the deadline"
-sq_rsh() { echo "12345 running-forever"; }
+sq_guest() { echo "SQ_RUNNING"; }
 deadline=$(( $(date +%s) + 1 ))
-sq_poll_build "$fake_rig" "12345" "$deadline" 1
+sq_poll_build "$fake_rig" "12345" "$deadline" 1 /unused/exit token
 rc=$?
 assert_eq "poll timeout return code" "2" "$rc"
 
@@ -200,11 +199,11 @@ t_begin "sq_poll_build returns 0 once the guest process is confirmed gone"
 # (found via a real test run, not assumed) -- a file does persist.
 still_flag=$(mktemp)
 echo 1 > "$still_flag"
-sq_rsh() {
-    if [ "$(cat "$still_flag")" = 1 ]; then echo 0 > "$still_flag"; echo "12345 still-here"; else echo ""; fi
+sq_guest() {
+    if [ "$(cat "$still_flag")" = 1 ]; then echo 0 > "$still_flag"; echo "SQ_RUNNING"; else echo "SQ_DONE:token:0"; fi
 }
 deadline=$(( $(date +%s) + 60 ))
-sq_poll_build "$fake_rig" "12345" "$deadline" 1
+sq_poll_build "$fake_rig" "12345" "$deadline" 1 /unused/exit token
 rc=$?
 assert_eq "poll success return code" "0" "$rc"
 

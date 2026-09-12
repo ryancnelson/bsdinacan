@@ -89,7 +89,7 @@ LIBC_OBJECTS += $(NETBSD_BASENAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
-.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
+.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program check-solaris9-qualify
 
 all: $(PROGRAM)
 
@@ -583,7 +583,13 @@ $(BUILD)/test_linux_write: tests/test_linux_write.c src/host_linux.c src/interna
 check-linux-write: $(BUILD)/test_linux_write
 	$(BUILD)/test_linux_write
 
+check-solaris9-qualify:
+	bash tests/test_solaris9_qualify.sh
+	python3 -B tests/test_solaris9_qualify_driver.py
+	python3 -B tests/test_solaris9_protocol.py
+
 ci:
+	$(MAKE) check-solaris9-qualify
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py
