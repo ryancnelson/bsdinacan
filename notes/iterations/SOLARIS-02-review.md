@@ -104,5 +104,10 @@ Woodpecker #414 and failed because its BusyBox `tar` cannot select
 `tarfile.USTAR_FORMAT`; it does not weaken the archive format. The archive
 listing assertion also now fails if listing itself fails, instead of allowing
 an unsuccessful listing to satisfy the absence-of-PAX check.
+Woodpecker #415 then exposed a second host dependency mismatch: `shasum` is
+absent there. Local hashing now streams through the already-required Python
+`hashlib`; rig-side `sha256sum` remains explicit. The inherited corrupt-copy
+and failing-ISO controls additionally require the expected diagnostic or ISO
+log, so a missing host dependency cannot satisfy their negative assertions.
 Mac guest execution is not required for this host-runner-only change. Real
 Solaris runner acceptance is explicitly pending the later serialized trial.

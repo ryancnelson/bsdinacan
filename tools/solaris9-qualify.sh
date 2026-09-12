@@ -103,7 +103,7 @@ log "run $run_id commit $commit"
 sq_archive_source "$commit" "$run_dir/source.tar" || die 'source archive failed'
 printf '%s\n' "$commit" > "$run_dir/commit-sha.txt"
 git rev-parse "$commit^{tree}" > "$run_dir/tree-sha.txt"
-shasum -a 256 "$run_dir/source.tar" > "$run_dir/source-sha256.txt"
+sq_sha256 "$run_dir/source.tar" > "$run_dir/source-sha256.txt"
 
 lock_base="$SOLARIS_RIG_DIR/coordinator.lock"
 lock_held=0
@@ -166,7 +166,7 @@ case "$poll_status" in
     *) log 'guest completion uncertain; no further console commands'; exit 1 ;;
 esac
 sq_fetch_transcript "$SOLARIS_RIG_DIR" "$guest_log" "$run_dir/native-transcript.raw.log" "$run_dir/native-transcript.log" || die 'transcript fetch failed'
-shasum -a 256 "$run_dir/native-transcript.raw.log" "$run_dir/native-transcript.log" > "$run_dir/SHA256SUMS.txt"
+sq_sha256 "$run_dir/native-transcript.raw.log" "$run_dir/native-transcript.log" > "$run_dir/SHA256SUMS.txt"
 sq_unmount "$SOLARIS_RIG_DIR" || die 'final guest unmount unconfirmed'
 safe_to_release=1
 printf '%s\n' "$real_exit" > "$run_dir/guest-exit-status.txt"

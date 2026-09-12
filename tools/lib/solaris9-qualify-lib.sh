@@ -10,6 +10,18 @@ sq_quote_remote() {
 sq_die() { printf 'solaris9-qualify: %s\n' "$*" >&2; return 1; }
 sq_rsh() { sq_die 'no transport loaded'; }
 sq_rscp() { sq_die 'no copy transport loaded'; }
+sq_sha256() {
+    python3 - "$@" <<'PY'
+import hashlib
+import sys
+for name in sys.argv[1:]:
+    digest = hashlib.sha256()
+    with open(name, 'rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    print(digest.hexdigest() + '  ' + name)
+PY
+}
 sq_gen_token() {
     local rand
     rand=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n') || return 1
@@ -64,7 +76,7 @@ sq_stage_iso() {
     sq_rsh 20 "mkdir $(sq_quote_remote "$rig_dir/$space")" || return 1
     local_gz=$(mktemp) || return 1
     if ! gzip -c "$local_tar" > "$local_gz"; then rm -f "$local_gz"; return 1; fi
-    local_hash=$(shasum -a 256 "$local_gz") || { rm -f "$local_gz"; return 1; }
+    local_hash=$(sq_sha256 "$local_gz") || { rm -f "$local_gz"; return 1; }
     local_hash=${local_hash%% *}
     if ! sq_rscp "$local_gz" "$rig_dir/$space/source.tar.gz"; then
         rm -f "$local_gz"; return 1

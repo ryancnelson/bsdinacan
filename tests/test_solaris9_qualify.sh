@@ -118,7 +118,13 @@ echo "== staging: hash verification and exit-code capture =="
 mkdir -p "$fake_rig/stagehost"
 t_begin "sq_stage_iso rejects a corrupted transfer (hash mismatch)"
 sq_rscp() { cp "$1" "$2"; printf 'corruption' >> "$2"; }  # simulate silent corruption in transit
-assert_failure sq_stage_iso "$fake_rig/real.tar" "$fake_rig/stagehost" "runA"
+if sq_stage_iso "$fake_rig/real.tar" "$fake_rig/stagehost" "runA" >"$test_output" 2>"$test_error"; then
+    t_fail "corrupt archive was accepted"
+elif grep -q 'staged archive hash mismatch' "$test_error"; then
+    t_ok
+else
+    t_fail "did not reach checksum rejection: $(cat "$test_error")"
+fi
 sq_rscp() { cp "$1" "$2"; }  # restore
 
 t_begin "corrupt-transfer rejection never extracts the reserved namespace"
@@ -156,7 +162,11 @@ PATH="$fake_bin:$PATH" bash -c '
 ' >"$test_output" 2>"$test_error"
 rc=$?
 rm -rf "$fake_bin"
-[ "$rc" != 0 ] && t_ok || t_fail "sq_stage_iso reported success despite mkisofs exiting 7"
+if [ "$rc" != 0 ] && grep -q 'simulated mkisofs failure' "$fake_rig/stagehost/qualify-runC/mkisofs.log"; then
+    t_ok
+else
+    t_fail "did not propagate actual mkisofs failure: $(cat "$test_error")"
+fi
 
 echo "== media swap: verified unmount before eject =="
 t_begin "sq_swap_media refuses to proceed if the guest still reports /mnt mounted"

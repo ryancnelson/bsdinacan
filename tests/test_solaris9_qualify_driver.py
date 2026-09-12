@@ -73,7 +73,7 @@ printf 'source\\n' > "$SQ_TEST_ROOT/input/item"
 tar -cf "$SQ_TEST_ROOT/source.tar" -C "$SQ_TEST_ROOT/input" .
 sq_rsh() { (eval "$2"); }
 sq_rscp() { cp "$1" "$2"; }
-sha256sum() { shasum -a 256 "$@"; }
+sha256sum() { sq_sha256 "$@"; }
 mkisofs() {
  while [ "$#" -gt 0 ]; do
   if [ "$1" = -o ]; then shift; printf 'mock ISO\\n' > "$1"; return 0; fi
@@ -252,7 +252,7 @@ class DriverTests(unittest.TestCase):
         finally:
             if proc.poll() is None:
                 os.killpg(proc.pid, signal.SIGKILL)
-                proc.communicate()
+            proc.communicate()
 
 if __name__ == '__main__':
     unittest.main()
