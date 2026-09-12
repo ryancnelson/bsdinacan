@@ -106,7 +106,9 @@ t_begin "no tar file was produced for the rejected ref"
 t_begin "sq_archive_source accepts a real commit and produces a stable, ustar tar"
 assert_success sq_archive_source "HEAD" "$fake_rig/real.tar"
 t_begin "produced tar has no pax_global_header contamination"
-if tar -tf "$fake_rig/real.tar" | grep -q pax_global_header; then
+if ! tar -tf "$fake_rig/real.tar" > "$test_scratch/archive-list"; then
+    t_fail "cannot list produced source archive"
+elif grep -q pax_global_header "$test_scratch/archive-list"; then
     t_fail "pax_global_header leaked into the archive"
 else
     t_ok

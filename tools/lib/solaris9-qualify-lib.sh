@@ -24,7 +24,15 @@ sq_archive_source() {
         rm -rf "$extract_dir"
         sq_die 'source archive/extraction failed'; return 1
     fi
-    if ! COPYFILE_DISABLE=1 tar --format=ustar -cf "$out_tar" -C "$extract_dir" .; then
+    # BusyBox tar cannot select USTAR; Python is already a host dependency.
+    # Do not let GNU/PAX metadata leak into the old guest's source archive.
+    if ! python3 - "$extract_dir" "$out_tar" <<'PY'
+import sys
+import tarfile
+with tarfile.open(sys.argv[2], 'w', format=tarfile.USTAR_FORMAT) as archive:
+    archive.add(sys.argv[1], arcname='.')
+PY
+    then
         rm -rf "$extract_dir"; return 1
     fi
     rm -rf "$extract_dir"

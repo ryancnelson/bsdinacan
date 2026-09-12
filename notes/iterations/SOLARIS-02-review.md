@@ -98,5 +98,11 @@ host tools and private rig coordinates; the offline fixture supplies neither
 actual infrastructure nor acceptance permission.
 
 Exact feature Woodpecker results are reported in the handoff after push.
+The first pushed repair, `d31c315`, reached the new offline target in
+Woodpecker #414 and failed because its BusyBox `tar` cannot select
+`--format=ustar`. The correction uses the already-required host Python
+`tarfile.USTAR_FORMAT`; it does not weaken the archive format. The archive
+listing assertion also now fails if listing itself fails, instead of allowing
+an unsuccessful listing to satisfy the absence-of-PAX check.
 Mac guest execution is not required for this host-runner-only change. Real
 Solaris runner acceptance is explicitly pending the later serialized trial.

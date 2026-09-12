@@ -108,7 +108,13 @@ elif phase == 'poll':
     if scenario == 'poll_disconnect':
         sys.exit(255)
     if scenario == 'interrupt':
-        time.sleep(0.5)
+        # The test sends TERM to the driver before releasing this barrier.
+        # A fixed sleep could finish before a heavily loaded test observes it.
+        deadline = time.monotonic() + 8
+        while not (root / 'release-poll').exists():
+            if time.monotonic() >= deadline:
+                sys.exit(97)
+            time.sleep(0.01)
     token = re.search(r"SQ_RUN_TOKEN='?([A-Za-z0-9-]+)", command).group(1)
     if scenario == 'wrong_run':
         token = 'stale-run'

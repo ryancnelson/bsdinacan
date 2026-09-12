@@ -244,6 +244,7 @@ class DriverTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertIn('guest:poll', self.events())
             proc.send_signal(signal.SIGTERM)
+            (self.root / 'release-poll').touch()
             out, err = proc.communicate(timeout=5)
             self.assertNotEqual(proc.returncode, 0, out + err)
             self.assert_held()
