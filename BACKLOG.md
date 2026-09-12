@@ -15,8 +15,7 @@ their paths do not overlap.
 
 **Current assignments (2026-09-12):** SOLARIS-01 is accepted; FORMAT-01 design
 is integrated on main `206bfe4` (documentation only). Codex corrects the rejected
-SOLARIS-02 runner in work/SOLARIS-02-review and reviews the two signal-matrix
-drafts. Claude's and Antigravity's original worktrees are preserved. The locked
+SOLARIS-02 runner in work/SOLARIS-02-review and implements the reviewed SIG-01 core phase in its own worktree. Claude's and Antigravity's original worktrees are preserved. The locked
 desktop prevents restarting app workers or running Mac acceptance.
 
 TERM-03 `fe082eb` has exact #405 all-three CI success after merging accepted
@@ -1500,7 +1499,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### SIG-01 — cooperative task interrupt disposition and delivery
 
-- **Status:** Ready; SOLARIS-01 accepted. Unassigned; coordinate the Solaris rig.
+- **Status:** Claimed by Codex on work/SIG-01 for the first core state/request
+  phase only. Private signal veneer and tee import follow review; no live rig
+  use until the runner/ownership gate is ready.
 - **Base:** freshly fetched main
 - **Depends on:** accepted SIG-01-design, SOLARIS-01
 - **Scope:** implement the reviewed narrow SIGINT default/ignore contract in

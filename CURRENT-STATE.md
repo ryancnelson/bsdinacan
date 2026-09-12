@@ -28,8 +28,8 @@ Claude's source branch. Live rig operations remain blocked until review and
 meaningful offline controls pass. Automated Solaris CI is not accepted.
 
 The desktop remains locked, preventing new directions to Claude/Antigravity
-and Mac acceptance. Codex workers continue offline fixes and signal-matrix
-review; their running status does not imply either app agent was restarted.
+and Mac acceptance. Codex workers continue offline runner fixes and the reviewed SIG-01 core
+state/request implementation in a new isolated worktree; their running status does not imply either app agent was restarted.
 
 ## Accepted synthetic tee-state proof, 2026-09-08
 
