@@ -6,6 +6,11 @@ int main(int argc, char *argv[])
 {
     int count;
 
+    if (argc == 2 && argv[1][0] == 'd') {
+        errno = ENOENT;
+        count = printf("%4d", -42);
+        return count == 4 && errno == ENOENT ? 0 : 17;
+    }
     if (argc == 2 && argv[1][0] == 'e') {
         if (close(1) < 0)
             return 10;
@@ -15,7 +20,7 @@ int main(int argc, char *argv[])
     if (argc == 2 && argv[1][0] == 'p')
         return printf("broken") == EOF && errno == EPIPE ? 0 : 16;
     if (argc == 2 && argv[1][0] == 'u')
-        return printf("prefix:%d", 1) == EOF && errno == EINVAL ? 0 : 15;
+        return printf("prefix:%u", 1U) == EOF && errno == EINVAL ? 0 : 15;
 
     count = printf("out:%s:%%", "value");
     if (count != 11)

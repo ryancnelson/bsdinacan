@@ -637,8 +637,48 @@ static int format_output(int descriptor, const char *format,
                 return -1;
             ++cursor;
         } else {
-            bound_api->set_errno(CB_EINVAL);
-            return -1;
+            unsigned width = 0;
+            int value;
+            unsigned magnitude;
+            /* 2^3 < 10: ceil(bits/3) bounds decimal digits; reserve a sign. */
+            char number[(sizeof(int) * CHAR_BIT + 2) / 3 + 2];
+            char *end = number + sizeof(number);
+            char *digits = end;
+            size_t length;
+            if (*cursor >= '1' && *cursor <= '9') {
+                do {
+                    unsigned digit = (unsigned)(*cursor - '0');
+                    if (width > (32U - digit) / 10U) {
+                        bound_api->set_errno(CB_EINVAL);
+                        return -1;
+                    }
+                    width = width * 10U + digit;
+                    ++cursor;
+                } while (*cursor >= '0' && *cursor <= '9');
+            }
+            if (*cursor != 'd') {
+                bound_api->set_errno(CB_EINVAL);
+                return -1;
+            }
+            value = va_arg(arguments, int);
+            magnitude = (unsigned)value;
+            if (value < 0)
+                magnitude = 0U - magnitude;
+            do {
+                *--digits = (char)('0' + magnitude % 10U);
+                magnitude /= 10U;
+            } while (magnitude != 0);
+            if (value < 0)
+                *--digits = '-';
+            length = (size_t)(end - digits);
+            while (width > length) {
+                if (add_output(descriptor, " ", 1, &total) < 0)
+                    return -1;
+                --width;
+            }
+            if (add_output(descriptor, digits, length, &total) < 0)
+                return -1;
+            ++cursor;
         }
     }
     return total;

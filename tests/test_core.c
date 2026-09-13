@@ -5128,6 +5128,10 @@ static void test_startup_identity(void)
 int main(int argc, char **argv)
 {
     test_startup_identity();
+    if (argc == 2 && strcmp(argv[1], "--format") == 0) {
+        run_case("stdioprobe decimal", " -42", 0, 1);
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--tee-state") == 0) {
         test_tee_state();
         puts("tee state tests passed");
