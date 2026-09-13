@@ -31,6 +31,135 @@ required `mac68k` build succeeds, the coordinator assigns one agent to test that
 exact artifact in Basilisk II before integration. Other workers continue on
 independent backlog items while the emulator is occupied.
 
+## Milestone: file manipulation
+
+The next milestone is an observable end state rather than an interface count: a
+shell session in which a user can create, list, copy, move, delete and inspect
+files using unchanged NetBSD utilities. `FILEUTIL-01` measures the real source
+dependencies before any utility below it is claimed, because `fts(3)`, terminal
+width and password/group lookup exposure in `cp` and `ls` can reorder the queue.
+Do not claim a utility item below until that audit is reviewed.
+
+This milestone deliberately does not close: timestamps, `nlink`, `uid`/`gid` in
+`cb_stat_v1`; `chmod`, `umask`, `access`; `link`, `symlink`, `readlink`,
+`utimes`; or the `fts(3)`, termcap and pwd/grp subsystems. Permissions remain
+deferred. Any utility whose own diagnostics demand those is out of scope here
+and needs a separate ID.
+
+### FILEUTIL-01 — measure the file-manipulation utility set
+
+- **Status:** Ready
+- **Base:** main
+- **Depends on:** VFS-03 (Done), FS-01 (Done)
+- **Scope:** Documentation-only `notes/iterations/FILEUTIL-01.md`. No runtime,
+  ABI or libc change, and no import.
+- **Hypothesis:** the pinned NetBSD `cat`, `cp`, `mv`, `rm`, `rmdir` and `ls`
+  sources divide into a set buildable on the current descriptor/VFS surface and
+  a set gated behind `fts(3)`, terminal width, or password/group lookup, and the
+  division can be established by actual compile diagnostics rather than reading.
+- **Red:** compile each pinned source against the current libc veneer and record
+  the exact first-failure diagnostics per utility. Reading a manual page or
+  assuming `fts` usage is not evidence; the recorded diagnostics are.
+- **Accept:** record real source hashes and pinned revisions; per utility, list
+  the exact missing interfaces its own diagnostics demand, distinguish existing
+  capabilities from missing prerequisites, and classify each utility as
+  buildable-now, blocked-on-named-ABI-gap, or blocked-on-subsystem (`fts`,
+  termcap, pwd/grp). Recommend a claim order. Do not propose speculative libc
+  surface beyond what a diagnostic demonstrates.
+- **Handoff:** this audit determines whether the items below keep their stated
+  order. The coordinator re-scopes them from its result.
+
+### CAT-01 — unchanged NetBSD `cat`
+
+- **Status:** Blocked on reviewed FILEUTIL-01
+- **Base:** main
+- **Depends on:** FILEUTIL-01, VFS-03 (Done), STDIN-01 (Done), FWRITE-01 (Done)
+- **Scope:** import pinned `cat` byte-for-byte with license and hash, plus only
+  the libc prerequisites its own diagnostics demand. No unrelated libc growth.
+- **Hypothesis:** the existing descriptor, stdio and stdin surface is already
+  sufficient for pinned `cat` with no new core ABI operation.
+- **Red:** the source/import boundary fails while the file is absent; then show
+  an observable behavioral case (concatenating two files to stdout) failing
+  before implementation rather than a missing declaration alone.
+- **Accept:** empty file, binary bytes, data larger than the read buffer,
+  multiple operands, stdin via `-`, missing operand path with continuation to
+  remaining valid operands, exact bytes/status/diagnostics, `EPIPE` into a
+  closed pipe, and descriptor/allocation cleanup before teardown. Register the
+  command descriptor, reject host symbol imports, add the `UPSTREAM.md` entry
+  and hash.
+
+### VFS-04 — `rmdir` and atomic `rename` node operations
+
+- **Status:** Blocked on reviewed FILEUTIL-01
+- **Base:** main
+- **Depends on:** VFS-01 (Done), VFS-03 (Done)
+- **Scope:** append two versioned operations to the node/VFS contract. The
+  portable core acquires no host filesystem call; RAMFS implements both.
+  Appended ABI entries only — no reordering or field changes.
+- **Hypothesis:** directory removal and atomic replacement can be expressed over
+  the existing node contract without exposing filesystem representation, and
+  cross-mount `rename` can return `EXDEV` using the VFS-01 routing boundary.
+- **Red:** ordinary-source `rmdir()` and `rename()` probes fail to compile; then
+  a behavioral case — replacing an existing target atomically, and removing a
+  non-empty directory — has no expressible path today.
+- **Accept:** `rmdir` rejects non-empty (`ENOTEMPTY`), non-directory
+  (`ENOTDIR`), missing (`ENOENT`), and the mount root; `rename` replaces an
+  existing regular-file target atomically, preserves open-file identity across
+  the rename, returns `EXDEV` across mounts, `ENOTDIR`/`EISDIR` for type
+  mismatch, and leaves both names intact on failure. Test old `struct_size`
+  tables and absent-capability behavior. Prove no leak or dangling node under
+  allocation failure injection.
+
+### MV-01 — unchanged NetBSD `mv`
+
+- **Status:** Blocked on VFS-04 and reviewed FILEUTIL-01
+- **Base:** main
+- **Depends on:** VFS-04, FILEUTIL-01, CAT-01
+- **Scope:** import pinned `mv` byte-for-byte. Permissions enforcement remains
+  deferred, so any prompting semantics must be scoped to what exists.
+- **Hypothesis:** with `rename` present, pinned `mv` builds against the veneer
+  without a permissions system.
+- **Red:** record `mv`'s actual first-failure diagnostic after VFS-04, then an
+  observable failing behavioral case.
+- **Accept:** same-mount rename, replacement of an existing target, cross-mount
+  `EXDEV` behavior, missing source, and directory operands. Cleanup before
+  teardown, no host symbol imports, `UPSTREAM.md` entry and hash.
+
+### RM-01 — unchanged NetBSD `rm`
+
+- **Status:** Blocked on VFS-04 and reviewed FILEUTIL-01
+- **Base:** main
+- **Depends on:** VFS-04, FILEUTIL-01, CAT-01
+- **Scope:** import pinned `rm` byte-for-byte. Permissions enforcement remains
+  deferred, so `-f` and `-i` semantics must be scoped to what exists.
+- **Hypothesis:** with `rmdir` present, pinned `rm` builds against the veneer
+  without a permissions system.
+- **Red:** record `rm`'s actual first-failure diagnostic after VFS-04, then an
+  observable failing behavioral case.
+- **Accept:** single and multiple operands, missing operand continuation, `-r`
+  over a populated tree, exact status and diagnostics, cleanup before teardown,
+  no host symbol imports, `UPSTREAM.md` entry and hash.
+
+### LS-01 — single-column `ls` without terminal width or `-l`
+
+- **Status:** Blocked on reviewed FILEUTIL-01
+- **Base:** main
+- **Depends on:** FILEUTIL-01, VFS-03 (Done)
+- **Scope:** deliberately bounded. Single-column output only. No `-l`, no
+  multi-column width computation, no termcap, no `getpwuid`/`getgrgid`. If the
+  audit shows pinned `ls` cannot be imported without `fts(3)`, this becomes a
+  cannedBSD-owned command using the existing dirent contract, and unchanged
+  pinned `ls` gets a separate later ID.
+- **Hypothesis:** the VFS-03 dirent contract is already sufficient to enumerate
+  and print a directory in a stable order without any terminal capability.
+- **Red:** no ordinary-source path currently lists a directory's contents to
+  stdout; demonstrate the failing behavioral case before implementing.
+- **Accept:** empty directory, single entry, many entries, stable deterministic
+  ordering, a named file operand, a missing operand (`ENOENT` diagnostic and
+  exit status), a non-directory operand, independent cursors across interleaved
+  tasks, and cleanup of the directory descriptor before teardown. `-l` and
+  multi-column output are explicitly out of scope and must not be advertised.
+
 ### SOLARIS-01 — integrate the Solaris 9 SPARC runtime gate
 
 - **Status:** Done on main `adf62f1`; native runtime parent `698541f` verified,
