@@ -48,7 +48,8 @@ Permissions remain deferred.
 section originally assumed:
 
 1. `LS-01` — no subsystem wait; proceeds as a cannedBSD-owned dirent command
-2. `VFS-04` — `rmdir` plus `strrchr`; `rename` demand still unmeasured
+2. `VFS-04` — `rmdir` and `rename` (Done at `0bc7d5f`; `strrchr` moved to `RM-01`,
+   `rename` justified from pinned `mv.c` source reading)
 3. `CAT-01` — widest small-interface surface; forces the `cb_stat_v1` field
    decision, since the runtime already has `stat`/`fstat` but the veneer header
    is a stub
@@ -123,21 +124,32 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### VFS-04 — `rmdir` and atomic `rename` node operations
 
-- **Status:** Ready after FILEUTIL-01
+- **Status:** Done on `work/VFS-04` at `0bc7d5f`; coordinator-reviewed. Appended
+  `rmdir`/`rename` to `cb_api_v1` and `cb_vfs_node_ops` (verified appended at the
+  struct end, not inserted), added `CB_EXDEV` (verified no errno value
+  collision), RAMFS implements both with `rmdir` separate from `unlink` so
+  `unlink` keeps refusing directories. Full `make ci` green.
 - **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), VFS-01 (Done), VFS-03 (Done)
 - **Scope:** append two versioned operations to the node/VFS contract. The
   portable core acquires no host filesystem call; RAMFS implements both.
-  Appended ABI entries only — no reordering or field changes. **Also budget
-  `strrchr`**: the audit measured pinned `rmdir` as gated on both the absent
-  `rmdir()` ABI operation and an absent `strrchr()` in the current
-  `string.h` — an independent small libc gap this item must cover or explicitly
-  hand to a separate ID.
-- **Note on `rename` demand:** `rename` is confirmed absent from `abi.h`, but
-  the audit could **not** confirm pinned `mv` requires it — `mv` fails
-  compilation at `sys/extattr.h` before reaching any `rename()` call, so that
-  demand is unmeasured rather than established. Justify `rename` on its own
-  merits or on a consumer whose diagnostics actually reach it.
+  Appended ABI entries only — no reordering or field changes.
+- **`strrchr` correction:** this item does **not** cover `strrchr`, and the
+  earlier instruction to budget it here was wrong. The gap is in `rmdir`'s
+  *pinned NetBSD source* — a translation unit `RM-01` imports — not in
+  runtime-level ABI work, and `VFS-04` touches `libc/string.h` not at all.
+  Moved to `RM-01`.
+- **`rename` demand — now justified:** the original justification (pinned `mv`)
+  was wrong, since `mv` fails compilation at `sys/extattr.h` before reaching any
+  `rename()` call. Justified instead by direct source reading: pinned `mv.c` was
+  re-fetched, hash-verified against `FILEUTIL-01`'s recorded SHA-256, and
+  `do_move()` calls `rename(from, to)` unconditionally as the first-attempted,
+  POSIX-mandated step for every same-filesystem move, before any prompt logic.
+  That is evidence from the exact pinned file, independent of the compiler never
+  having reached it.
+- **Deliberate boundary:** directory-onto-directory `rename` replacement is
+  intentionally unsupported (always `ENOTEMPTY`), as it is not in Accept. A later
+  item needing it should say so rather than treat it as a silent omission.
 - **Hypothesis:** directory removal and atomic replacement can be expressed over
   the existing node contract without exposing filesystem representation, and
   cross-mount `rename` can return `EXDEV` using the VFS-01 routing boundary.
@@ -214,6 +226,11 @@ exclusion: `CAT-01` forces an explicit decision on it.
 - **Correction from the audit:** `rm`'s sole measured blocker is `fts.h`, not
   `rmdir`. Re-measure after FTS-01 to establish whether VFS-04's `rmdir` is also
   required before import.
+- **Also budget `strrchr`** (moved here from VFS-04): the audit measured pinned
+  `rmdir` as gated on an absent `strrchr()` in the current `libc/include/string.h`,
+  in addition to the `rmdir()` ABI operation. That gap lives in the pinned NetBSD
+  source this item imports, not in runtime ABI work, so `VFS-04` correctly did not
+  cover it. Cover it here or give it its own ID — do not let it fall through.
 - **Red:** record `rm`'s actual first-failure diagnostic after FTS-01, then an
   observable failing behavioral case.
 - **Accept:** single and multiple operands, missing operand continuation, `-r`
