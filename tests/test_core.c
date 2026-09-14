@@ -3958,6 +3958,116 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+/* LS-01: prove opendir/readdir/closedir cursors stay independent when two
+   `ls` tasks are forced to interleave, not just proven correct when run
+   back to back. A per-task-overridden api.readdir yields after every call,
+   the same forced-interleave technique err_interleave/truncateinterleave
+   already use elsewhere in this file. */
+extern int cb_ls_main(int argc, char *argv[]);
+
+static struct cb_api_v1 ls_test_api;
+static const struct cb_api_v1 *ls_delegate;
+static cb_pid_t ls_children[2];
+static int ls_last_task;
+static unsigned ls_switches;
+
+static int ls_yielding_readdir(int descriptor, char *name_out, size_t name_size,
+                               uint64_t *inode_out, uint32_t *type_out)
+{
+    cb_pid_t pid = ls_delegate->getpid();
+    int index = pid == ls_children[0] ? 0 : 1;
+    int result = ls_delegate->readdir(descriptor, name_out, name_size,
+                                      inode_out, type_out);
+    if (ls_last_task != -1 && ls_last_task != index)
+        ++ls_switches;
+    ls_last_task = index;
+    ls_delegate->yield();
+    return result;
+}
+
+static int ls_interleave_child_start(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)envp;
+    return cb_libc_start(&ls_test_api, argc, argv, cb_ls_main);
+}
+
+static const struct cb_program_v1 ls_interleave_child_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "lsinterleavechild", 0,
+    64 * 1024, ls_interleave_child_start
+};
+
+static int ls_interleave_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    char *argv_alpha[] = {(char *)"ls", (char *)"/tmp/lsdir-alpha", NULL};
+    char *argv_beta[] = {(char *)"ls", (char *)"/tmp/lsdir-beta", NULL};
+    int fd, status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/lsdir-alpha", 0755) < 0 ||
+        api->mkdir("/tmp/lsdir-beta", 0755) < 0)
+        return 900;
+    if ((fd = api->open("/tmp/lsdir-alpha/alpha-one",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 901;
+    if ((fd = api->open("/tmp/lsdir-alpha/alpha-two",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 902;
+    if ((fd = api->open("/tmp/lsdir-beta/beta-one",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 903;
+    if ((fd = api->open("/tmp/lsdir-beta/beta-two",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 904;
+
+    ls_delegate = api;
+    ls_test_api = *api;
+    ls_test_api.readdir = ls_yielding_readdir;
+    ls_last_task = -1;
+    ls_switches = 0;
+
+    if (api->spawn("lsinterleavechild", argv_alpha, envp, NULL, 0,
+                   &ls_children[0]) < 0 ||
+        api->spawn("lsinterleavechild", argv_beta, envp, NULL, 0,
+                   &ls_children[1]) < 0)
+        return 905;
+
+    if (api->waitpid(ls_children[0], &status) != ls_children[0] || status != 0)
+        return 906;
+    if (api->waitpid(ls_children[1], &status) != ls_children[1] || status != 0)
+        return 907;
+
+    /* Proves the two tasks actually interleaved rather than one running
+       to completion before the other started. */
+    if (ls_switches < 2)
+        return 908;
+
+    /* Each task's own listing is complete and correct: no entry lost,
+       duplicated, or swapped into the other task's output despite the
+       forced interleave. Order-independent, like err_interleave's own
+       merged-stream check. */
+    if (strstr(captured_streams[1], "alpha-one") == NULL ||
+        strstr(captured_streams[1], "alpha-two") == NULL ||
+        strstr(captured_streams[1], "beta-one") == NULL ||
+        strstr(captured_streams[1], "beta-two") == NULL)
+        return 909;
+
+    captured_size = 0;
+    captured[0] = '\0';
+    captured_stream_sizes[1] = 0;
+    captured_streams[1][0] = '\0';
+    return 0;
+}
+
+static const struct cb_program_v1 ls_interleave_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "lsinterleave", 0,
+    64 * 1024, ls_interleave_main
+};
+
 static int dirname_noop_main(int argc, char *argv[])
 {
     (void)argc;
@@ -4209,7 +4319,8 @@ enum test_fixture {
     FIXTURE_BASENAME = 5,
     FIXTURE_YES = 6,
     FIXTURE_ERR = 7,
-    FIXTURE_CONV = 8
+    FIXTURE_CONV = 8,
+FIXTURE_LS = 9
 };
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
@@ -4541,6 +4652,14 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_CONV) {
         if (register_conv_probes(kernel) != 0)
             fail("strtoimax probe registration");
+    } else if (fixture == FIXTURE_LS) {
+        /* Scoped fixture, same reason as FIXTURE_DIRENT above: FIXTURE_FULL
+           is already at CB_MAX_PROGRAMS's 64-slot ceiling. cb_ls_program
+           itself still comes from cb_register_base_programs() above, shared
+           by every fixture. */
+        if (cb_kernel_register(kernel, &ls_interleave_child_program) < 0 ||
+            cb_kernel_register(kernel, &ls_interleave_program) < 0)
+            fail("ls interleave test program registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -5216,6 +5335,7 @@ int main(int argc, char **argv)
         run_case("libctruncateprobe", "", 0, 1);
         run_case("truncateprobe", "", 0, 1);
         run_case("truncateinterleave", "", 0, 1);
+    run_case("lsinterleave", "", 0, FIXTURE_LS);
         puts("truncate tests passed");
         return 0;
     }
@@ -5373,6 +5493,7 @@ int main(int argc, char **argv)
     test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
+    run_case("lsinterleave", "", 0, FIXTURE_LS);
     run_case("libcdirnameprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnameoldtableprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnamenulltableprobe", "", 0, FIXTURE_DIRNAME);

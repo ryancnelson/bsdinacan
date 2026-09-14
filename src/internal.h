@@ -235,7 +235,11 @@ struct cb_task {
     struct cb_task *next;
 };
 
-#define CB_MAX_PROGRAMS 64
+/* Raised from 64 by LS-01: cb_register_base_programs() plus the test
+   suite's own FIXTURE_FULL registrations already totaled 65 once `ls`
+   became a base program, exceeding the previous ceiling. A small margin
+   above that measured total, not a speculative allowance. */
+#define CB_MAX_PROGRAMS 72
 
 struct cb_kernel {
     struct cb_terminal_state console;
