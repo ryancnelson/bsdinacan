@@ -120,6 +120,26 @@ struct cb_vfs_node_ops {
        call -- see notes/iterations/VFS-03-design.md for why. */
     int (*child_at)(struct cb_vfs_node *directory, size_t index,
                     struct cb_vfs_node **child_out);
+    /* Appended by VFS-04. Optional extension; callers must check
+       struct_size before reading. Removes an empty directory node from its
+       parent; must reject non-directory (-CB_ENOTDIR), non-empty
+       (-CB_ENOTEMPTY), and a node with no parent to detach from
+       (-CB_EPERM, the mount root). */
+    int (*rmdir)(struct cb_vfs_node *node);
+    /* Appended by VFS-04. Optional extension; callers must check
+       struct_size before reading. Moves node to become a child of
+       new_parent under new_name, preserving node identity (open files
+       referencing node stay valid). Takes ownership of new_name_owned (a
+       kernel-allocated string): every path through this function either
+       installs it as the node's new name or frees it -- the caller must
+       never touch or free new_name_owned itself after this call, on
+       success or failure. Does not check whether new_name already exists
+       at new_parent or whether new_parent is even a directory; the VFS
+       layer (cb_vfs_rename_paths) resolves and validates that before
+       calling in, and pre-allocates new_name_owned before touching any
+       state, so this call itself cannot fail for allocation reasons. */
+    int (*rename)(struct cb_vfs_node *node, struct cb_vfs_node *new_parent,
+                  char *new_name_owned);
 };
 
 struct cb_vfs_mount_entry {
@@ -304,6 +324,9 @@ int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
                     struct cb_vfs_node **child_out);
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
 int cb_vfs_unlink_path(struct cb_task *task, const char *path);
+int cb_vfs_rmdir_path(struct cb_task *task, const char *path);
+int cb_vfs_rename_paths(struct cb_task *task, const char *old_path,
+                        const char *new_path);
 int cb_vfs_chdir_path(struct cb_task *task, const char *path);
 char *cb_vfs_getcwd_path(struct cb_task *task, char *buffer, size_t size);
 void cb_vfs_node_retain(struct cb_vfs_node *node);

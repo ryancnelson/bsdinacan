@@ -37,7 +37,8 @@ enum cb_error {
     CB_ENOSYS = 78,
     CB_ENOTEMPTY = 66,
     CB_EFAULT = 14,
-    CB_EOVERFLOW = 84
+    CB_EOVERFLOW = 84,
+    CB_EXDEV = 18
 };
 
 enum cb_open_flag {
@@ -228,6 +229,11 @@ struct cb_api_v1 {
     char *(*basename_buffer_location)(void);
     struct cb_stdio_state_v1 *(*stdio_state_location)(void);
     struct cb_input_state_v1 *(*input_state_location)(void);
+
+    /* Appended by VFS-04. Callers must check struct_size before reading,
+       exactly like every other optional extension above. */
+    int (*rmdir)(const char *path);
+    int (*rename)(const char *old_path, const char *new_path);
 };
 
 struct cb_program_v1 {
