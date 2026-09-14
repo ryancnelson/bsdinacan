@@ -40,15 +40,33 @@ dependencies before any utility below it is claimed, because `fts(3)`, terminal
 width and password/group lookup exposure in `cp` and `ls` can reorder the queue.
 Do not claim a utility item below until that audit is reviewed.
 
-This milestone deliberately does not close: timestamps, `nlink`, `uid`/`gid` in
-`cb_stat_v1`; `chmod`, `umask`, `access`; `link`, `symlink`, `readlink`,
-`utimes`; or the `fts(3)`, termcap and pwd/grp subsystems. Permissions remain
-deferred. Any utility whose own diagnostics demand those is out of scope here
-and needs a separate ID.
+This milestone deliberately does not close: `chmod`, `umask`, `access`; `link`,
+`symlink`, `readlink`, `utimes`; or the termcap and pwd/grp subsystems.
+Permissions remain deferred.
+
+**Measured claim order after FILEUTIL-01** (`f201d0a`), replacing the order this
+section originally assumed:
+
+1. `LS-01` — no subsystem wait; proceeds as a cannedBSD-owned dirent command
+2. `VFS-04` — `rmdir` plus `strrchr`; `rename` demand still unmeasured
+3. `CAT-01` — widest small-interface surface; forces the `cb_stat_v1` field
+   decision, since the runtime already has `stat`/`fstat` but the veneer header
+   is a stub
+4. `FTS-01` and `EXTATTR-01` — the two subsystem gates, in either order
+5. `RM-01`, `MV-01`, `CP-01` — only after their measured gates clear
+
+`fts(3)` and `sys/extattr.h` now have their own IDs rather than being treated as
+permanently out of scope, because the audit showed four of six utilities cannot
+proceed without them. `cb_stat_v1` field growth is no longer a blanket
+exclusion: `CAT-01` forces an explicit decision on it.
 
 ### FILEUTIL-01 — measure the file-manipulation utility set
 
-- **Status:** Ready
+- **Status:** Done; audit on `work/FILEUTIL-01` at `f201d0a`, pinned NetBSD rev
+  `b890038f`. Result falsified the coordinator's prior expectation: **no utility
+  in this milestone is buildable now, including `cat`**, and `sys/extattr.h` is a
+  fourth subsystem gate that was not in the original three-bucket framing. The
+  items below are rescoped from its measured diagnostics.
 - **Base:** main
 - **Depends on:** VFS-03 (Done), FS-01 (Done)
 - **Scope:** Documentation-only `notes/iterations/FILEUTIL-01.md`. No runtime,
@@ -71,13 +89,28 @@ and needs a separate ID.
 
 ### CAT-01 — unchanged NetBSD `cat`
 
-- **Status:** Blocked on reviewed FILEUTIL-01
+- **Status:** Ready after FILEUTIL-01, but **larger than first scoped**. The
+  audit measured eleven distinct missing interfaces, none of them `fts`,
+  termcap, pwd/grp or `extattr`, and none needing a new VFS verb: record locking
+  (`struct flock`, `fcntl`, `F_WRLCK`, `F_SETLKW`), `strtol`, `setbuf`,
+  `SEEK_SET`/`BUFSIZ`, `fileno`, `warnx`, `clearerr`, `isascii`/`toascii`/
+  `iscntrl`, and a real `struct stat`/`fstat`/`S_ISREG`. Split into bounded
+  prerequisite IDs before import rather than claiming as one item.
 - **Base:** main
-- **Depends on:** FILEUTIL-01, VFS-03 (Done), STDIN-01 (Done), FWRITE-01 (Done)
+- **Depends on:** FILEUTIL-01 (Done), VFS-03 (Done), STDIN-01 (Done),
+  FWRITE-01 (Done)
 - **Scope:** import pinned `cat` byte-for-byte with license and hash, plus only
   the libc prerequisites its own diagnostics demand. No unrelated libc growth.
-- **Hypothesis:** the existing descriptor, stdio and stdin surface is already
-  sufficient for pinned `cat` with no new core ABI operation.
+- **Key finding to resolve first:** the runtime ABI already provides `stat`,
+  `fstat` and `cb_stat_v1`, but `libc/include/sys/stat.h` is a two-line stub.
+  The `struct stat` gap is therefore **unwired, not unimplemented**. Wiring it
+  forces an explicit decision on whether `cb_stat_v1` gains timestamp, `nlink`,
+  `uid` and `gid` fields now — an appended-field change requiring old
+  `struct_size` tests — or whether the veneer exposes only the existing four
+  fields and `cat`'s `S_ISREG` path is satisfied without them. Decide that in a
+  design note before any import.
+- **Hypothesis:** pinned `cat` needs no new core ABI operation; every measured
+  gap is libc veneer surface or the unwired `sys/stat.h` boundary.
 - **Red:** the source/import boundary fails while the file is absent; then show
   an observable behavioral case (concatenating two files to stdout) failing
   before implementation rather than a missing declaration alone.
@@ -90,12 +123,21 @@ and needs a separate ID.
 
 ### VFS-04 — `rmdir` and atomic `rename` node operations
 
-- **Status:** Blocked on reviewed FILEUTIL-01
+- **Status:** Ready after FILEUTIL-01
 - **Base:** main
-- **Depends on:** VFS-01 (Done), VFS-03 (Done)
+- **Depends on:** FILEUTIL-01 (Done), VFS-01 (Done), VFS-03 (Done)
 - **Scope:** append two versioned operations to the node/VFS contract. The
   portable core acquires no host filesystem call; RAMFS implements both.
-  Appended ABI entries only — no reordering or field changes.
+  Appended ABI entries only — no reordering or field changes. **Also budget
+  `strrchr`**: the audit measured pinned `rmdir` as gated on both the absent
+  `rmdir()` ABI operation and an absent `strrchr()` in the current
+  `string.h` — an independent small libc gap this item must cover or explicitly
+  hand to a separate ID.
+- **Note on `rename` demand:** `rename` is confirmed absent from `abi.h`, but
+  the audit could **not** confirm pinned `mv` requires it — `mv` fails
+  compilation at `sys/extattr.h` before reaching any `rename()` call, so that
+  demand is unmeasured rather than established. Justify `rename` on its own
+  merits or on a consumer whose diagnostics actually reach it.
 - **Hypothesis:** directory removal and atomic replacement can be expressed over
   the existing node contract without exposing filesystem representation, and
   cross-mount `rename` can return `EXDEV` using the VFS-01 routing boundary.
@@ -110,46 +152,98 @@ and needs a separate ID.
   tables and absent-capability behavior. Prove no leak or dangling node under
   allocation failure injection.
 
+### FTS-01 — `fts(3)` traversal subsystem
+
+- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done), VFS-03 (Done)
+- **Scope:** the traversal subsystem itself. The audit measured `fts.h` as the
+  blocking gate for pinned `rm` (sole blocker), `cp` (alongside `extattr`), and
+  all five `ls` translation units. Design before implementation; this is a
+  subsystem, not a veneer symbol, and must not be bolted on inside a utility
+  import.
+- **Red:** each of those utilities' recorded first-failure diagnostics in
+  `notes/iterations/FILEUTIL-01.md` is the evidence of demand. Add a behavioral
+  case over the existing dirent contract before implementing.
+- **Accept:** to be specified in a design note first. At minimum: traversal
+  order guarantees, cycle and depth handling, per-entry error reporting without
+  aborting the walk, allocation-failure behavior, and interaction with the
+  VFS-01 mount boundary.
+
+### EXTATTR-01 — decide the `sys/extattr.h` boundary
+
+- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Base:** main
+- **Scope:** documentation/design only. The audit found `sys/extattr.h` is an
+  unconditional compile gate in `mv` (first thing in the file) and in `cp`'s
+  `utils.c` — confirmed still unconditional under the real `-DSMALL` NetBSD
+  variant that skips ACL. This is a **fourth subsystem gate** alongside `fts`,
+  termcap and pwd/grp, and was absent from this milestone's original framing.
+- **Decision required:** cannedBSD has no extended-attribute concept and this
+  milestone explicitly defers permissions. Choose deliberately between a bounded
+  honest stub that makes the pinned sources compile without claiming a feature
+  that does not exist, versus keeping `mv`/`cp` out of scope entirely until a
+  real attribute model is wanted. Do not implement a fake attribute system.
+- **Accept:** a written decision with rationale, the exact symbols each pinned
+  source demands, and the consequence for MV-01, CP-01 and RM-01 ordering.
+
 ### MV-01 — unchanged NetBSD `mv`
 
-- **Status:** Blocked on VFS-04 and reviewed FILEUTIL-01
+- **Status:** Blocked on EXTATTR-01. **Not** blocked on VFS-04 as first written.
 - **Base:** main
-- **Depends on:** VFS-04, FILEUTIL-01, CAT-01
+- **Depends on:** EXTATTR-01, FILEUTIL-01 (Done)
 - **Scope:** import pinned `mv` byte-for-byte. Permissions enforcement remains
   deferred, so any prompting semantics must be scoped to what exists.
-- **Hypothesis:** with `rename` present, pinned `mv` builds against the veneer
-  without a permissions system.
-- **Red:** record `mv`'s actual first-failure diagnostic after VFS-04, then an
-  observable failing behavioral case.
+- **Correction from the audit:** `mv`'s evidenced blocker is `sys/extattr.h`,
+  not `rename`. Compilation is fatal at `extattr` before reaching any `rename()`
+  call, so whether `mv` additionally needs VFS-04's `rename` is **unmeasured**.
+  Re-measure after EXTATTR-01 rather than assuming either way.
+- **Red:** record `mv`'s actual first-failure diagnostic after EXTATTR-01, then
+  an observable failing behavioral case.
 - **Accept:** same-mount rename, replacement of an existing target, cross-mount
   `EXDEV` behavior, missing source, and directory operands. Cleanup before
   teardown, no host symbol imports, `UPSTREAM.md` entry and hash.
 
 ### RM-01 — unchanged NetBSD `rm`
 
-- **Status:** Blocked on VFS-04 and reviewed FILEUTIL-01
+- **Status:** Blocked on FTS-01. Clean single-subsystem case per the audit.
 - **Base:** main
-- **Depends on:** VFS-04, FILEUTIL-01, CAT-01
+- **Depends on:** FTS-01, FILEUTIL-01 (Done)
 - **Scope:** import pinned `rm` byte-for-byte. Permissions enforcement remains
   deferred, so `-f` and `-i` semantics must be scoped to what exists.
-- **Hypothesis:** with `rmdir` present, pinned `rm` builds against the veneer
-  without a permissions system.
-- **Red:** record `rm`'s actual first-failure diagnostic after VFS-04, then an
+- **Correction from the audit:** `rm`'s sole measured blocker is `fts.h`, not
+  `rmdir`. Re-measure after FTS-01 to establish whether VFS-04's `rmdir` is also
+  required before import.
+- **Red:** record `rm`'s actual first-failure diagnostic after FTS-01, then an
   observable failing behavioral case.
 - **Accept:** single and multiple operands, missing operand continuation, `-r`
   over a populated tree, exact status and diagnostics, cleanup before teardown,
   no host symbol imports, `UPSTREAM.md` entry and hash.
 
+### CP-01 — unchanged NetBSD `cp`
+
+- **Status:** Blocked on FTS-01 and EXTATTR-01. New ID; the audit measured `cp`
+  as the only utility gated on two independent subsystems.
+- **Base:** main
+- **Depends on:** FTS-01, EXTATTR-01, FILEUTIL-01 (Done)
+- **Scope:** import pinned `cp` byte-for-byte once both subsystems are resolved.
+- **Red:** record `cp`'s actual first-failure diagnostic after both gates clear.
+- **Accept:** to be specified once the blocking subsystems are designed.
+
 ### LS-01 — single-column `ls` without terminal width or `-l`
 
-- **Status:** Blocked on reviewed FILEUTIL-01
+- **Status:** **Ready — claimable now.** The audit measured all five pinned `ls`
+  translation units as gated on `fts.h` (four directly, `print.c` via the
+  ACL-skip fallthrough), which triggers this entry's own written contingency.
+  This therefore proceeds as a **cannedBSD-owned command over the existing
+  dirent contract**, with no `fts` dependency and no subsystem wait. Unchanged
+  pinned `ls` becomes a separate later ID once FTS-01 exists.
 - **Base:** main
-- **Depends on:** FILEUTIL-01, VFS-03 (Done)
+- **Depends on:** FILEUTIL-01 (Done), VFS-03 (Done)
 - **Scope:** deliberately bounded. Single-column output only. No `-l`, no
-  multi-column width computation, no termcap, no `getpwuid`/`getgrgid`. If the
-  audit shows pinned `ls` cannot be imported without `fts(3)`, this becomes a
-  cannedBSD-owned command using the existing dirent contract, and unchanged
-  pinned `ls` gets a separate later ID.
+  multi-column width computation, no termcap, no `getpwuid`/`getgrgid`, no
+  `fts`. cannedBSD-owned source using the VFS-03 dirent contract; this is not an
+  unchanged-upstream import, so no `UPSTREAM.md` entry applies.
 - **Hypothesis:** the VFS-03 dirent contract is already sufficient to enumerate
   and print a directory in a stable order without any terminal capability.
 - **Red:** no ordinary-source path currently lists a directory's contents to
