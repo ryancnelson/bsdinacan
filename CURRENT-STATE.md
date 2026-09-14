@@ -4,32 +4,35 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Coordination checkpoint, 2026-09-12
+## Coordination checkpoint, 2026-09-13
 
-Main `206bfe4cb4bbe355faf29d214016b71927715430` includes the reviewed
-FORMAT-01 design after exact #408 ci, mac68k and mac-automation succeeded.
-This changes documentation only; signed-decimal formatting is not implemented.
-The accepted runtime remains the qualified 67-record Solaris/Mac milestone.
+The accepted main runtime remains the 67-record Solaris/Mac milestone.
+Documentation on main also includes the reviewed formatter design and signal
+acceptance matrix; neither document alone supplies runtime functionality.
 
-TERM-03 `fe082ebc52aef40e65a03d16d4c967ac57720852` combines the reviewed
-engine with accepted Solaris changes. Exact #405 passed all three workflows;
-artifact checksum is verified. Its 68-record Mac execution and native Solaris
-qualification remain pending. No new guest was staged or launched while the
-host desktop is locked; newest accepted guest evidence remains run-rcnizgak.
+TERM-03 `fe082ebc52aef40e65a03d16d4c967ac57720852` has independent review
+and exact #405 all-three CI success. SIG-01 core
+`ea667d6e1bc7e3d544649e26563dcfb27845fcc6` likewise passed independent
+review and #413 all-three CI. It implements internal cooperative interrupts,
+29 shared scenarios and immediate cleanup observations; no private signal.h
+veneer or tee import is included. A separate integration worktree combines the
+two candidates, preserving all 67 existing records plus terminalengine and
+interrupts (69 expected). Combined CI and both guest qualifications are pending;
+no candidate runtime has been merged to main.
 
-SOLARIS-02 `f3a38276f0616afe59f47ce34ab2a7a57f4de8e0` passed existing #406
-CI, but is rejected for live use after independent offline reproductions.
-The driver can release ownership on timeout, bypass the manual owner record,
-and treat transport failure as completion. Other reproduced faults concern
-staging-output parsing, console echoes and source overwrite before reservation.
-The new tests were not wired into existing CI and omit these driver paths.
-A Codex worker owns corrections in separate work/SOLARIS-02-review, preserving
-Claude's source branch. Live rig operations remain blocked until review and
-meaningful offline controls pass. Automated Solaris CI is not accepted.
+The rejected original Solaris runner `f3a38276` is preserved. Its correction
+`f43c31a6a58a8e338a6bfa1972cefe748797801d` passed independent review and
+exact #416 all-three CI, including 26 shell, 16 actual-driver and 7 protocol
+checks. Two real-mkisofs checks were explicitly skipped. The repaired runner
+is suitable for a bounded coordinator-owned trial, but actual console/job/
+media behavior remains unverified. Read-only rig preflight precedes any trial;
+absence of an old lock alone does not establish that a shared VM is available.
+Automated Solaris CI is not accepted yet.
 
-The desktop remains locked, preventing new directions to Claude/Antigravity
-and Mac acceptance. Codex workers continue offline runner fixes and the reviewed SIG-01 core
-state/request implementation in a new isolated worktree; their running status does not imply either app agent was restarted.
+The local desktop remains locked, preventing new directions to Claude and
+Antigravity or Mac acceptance. Newest accepted Mac evidence is run-rcnizgak.
+Codex workers continue the combined integration and read-only Solaris preflight.
+No alternate desktop or VM has been adopted without confirming its ownership.
 
 ## Accepted synthetic tee-state proof, 2026-09-08
 

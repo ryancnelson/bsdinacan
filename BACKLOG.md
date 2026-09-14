@@ -13,15 +13,13 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments (2026-09-12):** SOLARIS-01 is accepted; FORMAT-01 design
-is integrated on main `206bfe4` (documentation only). Codex corrects the rejected
-SOLARIS-02 runner in work/SOLARIS-02-review and implements the reviewed SIG-01 core phase in its own worktree. Claude's and Antigravity's original worktrees are preserved. The locked
-desktop prevents restarting app workers or running Mac acceptance.
-
-TERM-03 `fe082eb` has exact #405 all-three CI success after merging accepted
-Solaris source, but still requires fresh 68-record Mac and native Solaris
-qualification. No staged guest or fresh acceptance is claimed. Keep it off main
-until those gates pass. The accepted runtime remains the 67-record milestone.
+**Current assignments (2026-09-13):** Codex prepares a combined TERM-03/SIG-01
+integration in work/terminal-signals and performs read-only Solaris rig preflight.
+Both individual runtime candidates passed independent review and exact CI;
+their combined 69-record acceptance and native Solaris qualification are pending.
+The repaired Solaris runner f43c31a passed independent review and #416 CI; live
+trial and actual automated Solaris CI remain pending. App workers cannot be
+restarted while the local desktop is locked. Original worktrees are preserved.
 
 Solaris testing is required for shared behavior changes under the transition
 policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
