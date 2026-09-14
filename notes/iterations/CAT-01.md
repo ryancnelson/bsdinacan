@@ -1,6 +1,6 @@
 # CAT-01: NetBSD `cat(1)` import design and prerequisite decomposition
 
-- **Status:** Design and decomposition complete, awaiting coordinator review
+- **Status:** Design note refined with full `fcntl` advisory locking resolution and source trace; awaiting coordinator review
 - **Base SHA:** `7e1fd6a` (`origin/main`)
 - **Branch:** `work/CAT-01`
 - **Scope discipline:** Documentation and design specification only. No code, headers,
@@ -23,8 +23,9 @@ directly from `https://github.com/NetBSD/src` at pinned commit `b890038f7ae5831a
 Direct compilation of `cat.c` against the public headers (`-Icompat/netbsd/include -Ilibc/include -Iinclude`)
 using GCC in C99 mode confirmed **eleven distinct missing interfaces and symbols**, appearing in source order:
 
-1. **`struct flock`, `F_WRLCK`, `F_SETLKW`, `fcntl()`** (`cat.c:78, 127, 129`):
+1. **`struct flock`, `F_WRLCK`, `F_SETLKW`, `fcntl()`** (`cat.c:78, 124–131`):
    - Under `-l` (line 124), `cat` requests an advisory write lock on `STDOUT_FILENO` via `fcntl(STDOUT_FILENO, F_SETLKW, &stdout_lock)`.
+   - If `fcntl` returns `-1`, `cat` immediately aborts via `err(EXIT_FAILURE, "stdout")` (lines 129–130); it does not ignore the error.
    - `libc/include/fcntl.h` currently declares only open flags (`O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_ACCMODE`, `O_APPEND`, `O_CREAT`, `O_TRUNC`) and `#define open cb_libc_open`. `struct flock`, flock commands (`F_WRLCK`, `F_RDLCK`, `F_UNLCK`, `F_SETLK`, `F_SETLKW`, `F_GETLK`), and the `fcntl()` prototype are absent.
 2. **`strtol(3)`** (`cat.c:86`):
    - Under `-B bsize` (line 86), `cat` parses buffer size using `strtol(optarg, NULL, 0)`.
@@ -104,7 +105,112 @@ The design question asks:
 
 ---
 
-## 3. Decomposition into bounded prerequisite IDs
+## 3. Resolution of the `fcntl` advisory locking design question (`FCNTL-01`)
+
+### Source trace in NetBSD `cat.c`
+Advisory record locking in `cat.c` is confined to lines 78 and 124–131:
+
+```c
+/* cat.c:78 */
+static struct flock stdout_lock;
+
+/* cat.c:124-131 */
+if (lflag) {
+    stdout_lock.l_len = 0;
+    stdout_lock.l_start = 0;
+    stdout_lock.l_type = F_WRLCK;
+    stdout_lock.l_whence = SEEK_SET;
+    if (fcntl(STDOUT_FILENO, F_SETLKW, &stdout_lock) == -1)
+        err(EXIT_FAILURE, "stdout");
+}
+```
+
+Critical source trace observations:
+1. **Control flow under `-l`:** When `-l` is specified on the command line, `cat` configures `stdout_lock` to request an exclusive whole-file write lock (`F_WRLCK`, `SEEK_SET`, start 0, len 0) on `STDOUT_FILENO` with blocking wait (`F_SETLKW`).
+2. **Error handling is strict:** If `fcntl(STDOUT_FILENO, F_SETLKW, &stdout_lock)` returns `-1`, `cat` immediately invokes `err(EXIT_FAILURE, "stdout")`, printing the diagnostic and exiting with status 1. **It does not ignore errors.**
+3. **Unflagged and standard execution path:** For all other invocations (unflagged, `-b`, `-e`, `-f`, `-n`, `-s`, `-t`, `-u`, `-v`, `-B`), `lflag == 0` and `fcntl()` is **never invoked**.
+4. **Flag `-f` uses `open()`, not `fcntl()`:** Line 249 executes `open(*argv, O_RDONLY|O_NONBLOCK, 0)`. The `O_NONBLOCK` flag is an `open()` mode argument and does not route through `fcntl()`.
+
+### Rejection of dishonest locking stubs
+Under `AGENTS.md`, interfaces must establish genuine, falsifiable behavior rather than pretending to succeed. An advisory locking stub that unconditionally returns `0` for `F_SETLK`/`F_SETLKW` without enforcing mutual exclusion is a **dishonest surface**:
+- It would cause two cooperative tasks concurrently executing `cat -l` directed to the same file/terminal to falsely believe they hold exclusive write locks, silently interleaving and corrupting their output without mutual exclusion.
+- Per the precedent in `SIG-01-design.md` (which rejected signal stubs because returning fake success fails to enforce real task semantics), a no-op locking stub is strictly rejected.
+
+### Decision: Implement genuine per-node advisory record locking in `FCNTL-01`
+
+**We decide that `FCNTL-01` must implement genuine per-node advisory record locking across `cb_vfs_node` structures in cannedBSD's cooperative multi-task kernel, with real mutual exclusion, conflict detection, and automatic lifecycle cleanup on descriptor close and task exit.**
+
+### Architecture and semantics for `FCNTL-01`:
+
+1. **ABI Definition (`include/cannedbsd/abi.h`):**
+   ```c
+   enum cb_flock_type {
+       CB_F_RDLCK = 1,
+       CB_F_WRLCK = 2,
+       CB_F_UNLCK = 3
+   };
+
+   enum cb_fcntl_cmd {
+       CB_F_DUPFD  = 0,
+       CB_F_GETFD  = 1,
+       CB_F_SETFD  = 2,
+       CB_F_GETFL  = 3,
+       CB_F_SETFL  = 4,
+       CB_F_GETLK  = 7,
+       CB_F_SETLK  = 8,
+       CB_F_SETLKW = 9
+   };
+
+   struct cb_flock_v1 {
+       uint32_t abi_version;
+       uint32_t struct_size;
+       int16_t l_type;   /* CB_F_RDLCK, CB_F_WRLCK, CB_F_UNLCK */
+       int16_t l_whence; /* CB_SEEK_SET, CB_SEEK_CUR, CB_SEEK_END */
+       cb_off_t l_start; /* Starting offset */
+       cb_off_t l_len;   /* Number of bytes; 0 means to EOF */
+       cb_pid_t l_pid;   /* Blocking PID (populated by GETLK) */
+   };
+   ```
+   Add `int (*fcntl)(int fd, int cmd, void *arg);` to `struct cb_api_v1`.
+
+2. **Per-node lock tracking in the VFS layer (`src/vfs.c`, `src/internal.h`):**
+   - Each `cb_vfs_node` owns a linked list or tracked array of active record locks:
+     ```c
+     struct cb_record_lock {
+         cb_pid_t pid;
+         int type;        /* CB_F_RDLCK or CB_F_WRLCK */
+         cb_off_t start;  /* absolute start offset */
+         cb_off_t end;    /* absolute end offset, 0 = EOF/infinity */
+         struct cb_record_lock *next;
+     };
+     ```
+   - Range conversion evaluates `l_whence`:
+     - `CB_SEEK_SET`: `start = l_start`.
+     - `CB_SEEK_CUR`: `start = file->offset + l_start`.
+     - `CB_SEEK_END`: `start = node_size + l_start`.
+     - If `start < 0`, returns `-CB_EINVAL`.
+     - `l_len == 0` designates locking from `start` through infinity (`end = 0`).
+
+3. **Conflict detection and POSIX semantics:**
+   - Two locks overlap if `start1 < end2` and `start2 < end1` (with `0` treated as $\infty$).
+   - A lock request conflicts with an existing active lock if:
+     1. The active lock is held by a *different* PID (`lock->pid != current_task->pid`), AND
+     2. At least one lock is `CB_F_WRLCK` (write locks conflict with both read and write locks; read locks conflict only with write locks).
+   - Locks from the *same* PID never conflict with each other; an `F_SETLK` from the owning PID replaces, extends, or splits existing locks held by that PID.
+
+4. **Operation handling:**
+   - **`F_GETLK`:** Inspects locks on the node. If a conflicting lock held by another PID exists, overwrites `struct flock` with that lock's parameters (`l_type`, `l_whence = SEEK_SET`, `l_start`, `l_len`, `l_pid`). If no conflict, sets `l_type = F_UNLCK`.
+   - **`F_SETLK` (Non-blocking):** If a conflict exists, returns `-1` with `errno = EAGAIN` (or `EACCES`). If uncontested, inserts/updates the lock record (or removes for `F_UNLCK`) and returns `0`.
+   - **`F_SETLKW` (Blocking):** If a conflict exists, yields/blocks the cooperative task (`CB_TASK_BLOCKED_LOCK`) until the conflicting task releases the lock or terminates. If uncontested, grants the lock immediately and returns `0`.
+
+5. **Lifecycle and cleanup invariants:**
+   - **Close Invariant (POSIX requirement):** When a task closes *any* file descriptor referring to a node (via `api->close` or kernel cleanup), all record locks held by `task->pid` on that specific node are immediately purged.
+   - **Exit Invariant:** When a task terminates (`api->exit` or kernel task destruction), all record locks held by `task->pid` across all nodes in the VFS are automatically purged.
+   - **Allocation Hygiene:** All lock record memory is allocated via `cb_allocate` and freed via `cb_release` without leaks.
+
+---
+
+## 4. Decomposition into bounded prerequisite IDs
 
 To comply with AGENTS.md single-behavior increment rules, the 11 gaps are partitioned into **six independent, reviewable prerequisite backlog items**, followed by the terminal integration item:
 
@@ -154,15 +260,19 @@ To comply with AGENTS.md single-behavior increment rules, the 11 gaps are partit
 - **Red:** Probe fails to compile against `sys/stat.h`; then runtime check fails to distinguish regular files from directories/terminals/pipes.
 - **Accept:** `fstat` and `stat` return 0 and populate `st_mode`/`st_size`/`st_ino` accurately on regular files (`S_ISREG` true), directories (`S_ISDIR` true), terminal devices (`S_ISCHR` true), and pipes (`S_ISFIFO` true); returns `-1` with `EBADF` on invalid descriptors and `ENOENT` on non-existent paths.
 
-### 6. `FCNTL-01` — File control flags and advisory locking veneer (`O_NONBLOCK`, `fcntl`)
+### 6. `FCNTL-01` — File control flags and genuine per-node advisory record locking (`O_NONBLOCK`, `fcntl`)
 - **Scope:**
-  - `libc/include/fcntl.h`: add `O_NONBLOCK`, `struct flock` (`l_start`, `l_len`, `l_pid`, `l_type`, `l_whence`), `F_RDLCK`, `F_WRLCK`, `F_UNLCK`, `F_GETLK`, `F_SETLK`, `F_SETLKW`.
+  - `include/cannedbsd/abi.h`: `struct cb_flock_v1`, `enum cb_flock_type`, `enum cb_fcntl_cmd`, `api->fcntl`.
+  - `src/internal.h`, `src/vfs.c`, `src/core.c`: per-node lock tracking in `cb_vfs_node`, conflict detection, lock acquisition, unlock, blocking on contested `F_SETLKW`, and automatic lock purge on descriptor `close()` and task `exit()`.
+  - `libc/include/fcntl.h`: `O_NONBLOCK`, `struct flock` (`l_start`, `l_len`, `l_pid`, `l_type`, `l_whence`), `F_RDLCK`, `F_WRLCK`, `F_UNLCK`, `F_GETLK`, `F_SETLK`, `F_SETLKW`.
   - `libc/cb_libc.c`: implement `int cb_libc_fcntl(int fd, int cmd, ...)`.
-    - Descriptor validity check (`EBADF` if descriptor out of range or unallocated).
-    - `F_GETFL` / `F_SETFL`: validate descriptor.
-    - `F_SETLK` / `F_SETLKW` / `F_GETLK`: validate `struct flock *` pointer; in cannedBSD's single-process cooperative execution model, advisory locks succeed unconditionally (return 0) on valid descriptors.
-- **Red:** Focused probe verifying `EBADF` on closed descriptors, `EFAULT`/`EINVAL` on invalid lock structures, and successful no-op lock grant on open descriptors.
-- **Accept:** Validates descriptors; allows `cat -l` and `cat -f` to execute without failing on unsupported operations.
+- **Red:** Focused multi-task cooperative locking probe fails while `fcntl` and locking structures are absent.
+- **Accept:**
+  1. *Acquisition & inspection:* Single task acquires `F_WRLCK` via `F_SETLK`; `F_GETLK` reports no conflict from self; `F_UNLCK` clears lock.
+  2. *Cooperative mutual exclusion:* When Task 1 holds `F_WRLCK` on a file, Task 2 calling `F_SETLK` with `F_WRLCK` fails with `EAGAIN`/`EACCES`, and `F_GETLK` reports Task 1's PID.
+  3. *Automatic release on close:* Closing a file descriptor referencing the locked node purges that task's locks on the node; Task 2 can subsequently acquire the lock.
+  4. *Automatic release on task exit:* When Task 1 exits, all its held locks are purged by the kernel; Task 2 can acquire the lock.
+  5. *Error handling:* `EBADF` on invalid descriptors; `EINVAL` on invalid `whence` or negative start offsets.
 
 ### 7. `CAT-01` — NetBSD `cat(1)` import and full integration
 - **Scope:**
@@ -174,7 +284,7 @@ To comply with AGENTS.md single-behavior increment rules, the 11 gaps are partit
 
 ---
 
-## 4. Acceptance test matrix for `CAT-01` integration
+## 5. Acceptance test matrix for `CAT-01` integration
 
 When the prerequisite chain is complete and `cat` is imported, the integration gate must verify:
 
@@ -192,7 +302,7 @@ When the prerequisite chain is complete and `cat` is imported, the integration g
    - Unflagged execution runs via `raw_cat`, verifying `read`/`write` fast loop.
    - `-B bsize`: Custom buffer size parsing via `strtol`.
    - `-u`: Unbuffered execution (`setbuf(stdout, NULL)`).
-   - `-l`: Advisory locking on stdout (`fcntl(F_SETLKW)`).
+   - `-l`: Advisory locking on stdout (`fcntl(F_SETLKW)`): succeeds cleanly when uncontested; enforces mutual exclusion when contested.
    - `-f`: Regular file gate (`S_ISREG` check; non-regular files skipped with `warnx`).
 6. **Error handling and continuation:**
    - Missing input file produces `warn("%s", path)`, sets exit status 1, and continues processing subsequent files.
