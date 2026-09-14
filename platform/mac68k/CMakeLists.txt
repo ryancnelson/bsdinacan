@@ -93,12 +93,13 @@ target_compile_definitions(cb_strtoimax PRIVATE
 
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
-    ${ROOT}/src/core.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
+    ${ROOT}/src/core.c ${ROOT}/src/terminal.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
     ${ROOT}/commands/dirname_module.c ${ROOT}/commands/basename_module.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
+    ${ROOT}/tests/terminal_engine_probe.c
     ${ROOT}/tests/tee_state_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
