@@ -129,6 +129,52 @@ source-boundary, build-mode, publication and analyzer checks completed. Byte
 comparison confirmed the engine/Mac wiring unchanged from reviewed `995f94f`
 and accepted Solaris runtime/build files unchanged from `adf62f1`.
 
-Exact pushed-commit CI is pending at this note revision. Mac acceptance and
-native Solaris qualification require separately assigned coordinator slots;
-no old platform result is promoted to acceptance of this new engine.
+Exact pushed-commit CI: Woodpecker run #405 on `fe082ebc52aef40e65a03d16d4c967ac57720852` passed all 3 pipelines (`linux-ci`, `mac68k`, `mac68k-clang`).
+
+## Native Solaris 9 SPARC qualification
+
+Native-tested commit: `fe082ebc52aef40e65a03d16d4c967ac57720852`.
+Guest environment: `SunOS solaris 5.9 Generic sun4m sparc SUNW,SPARCstation-5` (QEMU SS-5, PID 21427 on `tribblix`, up since 2026-09-04T20:59:15Z). Toolchain: Sunfreeware GCC 3.4.6 (`/usr/local/bin/gcc`), GNU Make 3.81 (`/usr/local/bin/make`), `librt`.
+
+Source staging artifacts generated from exact commit `fe082eb`:
+- USTAR tar archive: `cannedbsd-src-TERM-03-fe082eb.tar` (SHA256 `3e70454fbeac4df4e32e008f5c97da91a9cf135346042fdaa3c96065a557877d`)
+- Gzip tar archive: `cannedbsd-src-TERM-03-fe082eb.tar.gz` (SHA256 `343c8bc0b027ab82ace71ad923f779107d5ea32c2bbcc8e239780646522835a9`)
+- Rock-Ridge ISO: `source.iso` (SHA256 `43a816d58b0994e5ad0a9747549d064ab47330dcda8c5f3845464785113855fe`)
+
+Guest build and test execution:
+Clean extraction of ISO to `/var/tmp/sq-TERM-03-fe082eb` (76,208 blocks, 326 regular files). Executed under `/bin/ksh` with `PATH=/usr/local/bin:/usr/ccs/bin:/usr/bin:/usr/sbin CC=gcc MAKE=make tools/solaris9-build.sh`.
+
+Direct guest output transcript:
+```
+gcc (GCC) 3.4.6
+GNU Make 3.81
+This program built for sparc-sun-solaris2.9
+make: Warning: File `Makefile' has modification time 2.8e+05 s in the future
+rm -rf build
+make: warning:  Clock skew detected.  Your build may be incomplete.
+make: Warning: File `Makefile' has modification time 2.8e+05 s in the future
+mkdir -p build
+[... gcc compilation and static archiving of libcannedbsd.a and objects ...]
+gcc -D_XOPEN_SOURCE=600 -D__EXTENSIONS__ -DCANNEDBSD_SOLARIS9 -Icompat/solaris9/include -Iinclude -Isrc -std=gnu99 -Wall -Wextra -Werror -pedantic -Wno-unknown-pragmas -g -O2 src/main.c [...] build/libcannedbsd.a -o build/bsdinacan -lrt
+gcc -D_XOPEN_SOURCE=600 -D__EXTENSIONS__ -DCANNEDBSD_SOLARIS9 -Icompat/solaris9/include -Iinclude -Isrc -std=gnu99 -Wall -Wextra -Werror -pedantic -Wno-unknown-pragmas -g -O2 [...] build/libcannedbsd.a -o build/test_core -lrt
+make: warning:  Clock skew detected.  Your build may be incomplete.
+Orequired getopt tests passed
+argv ownership tests passed
+fread tests passed
+file ownership tests passed
+stdin tests passed
+clockloss test passed
+runnable timeout test passed
+all core tests passed
+launcher test passed
+build/bsdinacan:        ELF 32-bit MSB executable SPARC Version 1, dynamically linked, not stripped
+SOLARIS9_CANNEDBSD_TEST=PASS
+EXIT=0
+```
+
+All core tests, terminal engine probes, launcher tests, and acceptance assertions (`HELLO` pipeline, exit status 1, libc `wc -c` count 5) passed cleanly under `set -eu`. Guest media was unmounted, drive ejected in QEMU monitor, and coordinator lock released.
+
+## Mac68k / Basilisk II guest acceptance status
+
+Per Ryan's directive: Mac guest (Basilisk II / System 7) live qualification is **EXPLICITLY PENDING**. The host machine (`lillehammer`) hosting the staged guest environment is a battery-powered laptop asleep in another house. Retro68 compilation is verified green via Woodpecker mac68k CI workflow #405.
+
