@@ -11,6 +11,8 @@ target_compile_definitions(cb_dirname_command PRIVATE main=cb_dirname_main)
 add_library(cb_basename_command OBJECT ${ROOT}/upstream/netbsd/usr.bin/basename/basename.c)
 target_include_directories(cb_basename_command PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_basename_command PRIVATE main=cb_basename_main)
+add_library(cb_ls OBJECT ${ROOT}/commands/ls.c)
+target_include_directories(cb_ls PRIVATE ${ROOT}/libc/include)
 add_library(cb_wc OBJECT ${ROOT}/commands/wc.c)
 target_include_directories(cb_wc PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
@@ -98,7 +100,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/dirname_module.c ${ROOT}/commands/basename_module.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
-    ${ROOT}/commands/head_module.c
+    ${ROOT}/commands/head_module.c ${ROOT}/commands/ls_module.c
     ${ROOT}/tests/tee_state_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
@@ -134,6 +136,7 @@ add_application(CannedBSD CREATOR "CnBD"
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
+    $<TARGET_OBJECTS:cb_ls>
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
