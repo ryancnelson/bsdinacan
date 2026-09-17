@@ -25,6 +25,7 @@ extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_warn_probe_program;
 extern const struct cb_program_v1 cb_warnx_probe_program;
 extern const struct cb_program_v1 cb_fclose_stdout_probe_program;
+extern const struct cb_program_v1 cb_format_probe_program;
 extern const struct cb_program_v1 cb_strcpy_probe_program;
 extern const struct cb_program_v1 cb_head_probe_program, cb_head_pipe_program;
 extern int cb_strcpy_probe_main(int argc, char **argv);
@@ -4758,6 +4759,8 @@ static void run_case(const char *command, const char *expected_output,
             fail("warnxprobe registration");
         if (cb_kernel_register(kernel, &cb_fclose_stdout_probe_program) < 0)
             fail("fclosestdoutprobe registration");
+        if (cb_kernel_register(kernel, &cb_format_probe_program) < 0)
+            fail("formatprobe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -6036,6 +6039,115 @@ static void test_err(void)
        silently succeeding, for both streams. */
     run_case("fclosestdoutprobe", "before\nbefore\n", 0, FIXTURE_ERR);
     expect_streams("before\n", "before\n");
+
+    /* FORMAT-01: bounded %Nd and %Ns support in the internal
+       printf/fprintf formatter. Each "formatprobe v <letter>" case
+       exercises exactly one entry of tests/libc_format_probe.c's
+       cases[] table (letter = 'A' + array index); the probe writes to
+       stdout on even indices, stderr on odd, and self-validates the
+       returned character count and preserved errno before returning 0. */
+    run_case("formatprobe v A", "0", 0, FIXTURE_ERR);
+    expect_streams("0", "");
+    run_case("formatprobe v B", "  42", 0, FIXTURE_ERR);
+    expect_streams("", "  42");
+    run_case("formatprobe v C", " -42", 0, FIXTURE_ERR);
+    expect_streams(" -42", "");
+    run_case("formatprobe v D", "42", 0, FIXTURE_ERR);
+    expect_streams("", "42");
+    run_case("formatprobe v E", "-42", 0, FIXTURE_ERR);
+    expect_streams("-42", "");
+    run_case("formatprobe v F", "                              42", 0, FIXTURE_ERR);
+    expect_streams("", "                              42");
+    run_case("formatprobe v G", "                             -42", 0, FIXTURE_ERR);
+    expect_streams("                             -42", "");
+    run_case("formatprobe v H", "-2147483648", 0, FIXTURE_ERR);
+    expect_streams("", "-2147483648");
+    run_case("formatprobe v I", "2147483647", 0, FIXTURE_ERR);
+    expect_streams("2147483647", "");
+    run_case("formatprobe v J", "-2147483648", 0, FIXTURE_ERR);
+    expect_streams("", "-2147483648");
+    run_case("formatprobe v K", "2147483647", 0, FIXTURE_ERR);
+    expect_streams("2147483647", "");
+    run_case("formatprobe v L", " -42:tail", 0, FIXTURE_ERR);
+    expect_streams("", " -42:tail");
+    /* CAT-01 extension: width-qualified %s, combined with %d the same
+       way the pre-existing "%4d:%s" case (L) already does. */
+    run_case("formatprobe v M", " -42:  tail", 0, FIXTURE_ERR);
+    expect_streams(" -42:  tail", "");
+    run_case("formatprobe v N", " -42:tail", 0, FIXTURE_ERR);
+    expect_streams("", " -42:tail");
+
+    /* "formatprobe b <letter>" exercises tests/libc_format_probe.c's
+       bad[] table: every entry must be rejected with EOF/EINVAL before
+       reading its (absent) variadic argument, writing nothing to either
+       stream. Letters run through the full current bad[] length. */
+    run_case("formatprobe b A", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b B", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b C", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b D", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b E", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b F", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b G", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b H", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b I", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b J", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b K", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b L", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b M", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b N", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b O", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b P", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b Q", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b R", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b S", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b T", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b U", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b V", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    /* CAT-01 extension: %-4s, %.1s and %33s -- flags, precision and
+       overflowing width are rejected on %s exactly like %d. %4s itself
+       (formerly bad, index removed from the table) is now valid -- see
+       cases M/N above and the direct 'n' mode below. */
+    run_case("formatprobe b W", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b X", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+    run_case("formatprobe b Y", "prefix:", 0, FIXTURE_ERR);
+    expect_streams("prefix:", "");
+
+    run_case("formatprobe s A", " -42:tail", 0, FIXTURE_ERR);
+    expect_streams(" -42:tail", "");
+    /* Exact shape of pinned cat.c's cook_buf() blank-line-continuation
+       call under -b: fprintf(stdout, "%6s\t", ""). */
+    run_case("formatprobe n A", "      \t", 0, FIXTURE_ERR);
+    expect_streams("      \t", "");
+    /* Multiple width-qualified conversions of differing widths in one
+       line -- the shape ls -l's column alignment and wc's multi-count
+       output need, per the coordinator's follow-up scope note, not just
+       a single field per call. */
+    run_case("formatprobe m A", "  1    22    tail333", 0, FIXTURE_ERR);
+    expect_streams("  1    22    tail333", "");
 
     /* A zero-progress writer must not trap err in an infinite retry loop. */
     capture_write_limit = 0;

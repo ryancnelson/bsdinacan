@@ -1300,22 +1300,17 @@ static int format_output(int descriptor, const char *format,
             if (add_output(descriptor, "%", 1, &total) < 0)
                 return -1;
             ++cursor;
-        } else if (*cursor == 's') {
-            const char *text = va_arg(arguments, const char *);
-            if (text == NULL)
-                text = "(null)";
-            if (add_output(descriptor, text, cb_libc_strlen(text), &total) < 0)
-                return -1;
-            ++cursor;
         } else {
+            /* Bounded width 1-32 (or none), shared by %d and %s -- see
+               FORMAT-01-design.md. Originally scoped to %Nd alone for
+               uniq's "%4d %s" need, which never required a width on %s.
+               CAT-01 measured pinned cat.c's -b blank-line-continuation
+               path calling fprintf(stdout, "%6s\t", "") and demonstrated
+               that scope insufficient for a second consumer -- extended
+               here, not because %Ns was anticipated, but because it was
+               actually needed. Same immediate-CB_EINVAL policy as %d for
+               any flag/precision/length-modifier/other conversion. */
             unsigned width = 0;
-            int value;
-            unsigned magnitude;
-            /* 2^3 < 10: ceil(bits/3) bounds decimal digits; reserve a sign. */
-            char number[(sizeof(int) * CHAR_BIT + 2) / 3 + 2];
-            char *end = number + sizeof(number);
-            char *digits = end;
-            size_t length;
             if (*cursor >= '1' && *cursor <= '9') {
                 do {
                     unsigned digit = (unsigned)(*cursor - '0');
@@ -1327,29 +1322,54 @@ static int format_output(int descriptor, const char *format,
                     ++cursor;
                 } while (*cursor >= '0' && *cursor <= '9');
             }
-            if (*cursor != 'd') {
+            if (*cursor == 'd') {
+                int value;
+                unsigned magnitude;
+                /* 2^3 < 10: ceil(bits/3) bounds decimal digits; reserve a sign. */
+                char number[(sizeof(int) * CHAR_BIT + 2) / 3 + 2];
+                char *end = number + sizeof(number);
+                char *digits = end;
+                size_t length;
+                value = va_arg(arguments, int);
+                magnitude = (unsigned)value;
+                if (value < 0)
+                    magnitude = 0U - magnitude;
+                do {
+                    *--digits = (char)('0' + magnitude % 10U);
+                    magnitude /= 10U;
+                } while (magnitude != 0);
+                if (value < 0)
+                    *--digits = '-';
+                length = (size_t)(end - digits);
+                while (width > length) {
+                    if (add_output(descriptor, " ", 1, &total) < 0)
+                        return -1;
+                    --width;
+                }
+                if (add_output(descriptor, digits, length, &total) < 0)
+                    return -1;
+                ++cursor;
+            } else if (*cursor == 's') {
+                const char *text = va_arg(arguments, const char *);
+                size_t length;
+                if (text == NULL)
+                    text = "(null)";
+                length = cb_libc_strlen(text);
+                /* Right-justify, like %d: pad if shorter, never truncate
+                   if the string is already wider than the requested
+                   field -- same non-truncating policy %d already uses. */
+                while (width > length) {
+                    if (add_output(descriptor, " ", 1, &total) < 0)
+                        return -1;
+                    --width;
+                }
+                if (add_output(descriptor, text, length, &total) < 0)
+                    return -1;
+                ++cursor;
+            } else {
                 bound_api->set_errno(CB_EINVAL);
                 return -1;
             }
-            value = va_arg(arguments, int);
-            magnitude = (unsigned)value;
-            if (value < 0)
-                magnitude = 0U - magnitude;
-            do {
-                *--digits = (char)('0' + magnitude % 10U);
-                magnitude /= 10U;
-            } while (magnitude != 0);
-            if (value < 0)
-                *--digits = '-';
-            length = (size_t)(end - digits);
-            while (width > length) {
-                if (add_output(descriptor, " ", 1, &total) < 0)
-                    return -1;
-                --width;
-            }
-            if (add_output(descriptor, digits, length, &total) < 0)
-                return -1;
-            ++cursor;
         }
     }
     return total;

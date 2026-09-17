@@ -605,23 +605,30 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
   operations and both exec phases. Mark all cases unexecuted and distinguish
   proposed symbols from existing implementation. This stocks SIG-01 tests.
 
+### FORMAT-01 — bounded signed decimal and width-qualified string formatting
+
+- **Status:** Done. `work/FORMAT-01` rebased c0d36f7's existing `%Nd`
+  implementation onto current `main`, extended to cover width-qualified
+  `%s`, and landed. Full `make ci` green (normal, sanitizer, isolation).
+  Named consumers: `cat -n`/`-b` (`CAT-01`, the finding that drove the
+  `%s` extension), and `ls -l`/`wc` (queued as `LS-02`/`WC-02`, not yet
+  imported — the mechanism was verified to generalize to multiple,
+  independently-widthed conversions concatenated in one output line, per
+  the coordinator's explicit scope note, rather than assumed). No scope
+  expansion beyond width qualifiers: no precision, no flags, no floating
+  point, on either `%d` or `%s`. See `notes/iterations/FORMAT-01.md` and
+  the addendum in `notes/iterations/FORMAT-01-design.md`.
+- **Prior scope correction (2026-09-17):** the original design (below) was
+  scoped for a single consumer (`uniq`'s `"%4d %s"`) and explicitly
+  excluded width-qualified `%s` on the grounds `uniq` never needed it.
+  `CAT-01`'s measurement of `cat -b`'s `"%6s\t"` call demonstrated that
+  scope insufficient — a correction driven by a real second consumer, not
+  scope creep.
+
 ### FORMAT-01-design — bounded signed decimal formatting for uniq
 
 - **Status:** Done; reviewed design `fda45c5` with exact #404 all-three CI success.
-  Runtime implementation remains unassigned after signal/tee priority.
-- **Scope correction found by `CAT-01` (2026-09-17):** this design was scoped
-  for a single consumer (`uniq`'s `"%4d %s"`) and explicitly, deliberately
-  excludes width-qualified `%s` on the grounds that `uniq` never needs it. A
-  second consumer arrived before implementation landed: pinned `cat.c`'s `-b`
-  blank-line-continuation case needs exactly `%6s\t` (width-qualified `%s`).
-  `work/FORMAT-01` at `c0d36f7` already has a real, close-to-design `%Nd`
-  implementation (bounded width 1-32, `INT_MIN`-safe), but it is not on
-  `origin/main` and its own note still reads "implementation pending." Next
-  implementation pass must rebase that work onto current `main`, extend the
-  design to cover width-qualified `%s` with `cat -n`/`-b` as the named,
-  measured second consumer, and record why the original `uniq`-only scope
-  was insufficient — a scope correction driven by a real second consumer,
-  not scope creep. See `notes/iterations/CAT-01.md` section 7.
+  Superseded by `FORMAT-01`'s implementation and scope-revision addendum above.
 - **Base:** existing feature base; preserve the worktree and record its full SHA.
 - **Scope:** own iteration note only; no formatter implementation or uniq import.
 - **Accept:** inspect the pinned cached uniq source and current formatter; specify
