@@ -19,6 +19,7 @@
 #define MAXPATHLEN CB_PATH_MAX
 #endif
 
+/* Single source of truth: PATH_MAX derives from CB_PATH_MAX across limits.h and sys/param.h */
 #ifndef PATH_MAX
 #define PATH_MAX CB_PATH_MAX
 #endif
