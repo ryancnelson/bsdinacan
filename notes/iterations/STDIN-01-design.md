@@ -228,3 +228,54 @@ Design validation: source review and publication/diff checks only; exact docs
 CI #262 passed all three checks on `5fcc687`. Independent review found no
 design blocker; the design is included in accepted integration `6f860c4`. Guest execution is not required for this documentation-only change,
 and no guest result or input-stream implementation is claimed.
+
+## Addendum (`CAT-01`): the `fclose(stdout/stderr)` rejection above is revised, not reversed silently
+
+This design's original decision — "this slice rejects `fclose(stdout/
+stderr)` with `EINVAL` and leaves those descriptors and indicators alone,"
+explicitly coordinator-selected to preserve SPEC's descriptor policy — was
+made with **no consumer in existence** for the opposite behavior. `CAT-01`
+is the first real consumer, and pinned NetBSD `cat.c`'s `main()` calls
+`fclose(stdout)` **unconditionally** on every successful path immediately
+before returning — a common BSD idiom, not `cat`-specific. Under the
+original rejection, every invocation of `cat`, flagged or not, exits 1
+with a spurious `stdout: invalid argument` after producing otherwise-
+correct output; there is no accepted matrix in which that is viable.
+
+**The coordinator revised the decision, explicitly, with a reason,
+rather than defending it as originally scoped:** the original policy was
+reasoned, not validated, against real consumer behavior, and the
+consumer that finally arrived demonstrated the reasoning insufficient.
+
+The revision: `fclose(stdout)`/`fclose(stderr)` now succeed, but honestly
+— not via a bare `return 0`, which would claim a closure that never
+happened. `struct cb_stdio_state_v1` gained append-only `stdout_closed`/
+`stderr_closed` fields; `fclose` marks the calling stream closed from the
+task's own perspective (rejecting an already-closed stream with `EINVAL`,
+matching real double-`fclose` semantics) without releasing descriptor 1/2
+immediately — that happens at normal task teardown, same as any other
+resource the task no longer references. Every subsequent write through
+`puts`/`putchar`/`printf`/`fprintf`/`warn`/`warnx`/`err`/`errx`/`fwrite`/
+`fflush` now genuinely fails with `EBADF` on a closed stream, which is
+what keeps the `0` return truthful: the caller cannot observe any
+difference between "the descriptor was actually reclaimed" and "the
+descriptor will be reclaimed at teardown," and a caller writing to
+`stdout` after `fclose` already has undefined behavior on real BSD too.
+An old runtime whose `stdio_state` predates these fields cannot honestly
+claim closure, so it falls back to the original `EINVAL` rejection via a
+`struct_size` guard, exactly like every other appended-field extension in
+this project.
+
+Full implementation, the write-after-close proof, and the reasoning
+recorded above live in `notes/iterations/CAT-01.md`. This addendum exists
+so the next reader of this file sees an explicit, reasoned extension of
+the original decision, not a silent contradiction of it — same discipline
+`VFS-03.md` used for `VFS-05`.
+
+**Pattern to carry forward:** per the coordinator, this is the fourth
+documented instance of a decision made with no consumer in existence
+turning out wrong once a real consumer arrived (`VFS-03`'s directory
+cursor, `EXTATTR-01`'s scope, `MV-01`'s `vfork` assumption, and now this).
+A decision made in the absence of a consumer should probably be marked
+PROVISIONAL rather than settled, so the next person knows it was reasoned
+rather than validated.

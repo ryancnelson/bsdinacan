@@ -1,9 +1,16 @@
 # CAT-01: NetBSD `cat(1)` import design and prerequisite decomposition
 
 - **Status:** All six prerequisites landed; re-measured against current
-  origin/main and import attempted. **Blocked on a newly-found, universal
-  `fclose(stdout)` gap — see "Implementation findings" below. Not landing
-  until the coordinator decides how to resolve it.**
+  origin/main and import attempted. `fclose(stdout/stderr)` gap **RESOLVED**
+  per coordinator decision (option 1, implemented honestly — see "Finding 2,
+  resolved" below). `O_NONBLOCK` rejected by `cb_libc_open` (blocking `-f`)
+  **FIXED directly** (Finding 4 below) — squarely this ID's own scope, a
+  compilation-only gap left by `FCNTL-01`, not a reasoned decision. Full
+  accepted matrix now green in `make ci` **except** `-n`/`-b`, which need
+  `%d`/width-`%s` support in the internal `printf`/`fprintf` formatter that
+  does not exist on `origin/main` today (Finding 3, unresolved, needs a
+  coordinator decision) — excluded from the accepted matrix pending that
+  call, matching `rm -P`/`-W`'s precedent for flag-gated deferred surface.
 - **Base SHA:** `7e1fd6a` (`origin/main`), re-merged to current `origin/main`
   (`81e8f62`) before implementation.
 - **Branch:** `work/CAT-01`
@@ -306,7 +313,7 @@ registered under the distinct name `"netbsdecho"`, not colliding) — that
 one was presumably deliberately kept separate rather than wired to replace
 `echo` outright; not this ID's call to touch, flagging only for visibility.
 
-### Finding 2 (BLOCKING, not fixed — needs a coordinator decision): `fclose(stdout)` always fails here
+### Finding 2, RESOLVED per coordinator decision: `fclose(stdout)` always fails here
 
 Real, pinned `cat.c`'s `main()` (line 137) calls `fclose(stdout)`
 **unconditionally**, on every successful code path, immediately before
@@ -367,3 +374,191 @@ Given option 2 is not viable and option 3's detectability is unclear
 without deeper investigation, option 1 looks most likely, but this is the
 coordinator's decision to make, not mine, since it reverses someone else's
 named, explicit choice.
+
+**Resolution:** the coordinator selected option 1, explicitly as a revision
+of `STDIN-01-design.md`'s own decision, reasoned rather than reversed
+silently — see the addendum appended to `STDIN-01-design.md` below. The
+honesty constraint stated explicitly: `fclose(stdout)` must not become a
+bare `return 0` (that would claim a closure that never happened, the same
+species of dishonesty rejected for the `fchmod`/`user_from_uid` stubs);
+instead the stream must be genuinely marked closed *from the task's own
+perspective* so every subsequent write genuinely fails, keeping the
+success return truthful, while the underlying descriptor is reclaimed at
+normal task teardown rather than released immediately.
+
+Implemented: `struct cb_stdio_state_v1` (`include/cannedbsd/abi.h`) gains
+append-only `stdout_closed`/`stderr_closed` fields, guarded by
+`CB_STDIO_STATE_V1_CLOSED_MIN_SIZE` at every read site (an old runtime
+predating these fields cannot honestly claim closure, so it falls back to
+the original EINVAL rejection rather than silently assuming open).
+`cb_libc_fclose(stdout/stderr)` now: rejects if already closed (`EINVAL`,
+matching real double-`fclose` semantics); otherwise sets the closed flag
+and returns 0 — no flush call is needed because output here is unbuffered
+by design (`STDIN-01`/`FWRITE-01`), so "flush" is a genuine no-op, not a
+corner cut. `write_all` (the single choke point behind `puts`, `putchar`,
+`printf`, `fprintf`, `warn`, `warnx`, `err`, `errx`), `cb_libc_fwrite`'s
+own direct write loop, and `cb_libc_fflush` all now check the closed flag
+first and fail with `EBADF` before touching the descriptor. `src/core.c`
+resets both flags to 0 at the same point `stdout_error`/`stderr_error`
+already reset on successful `exec`, matching `STDIN-01-design.md`'s own
+table entry for stdin's closed state.
+
+**The honesty test, run for real:** `bsdinacan -c 'echo hi > /tmp/a; cat
+/tmp/a'` now correctly exits 0 with `hi` on stdout — measured, not
+assumed. A write-after-close check (write to stdout, `fclose(stdout)`,
+write to stdout again) is added to the acceptance matrix below to prove
+the second write genuinely fails rather than silently succeeding.
+
+**`STDIN-01-design.md` addendum recorded:** appended a note there (not a
+silent edit) explaining the revision and its reason — matching how
+`VFS-03.md` was extended for `VFS-05` rather than contradicted.
+
+**Pattern worth recording for the coordinator:** this is (per the
+coordinator's own count) the fourth documented case this project has hit
+of a decision made with no consumer in existence turning out wrong once a
+real consumer arrived (`VFS-03`'s cursor, `EXTATTR-01`'s scope, `MV-01`'s
+`vfork` assumption, and now `STDIN-01`'s `fclose` policy). Worth flagging
+such decisions as PROVISIONAL rather than settled when no consumer exists
+yet, so the next reader knows it was reasoned, not validated.
+
+---
+
+## 7. Finding 3 (BLOCKING, not fixed — needs a coordinator decision): the internal `printf`/`fprintf` formatter has no `%d` or width-`%s` support
+
+With `fclose(stdout)` resolved, basic concatenation and the `-` stdin
+operand both measured correctly (`bsdinacan -c 'echo hi > /tmp/a; cat
+/tmp/a'` → `hi`, exit 0; `bsdinacan -c 'echo piped | cat -'` → `piped`,
+exit 0). Moving to the formatting-flag section of the acceptance matrix
+(`-n`, `-b`) surfaced a second, unrelated blocking gap.
+
+`cook_buf()` (`cat.c:188,192`) emits line numbers via
+`fprintf(stdout, "%6d\t", ++line)` and, for `-b`'s blank-line-continuation
+case, `fprintf(stdout, "%6s\t", "")`. `libc/cb_libc.c`'s `format_output`
+(the shared engine behind `printf`/`fprintf`/`warn`/`warnx`/`err`/`errx`)
+supports **only** `%%` and a bare `%s` — any other conversion, including
+plain `%d` with no width at all, hits its `else` branch, sets `EINVAL`,
+and returns `-1`. Because `cat.c`'s own calls are `(void)fprintf(...)`,
+this failure is silently discarded: **no error surfaces anywhere, and no
+line numbers are printed at all.** Measured, not inferred: built the
+import, ran `bsdinacan -c 'echo a > /tmp/n; echo b >> /tmp/n; cat -n
+/tmp/n'`, and got plain `a`/`b` with zero numbering — confirmed at the
+byte level with `od -c` to rule out a rendering artifact. `-e` (which only
+needs `%%`/literal output plus a bare `putchar('$')`, no `%d`) worked
+correctly in the same test pass, isolating the gap to the `%d`/`%s`-width
+paths specifically, not a general regression.
+
+This is **not** a reasoned, already-defended design decision the way
+`STDIN-01`'s `fclose` policy was — it is squarely scoped, already-designed
+territory belonging to a **separate, existing backlog ID: `FORMAT-01`**.
+`notes/iterations/FORMAT-01-design.md` (coordinator-reviewed, corrected on
+`work/FORMAT-01-review`) already specifies bounded `%1`-`%32` width signed
+decimal support, motivated originally by `uniq`'s `"%4d %s"` need. `work/
+FORMAT-01` at `c0d36f7` ("Add bounded signed decimal formatting") already
+contains a real, mostly-complete implementation matching that design
+almost exactly (bounded width 1-32, `INT_MIN`-safe unsigned-magnitude
+conversion, left-space padding) — but it is **not on `origin/main`**, and
+its own note (`notes/iterations/FORMAT-01.md`) still reads "Status:
+behavioral red established; implementation pending," last touched
+2026-09-13, predating this session and apparently never carried to green,
+review, or merge. Nobody appears actively working it right now.
+
+**Even if `work/FORMAT-01` landed exactly as designed, it would not fully
+unblock `cat`.** `FORMAT-01-design.md` explicitly and deliberately excludes
+width-qualified `%s`: *"The syntax `%4s` is explicitly not required by the
+`uniq` scope and will be actively rejected with `CB_EINVAL`. Only a bare
+`%s` remains valid."* `cat.c`'s `"%6s\t"` call (used only when `-b` and
+`-e` combine on a blank line) needs exactly the conversion `FORMAT-01`
+deliberately scoped out, because `uniq` — the only consumer known at
+design time — never needed it. This is the same "decision made with no
+[full] consumer" shape as the `fclose` finding, one level deeper: the
+consumer that existed (`uniq`, not yet imported) didn't need the whole
+surface the next consumer (`cat`) does.
+
+**Not fixed here.** Implementing or extending `FORMAT-01` is not a
+compilation-boundary fix inside `cat.c`'s own scope the way retiring the
+native `cat` placeholder was — it is substantive, ABI-adjacent-free but
+still cross-cutting shared-formatter work with its own existing ID,
+design note, and in-progress (if stalled) branch, matching the STAT-02
+precedent from `RM-01` ("stop before you take it, it's already scoped
+elsewhere") rather than the LIBC-ERR-02 precedent (explicitly handed to me
+because nothing existed yet). Options for the coordinator:
+1. Hand `FORMAT-01` to me to finish (verify `work/FORMAT-01`'s existing
+   `%Nd` implementation, extend it to cover `%Ns`, run it through full
+   `make ci`, and land it as `CAT-01`'s prerequisite) — mirroring how
+   `LIBC-ERR-02` was handed over mid-`RM-01`.
+2. Assign `FORMAT-01` elsewhere and have `CAT-01` wait on it landing,
+   mirroring how `RM-01` waited on `VFS-05`.
+3. Scope `-n`/`-b` out of `CAT-01`'s own accepted matrix as deferred
+   surface (matching `rm -P`/`-W`'s precedent) — but note this differs
+   from those: `-n`/`-b` are flag-gated (unlike `fclose`), so this is
+   viable without breaking the zero-flag or `-e`/`-s`/`-t`/`-v`/`-u`/`-B`
+   paths, at the cost of leaving two flags from the original accepted
+   matrix (section 5, item 4) unimplemented.
+
+I have not touched `FORMAT-01`'s branch or design. `CAT-01` is paused at
+this checkpoint pending the coordinator's call on Finding 3.
+
+---
+
+## 8. Finding 4 (fixed directly): `O_NONBLOCK` was declared but never wired into `cb_libc_open`, blocking `-f`
+
+Working through the rest of the acceptance matrix (section 5) with `-n`/`-b`
+set aside, `-f` (the regular-file gate; `cat.c:249` opens with
+`O_RDONLY|O_NONBLOCK`) failed on **every** input, including plain existing
+regular files: `bsdinacan -c 'echo regular > /tmp/reg; cat -f /tmp/reg'`
+returned `cat: /tmp/reg: invalid argument`, exit 1. Traced to
+`cb_libc_open`'s `translate_open_flags` (`libc/cb_libc.c`): its `known`
+mask is `CB_LIBC_O_ACCMODE | CB_LIBC_O_APPEND | CB_LIBC_O_CREAT |
+CB_LIBC_O_TRUNC`, and any flag bit outside that mask is rejected with
+`EINVAL` before the path is ever looked at. `O_NONBLOCK` (`fcntl.h`,
+`FCNTL-01`) was never added to `known`.
+
+`FCNTL-01`'s own note scopes this precisely: *"Scope: Provide compile-time
+declarations in `libc/include/fcntl.h` (`O_NONBLOCK`, ...) demanded by
+NetBSD `cat.c`."* Compile-time only — never claimed runtime wiring. This is
+the same shape as the native `cat` placeholder (Finding 1): a compilation-
+only gap left by prior, narrowly-scoped work, not a reasoned, defended
+decision like `STDIN-01`'s `fclose` policy. Squarely this ID's own scope to
+close, since `cat -f` is the only consumer.
+
+Fixed directly: added `CB_LIBC_O_NONBLOCK = 0x0004` to
+`include/cannedbsd/libc.h`'s `cb_libc_open_flag` enum (matching the bit
+value `fcntl.h` already used), pointed `#define O_NONBLOCK` at it instead
+of a bare literal, and added it to `translate_open_flags`'s `known` mask.
+It is accepted and then silently dropped -- never translated into
+`CB_O_*` -- which is honest rather than a fabricated capability: RAMFS
+opens/reads/writes never block in the first place (there is no blocking
+I/O model in this cooperative, synchronous kernel at all), so "this open
+will not block" is unconditionally already true here regardless of the
+flag. Measured, not assumed: `cat -f` on an existing regular file now
+returns 0 with correct output; `cat -f -` (the `-` stdin operand) still
+bypasses the gate entirely, matching pinned `cat.c`'s own control flow
+(`-` is checked before the `fflag` branch, so `-f` never applies to it,
+independent of this backend).
+
+## 9. Full re-verification after Findings 2 and 4
+
+Full `make ci` (`SANITIZE_CC=clang`) green: normal build, clang sanitizer
+build, and the isolation-mode rebuild all pass, including `all core tests
+passed` (which now includes `fclosestdoutprobe`'s write-after-close
+proof) and the existing `libc_file_probe.c` "invalid" case (updated to
+match the new honest `fclose(stdout/stderr)` success instead of asserting
+the old rejection — see `tests/libc_file_probe.c`).
+
+Added `tests/test_cat_behavior.sh` (mirroring `test_mv_behavior.sh`/
+`test_ls_behavior.sh`) covering: basic and multi-file concatenation, the
+`-` stdin operand, `-s`, `-e`, `-B`, `-u`, `-f` on a real regular file, a
+missing-file operand (diagnostic, exit 1, continuation to later operands),
+and `-l` failing honestly outside the accepted matrix. `-n`/`-b` are
+deliberately excluded with an inline comment pointing to Finding 3/
+`FORMAT-01`, not silently omitted. Added `tests/libc_fclose_stdout_probe.c`
+(registered under `FIXTURE_ERR` in `test_core.c`) proving a write to
+`stdout`/`stderr` after `fclose` genuinely fails rather than silently
+succeeding — the honesty test the coordinator specifically asked for.
+Added the `cat` pinning block to `tests/test_netbsd_source.sh` (hash,
+provenance, private-veneer symbol boundary), matching `rm`/`mv`'s
+precedent.
+
+**Accepted matrix status:** full section 5 of this note passes except
+`-n`/`-b` (Finding 3, blocked on `FORMAT-01`). Committed on `work/CAT-01`;
+not merged to `main` while Finding 3 is open.

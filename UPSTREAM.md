@@ -649,3 +649,30 @@ POSIX utility veneer (`sys/extattr.h`, `sys/time.h`, `sys/wait.h`, `signal.h`,
 and `commands/mv_module.c` supplies the native-program descriptor. Same-mount
 moves use native VFS `rename` as the common path; cross-mount `EXDEV` fallbacks
 execute fastcopy with non-fatal `fcpxattr` `ENOSYS` warning absorption.
+
+## NetBSD `cat`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/cat/cat.c`
+- Local path: `upstream/netbsd/bin/cat/cat.c`
+- SHA-256: `2cc2ced0fcc6c143e1406e64cdd64ea768101fcd19b6dad531b911a611697cbd`
+- Embedded RCS identifier: `$NetBSD: cat.c,v 1.60 2023/12/10 15:31:53 rillig Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/cat_module.c`, replacing a bootstrap-era cannedBSD-owned `cat`
+placeholder (plain concat + `-` for stdin, no flags) that occupied the same
+name; see `notes/iterations/CAT-01.md` for the full veneer this needed
+(`isascii`/`toascii`/`iscntrl` from `LIBC-CTYPE-01`, `strtol` from
+`LIBC-STRTOL-01`, `warnx` from `LIBC-ERR-02`, `clearerr`/`setbuf`/`fileno`
+from `LIBC-STDIO-02`, `struct stat`/`fstat` from `STAT-02`, `fcntl.h`
+declarations and honest `ENOSYS` on lock commands from `FCNTL-01`), the two
+real runtime gaps found and fixed under this ID (`fclose(stdout/stderr)`
+now honestly succeeds per a revision of `STDIN-01-design.md`; `O_NONBLOCK`
+is now accepted and harmlessly discarded by `cb_libc_open` since RAMFS
+opens never block), and the one gap still open (`-n`/`-b` need `%d`/width-
+`%s` support in the internal formatter -- `FORMAT-01`, excluded from the
+accepted matrix until it lands). `cat -l` is documented as outside the
+accepted matrix, same precedent as `rm`'s own `-P`/`-W`.

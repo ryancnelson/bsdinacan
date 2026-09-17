@@ -286,4 +286,30 @@ for symbol in access close errno_location errx execl exit fcpxattr fchflags fchm
     fi
 done
 
+cat_source=upstream/netbsd/bin/cat/cat.c
+cat_object=$build_path/netbsd_cat.o
+cat_hash=2cc2ced0fcc6c143e1406e64cdd64ea768101fcd19b6dad531b911a611697cbd
+
+if [[ $(sha256sum "$cat_source" | awk '{print $1}') != "$cat_hash" ]] ||
+   ! matches "$cat_hash" "$provenance_file"; then
+    echo 'FAIL: cat source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$cat_object" | matches '[[:space:]]T[[:space:]]+cb_cat_main$' ||
+   nm "$cat_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: cat entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in clearerr close err fclose fcntl ferror fileno fopen fprintf \
+        fstat getc getopt getopt_state_location getprogname isascii \
+        iscntrl malloc open putchar read setbuf setlocale setprogname \
+        stderr_stream stdin_stream stdout_stream strcmp strtol toascii \
+        warn warnx write; do
+    if ! nm -u "$cat_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$" ||
+       nm -u "$cat_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: cat private boundary for $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'
