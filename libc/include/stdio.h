@@ -2,8 +2,10 @@
 #define CANNEDBSD_STDIO_H
 
 #include "cannedbsd/libc.h"
+#include "unistd.h"
 
 #define EOF (-1)
+#define BUFSIZ 1024
 
 typedef struct cb_libc_file FILE;
 
@@ -16,6 +18,9 @@ int cb_libc_puts(const char *text);
 int cb_libc_putchar(int character);
 int cb_libc_fflush(FILE *stream);
 int cb_libc_ferror(FILE *stream);
+void cb_libc_clearerr(FILE *stream);
+int cb_libc_fileno(FILE *stream);
+void cb_libc_setbuf(FILE *stream, char *buf);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(FILE *stream, const char *format, ...);
 size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, FILE *stream);
@@ -29,6 +34,9 @@ int cb_libc_rename(const char *oldpath, const char *newpath);
 #define getc cb_libc_getc
 #define getchar cb_libc_getchar
 #define feof cb_libc_feof
+#define clearerr cb_libc_clearerr
+#define fileno cb_libc_fileno
+#define setbuf cb_libc_setbuf
 #define stdin cb_libc_stdin_stream
 #define puts cb_libc_puts
 #define putchar cb_libc_putchar
