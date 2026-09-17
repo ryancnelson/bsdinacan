@@ -446,7 +446,7 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 
 ### LIBC-MMAN-01 — `sys/mman.h` declarations and honest `mmap`/`munmap`/`madvise` veneer
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
 - **Base:** main
 - **Depends on:** COMPAT-CDEFS-01 (Done)
 - **Scope:** Header `libc/include/sys/mman.h` with standard declarations (`mmap`, `munmap`, `madvise`, `MADV_SEQUENTIAL`, `MAP_SHARED`, `MAP_FILE`, `MAP_FAILED`, `PROT_READ`) and veneer implementations:

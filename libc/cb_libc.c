@@ -378,6 +378,36 @@ int32_t cb_libc_waitpid(int32_t pid, int *status, int options)
     return -1;
 }
 
+void *cb_libc_mmap(void *addr, size_t len, int prot, int flags, int fd, cb_off_t offset)
+{
+    (void)addr;
+    (void)len;
+    (void)prot;
+    (void)flags;
+    (void)fd;
+    (void)offset;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return (void *)-1;
+}
+
+int cb_libc_munmap(void *addr, size_t len)
+{
+    (void)addr;
+    (void)len;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_madvise(void *addr, size_t len, int behav)
+{
+    (void)addr;
+    (void)len;
+    (void)behav;
+    return 0;
+}
+
 void cb_libc_strmode(uint32_t mode, char *p)
 {
     if (p == NULL)

@@ -165,6 +165,9 @@ void (*cb_libc_signal(int sig, void (*func)(int)))(int);
 int32_t cb_libc_vfork(void);
 int cb_libc_execl(const char *path, const char *arg0, ...);
 int32_t cb_libc_waitpid(int32_t pid, int *status, int options);
+void *cb_libc_mmap(void *addr, size_t len, int prot, int flags, int fd, cb_off_t offset);
+int cb_libc_munmap(void *addr, size_t len);
+int cb_libc_madvise(void *addr, size_t len, int behav);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
