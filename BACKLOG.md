@@ -164,23 +164,100 @@ exclusion: `CAT-01` forces an explicit decision on it.
   tables and absent-capability behavior. Prove no leak or dangling node under
   allocation failure injection.
 
-### FTS-01 — `fts(3)` traversal subsystem
+### FTS-01 — `fts(3)` traversal subsystem design
 
-- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Status:** Done. Design on `work/FTS-01` at `2bdf4dd`
+  (`notes/iterations/FTS-01-design.md`), independently reviewed clean at
+  `f14ab2e` (`notes/iterations/FTS-01-design-review.md`). Split into the three
+  items below; this entry is the design of record.
 - **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), VFS-03 (Done)
-- **Scope:** the traversal subsystem itself. The audit measured `fts.h` as the
-  blocking gate for pinned `rm` (sole blocker), `cp` (alongside `extattr`), and
-  all five `ls` translation units. Design before implementation; this is a
-  subsystem, not a veneer symbol, and must not be bolted on inside a utility
-  import.
-- **Red:** each of those utilities' recorded first-failure diagnostics in
-  `notes/iterations/FILEUTIL-01.md` is the evidence of demand. Add a behavioral
-  case over the existing dirent contract before implementing.
-- **Accept:** to be specified in a design note first. At minimum: traversal
-  order guarantees, cycle and depth handling, per-entry error reporting without
-  aborting the walk, allocation-failure behavior, and interaction with the
-  VFS-01 mount boundary.
+- **Method that produced the scope reduction:** every `fts_`/`FTS_`/`FTSENT`
+  reference was grepped in the exact pinned `b890038f` sources — `rm.c`,
+  `cp.c`, `cp/utils.c` and all five `ls` translation units — rather than derived
+  from what BSD `fts(3)` offers generally. Both the design and its independent
+  review ran that grep separately and agreed.
+- **Measured reductions:** no pinned source references `FTS_F`, `FTS_SL`,
+  `FTS_SLNONE`, `FTS_DEFAULT`, `FTS_DOT`, `FTS_INIT` or `FTS_NSOK` at all —
+  every consumer switch has a `default` or fallthrough for ordinary entries.
+  Only `FTS_D`/`DP`/`DNR`/`ERR`/`NS`/`DC`/`W` plus one generic value are needed.
+  `fts_children` is called exclusively by `ls` (`ls.c:429`, `ls.c:472`), never by
+  `rm` or `cp`. `fts_cycle` is never dereferenced by any consumer.
+- **Structural design calls, all confirmed by review:** `FTS_NOCHDIR` is the only
+  mode this architecture can have, since no host `chdir` concept exists and cwd
+  is a VFS node pointer — a consequence, not a compromise. `FTS_SEEDOT`
+  synthesizes `.` and `..` because the VFS-03 dirent contract has neither.
+  `FTS_WHITEOUT` must be *defined* because `rm.c:181` references it
+  unconditionally (unlike `ls.c`, which guards it) while producing no `FTS_W`
+  entries, since RAMFS has no whiteout concept. Cycle detection uses live
+  `cb_vfs_node` pointer identity against a `CB_PATH_MAX / 2`-bounded ancestor
+  array rather than device+inode — which is why no device field is needed.
+- **Why the depth bound is not arbitrary:** each path component costs at least
+  one character plus a separator, so any tree deeper than `CB_PATH_MAX / 2` has
+  a path the VFS cannot represent. The bound is a mathematical consequence of
+  `CB_PATH_MAX`, not a truncation.
+
+### FTS-CORE-01 — `fts_open`/`read`/`close`/`set` with no new ABI
+
+- **Status:** Claimed by libby. **Requires zero new ABI**: no `cb_api_v1`
+  operations, no `cb_stat_v1` changes. Builds entirely in libc over the existing
+  `opendir`/`readdir`/`closedir`/`stat`/`fstat`. This is what makes RM-01
+  reachable without waiting on any ABI work, and it was the claim the
+  independent review was told to be most skeptical of; it survived.
+- **Base:** main
+- **Depends on:** FTS-01 (Done), VFS-03 (Done)
+- **Scope:** `fts_open`, `fts_read`, `fts_close`, `fts_set(FTS_SKIP)` — the exact
+  surface `rm` and `cp` use. **No `fts_children`**; that is `ls`-only and belongs
+  to FTS-CHILDREN-01.
+- **Required invariants** (added by the independent review; these are acceptance
+  criteria, not advice):
+  1. Multi-root support in `path_argv` — `rm a b c` passes several roots.
+  2. `fts_accpath` identical to `fts_path` under `FTS_NOCHDIR`. Consumers read
+     both; divergence means `rm` acts on the wrong path.
+  3. `fts_set(FTS_SKIP)` must suppress **both** descent **and** the post-order
+     `FTS_DP` visit. Suppressing only descent leaves a spurious `FTS_DP` that
+     `rm` will act on.
+  4. Ancestor directory nodes retained and released across the stack's lifetime,
+     so pointer identity stays valid — this is what makes the cycle detection
+     correct by construction rather than accidentally correct.
+  5. Symmetrical cleanup on an early mid-walk `fts_close`, with no descriptor or
+     node leaks.
+- **Also required from the design:** per-entry errors never abort the walk;
+  `FTS_XDEV` defined so consumers compile but **rejected at runtime with an
+  error** rather than silently ignored until FS-STAT-01 lands.
+- **Accept:** the five invariants above, plus allocation-failure injection
+  proving no leaked `FTSENT` or ancestor entry — by construction, in the manner
+  VFS-04's rename proved it, not by recovery logic.
+
+### FTS-CHILDREN-01 — `fts_children` for `ls` only
+
+- **Status:** Blocked on FTS-CORE-01
+- **Base:** main
+- **Depends on:** FTS-CORE-01
+- **Scope:** `fts_children` alone, measured as called only from `ls.c:429` and
+  `ls.c:472`. Deliberately separate so RM-01 and CP-01 never wait on it.
+
+### FS-STAT-01 — one coalesced `cb_stat_v1` metadata append
+
+- **Status:** Ready; unassigned. **Supersedes the earlier `FTS-XDEV-01` idea** —
+  that would have been a second, separate append and is dissolved into this one.
+- **Base:** main
+- **Scope:** append the canonical POSIX stat metadata set to `cb_stat_v1` in a
+  **single** `struct_size` increment: device, `atime`/`mtime`/`ctime`, `nlink`,
+  `uid`, `gid`. Appended fields only, with old-`struct_size` tests.
+- **Why one append and not two:** splitting device (+4 bytes, for `FTS_XDEV`)
+  from timestamps and ownership (+24 bytes, for `ls -l`/`ls -t`) would force
+  every `stat`/`fstat` implementation across VFS, RAMFS and the test mocks to
+  implement and test **three** `struct_size` generations instead of two,
+  doubling the backward-compatibility burden for an arbitrary boundary. These
+  fields are one cohesive POSIX set; append them together and pay that cost once.
+- **Consumers waiting on it:** `ls`'s timestamp comparators (`modcmp`, `acccmp`,
+  `statcmp`) need the three timestamps; `FTS_XDEV` needs device; `ls -l` needs
+  `nlink`/`uid`/`gid`; `cp -p` will need timestamps.
+- **Explicitly NOT needed by:** FTS-CORE-01, RM-01, or default `cp -r`. This
+  item is triggered by an actual consumer arriving, not built speculatively —
+  which is why CAT-01 correctly froze `cb_stat_v1` at four fields rather than
+  growing it for fields nothing reads yet.
 
 ### EXTATTR-01 — decide the `sys/extattr.h` boundary
 
