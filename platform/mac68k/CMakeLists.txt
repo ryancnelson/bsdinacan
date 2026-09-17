@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(cannedBSDMac C CXX ASM)
 set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+include(CheckCCompilerFlag)
+check_c_compiler_flag("-fno-tree-loop-distribute-patterns" HAVE_NO_TREE_LOOP_DISTRIBUTE_PATTERNS)
 add_compile_options(-Os -ffunction-sections -fdata-sections -Wall -Wextra)
 include_directories(${ROOT}/include ${ROOT}/src)
 
@@ -101,12 +103,19 @@ add_library(cb_strrchr OBJECT
     ${ROOT}/upstream/netbsd/common/lib/libc/string/strrchr.c)
 target_include_directories(cb_strrchr PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+# GCC's loop-idiom recognition rewrites memset.c's fill loops into
+# calls back to memset, resolving to cb_libc_memset via the link-name binding,
+# causing unbounded self-recursion at runtime.
+# -fno-tree-loop-distribute-patterns is the fix; added conditionally if supported.
 add_library(cb_memset OBJECT
     ${ROOT}/upstream/netbsd/common/lib/libc/string/memset.c)
 target_include_directories(cb_memset PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_memset PRIVATE CANNEDBSD_BUILDING_LIBC_MEMSET)
 target_compile_options(cb_memset PRIVATE -fno-builtin-memset)
+if(HAVE_NO_TREE_LOOP_DISTRIBUTE_PATTERNS)
+    target_compile_options(cb_memset PRIVATE -fno-tree-loop-distribute-patterns)
+endif()
 add_library(cb_fts OBJECT ${ROOT}/libc/cb_fts.c)
 target_include_directories(cb_fts PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
