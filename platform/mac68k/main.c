@@ -3,6 +3,7 @@
 
 #include <string.h>
 
+int cb_terminal_engine_probe(void);
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 
@@ -61,6 +62,11 @@ int main(void)
     passed = cb_mac_context_check() == 0;
     cb_mac_text(passed ? "PASS: independent stacks, 512 yields\n" : "FAIL: contexts\n");
     strcat(result, passed ? "PASS contexts\n" : "FAIL contexts\n");
+    if (passed) {
+        passed = cb_terminal_engine_probe() == 0;
+        cb_mac_text(passed ? "PASS: isolated canonical engine\n" : "FAIL: terminal engine\n");
+        strcat(result, passed ? "PASS terminalengine\n" : "FAIL terminalengine\n");
+    }
     if (passed) {
         /* This helper owns and destroys its temporary kernel before any of the
            ordinary case kernels exist; it never replaces a live task's binding. */
