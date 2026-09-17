@@ -62,7 +62,7 @@ target_compile_definitions(cb_head PRIVATE main=cb_head_main)
 target_compile_options(cb_head PRIVATE -fstack-usage)
 add_library(cb_echo OBJECT ${ROOT}/upstream/netbsd/bin/echo/echo.c)
 target_include_directories(cb_echo PRIVATE ${ROOT}/libc/include)
-target_compile_definitions(cb_echo PRIVATE main=cb_netbsdecho_main)
+target_compile_definitions(cb_echo PRIVATE main=cb_echo_main)
 # See UPSTREAM.md's echo entry: the pinned source's main is marked
 # /* ARGSUSED */ (lint-only) because it never reads argc.
 target_compile_options(cb_echo PRIVATE -Wno-unused-parameter)

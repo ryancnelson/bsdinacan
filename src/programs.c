@@ -8,7 +8,7 @@ extern const struct cb_program_v1 cb_yes_program;
 extern const struct cb_program_v1 cb_printenv_program;
 extern const struct cb_program_v1 cb_dirname_program;
 extern const struct cb_program_v1 cb_basename_program;
-extern const struct cb_program_v1 cb_netbsdecho_program;
+extern const struct cb_program_v1 cb_echo_program;
 extern const struct cb_program_v1 cb_head_program;
 extern const struct cb_program_v1 cb_ls_program;
 extern const struct cb_program_v1 cb_rm_program;
@@ -41,27 +41,6 @@ static void report_error(const struct cb_api_v1 *api, const char *command,
         write_all(api, 2, message, (size_t)count);
 }
 
-static int echo_main(const struct cb_api_v1 *api, int argc,
-                     char *const argv[], char *const envp[])
-{
-    int index = 1;
-    int newline = 1;
-    (void)envp;
-    if (index < argc && strcmp(argv[index], "-n") == 0) {
-        newline = 0;
-        ++index;
-    }
-    while (index < argc) {
-        if (index > (newline ? 1 : 2) && write_all(api, 1, " ", 1) < 0)
-            return 1;
-        if (write_all(api, 1, argv[index], strlen(argv[index])) < 0)
-            return 1;
-        ++index;
-    }
-    if (newline && write_all(api, 1, "\n", 1) < 0)
-        return 1;
-    return 0;
-}
 
 static int expand_set(const char *set, unsigned char values[256],
                       size_t *length_out)
@@ -156,7 +135,6 @@ static int false_main(const struct cb_api_v1 *api, int argc,
         64 * 1024, entry \
     }
 
-PROGRAM_DESCRIPTOR(echo_program, "echo", echo_main);
 PROGRAM_DESCRIPTOR(tr_program, "tr", tr_main);
 PROGRAM_DESCRIPTOR(true_program, "true", true_main);
 PROGRAM_DESCRIPTOR(false_program, "false", false_main);
@@ -166,7 +144,7 @@ void cb_register_base_programs(struct cb_kernel *kernel)
     const struct cb_program_v1 *programs[] = {
         &cb_shell_program,
         &cb_shell_builtin_program,
-        &echo_program,
+        &cb_echo_program,
         &tr_program,
         &true_program,
         &false_program,
@@ -175,7 +153,6 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_printenv_program,
         &cb_dirname_program,
         &cb_basename_program,
-        &cb_netbsdecho_program,
         &cb_head_program,
         &cb_ls_program,
         &cb_rm_program,
