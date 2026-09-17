@@ -24,6 +24,7 @@
  */
 
 #include "cannedbsd/libc.h"
+#include "sys/stat.h"
 #include "fts.h"
 
 #include <errno.h>
@@ -142,11 +143,11 @@ static void classify(struct cb_fts *fts, FTSENT *entry)
         entry->fts_errno = errno;
         return;
     }
-    if (entry->fts_statp->type != CB_NODE_DIRECTORY) {
+    if (!S_ISDIR(entry->fts_statp->st_mode)) {
         entry->fts_info = FTS_DEFAULT;
         return;
     }
-    if (cycle_detected(fts, entry->fts_statp->inode)) {
+    if (cycle_detected(fts, entry->fts_statp->st_ino)) {
         entry->fts_info = FTS_DC;
         return;
     }
@@ -167,7 +168,7 @@ static void classify(struct cb_fts *fts, FTSENT *entry)
     }
     entry->fts_info = FTS_D;
     fts->stack[fts->depth].dir = dir;
-    fts->stack[fts->depth].inode = entry->fts_statp->inode;
+    fts->stack[fts->depth].inode = entry->fts_statp->st_ino;
     fts->stack[fts->depth].entry = entry;
     fts->stack[fts->depth].skip = 0;
     fts->depth++;
