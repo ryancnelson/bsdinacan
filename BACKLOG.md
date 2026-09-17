@@ -96,18 +96,26 @@ exclusion: `CAT-01` forces an explicit decision on it.
   (a coordinator-approved revision of `STDIN-01-design.md`'s original
   policy — see its addendum), and `O_NONBLOCK` (declared by `FCNTL-01`
   but never wired) is now accepted and harmlessly discarded by
-  `cb_libc_open` since RAMFS opens never block. `-n`/`-b` are **excluded
-  from the accepted matrix as flag-gated deferred surface** — same
-  category as `cat -l`, `rm -P`/`-W`, `cp -p`, `mv`'s cross-mount
-  directory move: real functionality, honestly documented as out of
-  scope. Reason: cat.c's line-numbering path needs `%d`/width-`%s`
-  support in the internal `printf`/`fprintf` formatter, which does not
-  exist on `origin/main`. That gap is `FORMAT-01`'s, not this ID's —
-  `FORMAT-01`'s own design turns out to need extending (see its entry)
-  since it was scoped only for `uniq`'s bare-`%d` need and never
-  anticipated `%s`-with-width. Full `make ci` green (normal, sanitizer,
-  isolation) for the complete matrix except `-n`/`-b`. See
-  `notes/iterations/CAT-01.md` for the full record.
+  `cb_libc_open` since RAMFS opens never block. `-n`/`-b` were
+  **temporarily excluded from the accepted matrix as flag-gated deferred
+  surface** — same category as `cat -l`, `rm -P`/`-W`, `cp -p`, `mv`'s
+  cross-mount directory move: real functionality, honestly documented as
+  out of scope rather than silently dropped, because the flag-gated
+  paths don't block the zero-flag or other-flag paths from working. The
+  reason was `cat.c`'s line-numbering path needing `%d`/width-`%s`
+  support in the internal `printf`/`fprintf` formatter, which `FORMAT-01`
+  had scoped only for `uniq`'s bare-`%d` need and never anticipated
+  `%s`-with-width. **`FORMAT-01` has since landed with that extension,
+  removing the blocker: `-n`/`-b` are now measured working end to end
+  against real files** (`cat -n` numbers every line, `cat -b` numbers
+  only non-blank lines) and restored to `CAT-01`'s accepted matrix in
+  `tests/test_cat_behavior.sh`. The flag-gated-vs-unconditional
+  distinction that justified deferring them in the first place is still
+  the right rule for genuinely-deferred surface (`cat -l` still is one);
+  it simply no longer applies to `-n`/`-b` now that their prerequisite
+  exists. Full `make ci` green (normal, sanitizer, isolation) for the
+  complete matrix including `-n`/`-b`. See `notes/iterations/CAT-01.md`
+  and `notes/iterations/FORMAT-01.md` for the full record.
 - The audit measured eleven distinct missing interfaces, none of them `fts`,
   termcap, pwd/grp or `extattr`, and none needing a new VFS verb: record locking
   (`struct flock`, `fcntl`, `F_WRLCK`, `F_SETLKW`), `strtol`, `setbuf`,
