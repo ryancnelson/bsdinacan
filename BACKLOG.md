@@ -524,6 +524,16 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 - **Process Model Note:** Unchanged `cp` executes entirely in-process using `fts(3)` directory traversal and VFS `mkdir`/`open`/`read`/`write`. It makes 0 calls to `vfork`, `fork`, `exec*`, `spawn`, `system`, or `popen`, avoiding the single-process `vfork` limitation seen in `mv`.
 - **Accepted Behavioral Matrix:** Default file copying, overwriting, multi-file copying to target directory, recursive copying (`-r` and `-R`), forced copy (`-f`), missing source error handling, empty file copy, and cross-mount file/recursive copies. `-p` and `-a` are explicitly excluded from the accepted matrix (metadata preservation deferred). Full `make ci` green. See `notes/iterations/CP-01.md`.
 
+### MILESTONE-E2E-01 — automated end-to-end file manipulation session test
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** CP-01 (Done), MV-01 (Done), RM-01 (Done), CAT-01 (Done), LS-01 (Done)
+- **Scope:** Automated behavioral test suite `tests/test_file_manipulation_session.sh` exercising all six milestone verbs (create, list, inspect via cat/head/wc, copy via cp, move via mv, delete via rm) in single continuous guest shell sessions, asserting stdout, stderr, and exit status at every step. Wired into the `ci` target via `Makefile` `test:`.
+- **Hypothesis:** A continuous multi-verb test suite prevents regressions in shell parsing/pipeline execution and catches any command dropped from `cb_register_base_programs` that single-utility tests would miss.
+- **Red:** Temporarily unregistered `cb_cp_program` in `src/programs.c`; observed immediate failure on missing `cp` utility output and exit status.
+- **Accept:** Full 6-verb lifecycle pass, pipeline composition pass, cross-directory tree manipulation pass, status code propagation pass, and interactive stdin session pass. Full `make ci` green. See `notes/iterations/MILESTONE-E2E-01.md`.
+
 ### LS-01 — single-column `ls` without terminal width or `-l`
 
 - **Status:** **Ready — claimable now.** The audit measured all five pinned `ls`
