@@ -1615,6 +1615,7 @@ static const char *api_strerror(int error)
     case CB_ERANGE: return "result too large";
     case CB_EOVERFLOW: return "value too large to be stored in data type";
     case CB_EXDEV: return "cross-device link";
+    case CB_ETXTBSY: return "text file busy";
     default: return "unknown error";
     }
 }

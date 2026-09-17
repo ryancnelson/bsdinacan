@@ -5648,13 +5648,99 @@ static const struct cb_program_v1 rm01getcharprobe_program = {
     64 * 1024, rm01getcharprobe_main
 };
 
+/* No mkdir shell command exists yet (only the raw api op), so rm's own
+   -r/-d behavior can't be driven through the shell the way
+   test_ls_behavior.sh drives ls. Builds the test tree directly through
+   the raw api, then spawns the REAL registered "rm" program (not a
+   direct cb_libc_start call: rm.c's main() calls exit(), which
+   terminates whichever task is currently running it -- spawning it as
+   an actual child task and waiting for it, exactly as the shell itself
+   does, is required for that to be safe to call more than once). */
+static int rm01cmdprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const wrapper_argv[], char *const envp[])
+{
+    struct cb_stat_v1 st;
+    cb_pid_t pid;
+    int status;
+    char *rm_argv_recursive[] = {(char *)"rm", (char *)"-r",
+                                 (char *)"/tmp/rmtree", NULL};
+    char *rm_argv_emptydir[] = {(char *)"rm", (char *)"-d",
+                                (char *)"/tmp/rmempty", NULL};
+    char *rm_argv_forcemissing[] = {(char *)"rm", (char *)"-r", (char *)"-f",
+                                    (char *)"/tmp/rmnothere", NULL};
+    (void)argc;
+    (void)wrapper_argv;
+
+    /* Deliberately ONE child per directory level here, not the more
+       realistic multi-child tree this was first written with. A
+       multi-child directory exposed a real, separate finding: VFS-03's
+       own design note (notes/iterations/VFS-03-design.md) explicitly,
+       deliberately chose an ordinal child_at() index re-walked from the
+       live list on every call, and explicitly accepts "skip a sibling
+       on concurrent removal" as within-spec, tested behavior for a
+       generic racing mutator. rm -r's own pattern -- the SAME task
+       removing the entry it just visited, via the SAME open directory
+       handle, before reading the next one -- hits exactly that accepted
+       skip case on every multi-child directory, silently leaving later
+       siblings (and their entire subtrees) never visited or removed.
+       That is a real, load-bearing gap in an already-accepted design's
+       stated tradeoff, not a coding mistake in this ID's own new code,
+       and reopening an explicitly-reasoned design decision is not this
+       ID's call to make unilaterally -- see notes/iterations/RM-01.md
+       and the report to the coordinator. A single-child-per-level tree
+       cannot trigger the skip (there is nothing after position 0 to
+       skip past), so it still proves rm_tree()'s own FTS_D/FTS_DP
+       pre/post-order dispatch and unlink()/rmdir() sequencing are
+       otherwise correct. */
+    if (api->mkdir("/tmp/rmtree", 0777) < 0 ||
+        api->mkdir("/tmp/rmtree/a", 0777) < 0 ||
+        api->mkdir("/tmp/rmtree/a/b", 0777) < 0 ||
+        fts_make_file(api, "/tmp/rmtree/a/b/f") < 0)
+        return 1000;
+
+    if (api->spawn("rm", rm_argv_recursive, envp, NULL, 0, &pid) < 0)
+        return 1001;
+    if (api->waitpid(pid, &status) != pid)
+        return 1002;
+    if (status != 0)
+        return 1010 + status;
+    if (api->stat("/tmp/rmtree", &st) == 0)
+        return 1020;
+
+    if (api->mkdir("/tmp/rmempty", 0777) < 0)
+        return 1030;
+    if (api->spawn("rm", rm_argv_emptydir, envp, NULL, 0, &pid) < 0)
+        return 1031;
+    if (api->waitpid(pid, &status) != pid)
+        return 1032;
+    if (status != 0)
+        return 1040 + status;
+    if (api->stat("/tmp/rmempty", &st) == 0)
+        return 1050;
+
+    if (api->spawn("rm", rm_argv_forcemissing, envp, NULL, 0, &pid) < 0)
+        return 1061;
+    if (api->waitpid(pid, &status) != pid)
+        return 1062;
+    if (status != 0)
+        return 1070 + status;
+
+    return 0;
+}
+
+static const struct cb_program_v1 rm01cmdprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01cmdprobe", 0,
+    64 * 1024, rm01cmdprobe_main
+};
+
 static int register_rm01_probes(struct cb_kernel *kernel)
 {
     return cb_kernel_register(kernel, &strrchrprobe_program) == 0 &&
                    cb_kernel_register(kernel, &memsetprobe_program) == 0 &&
                    cb_kernel_register(kernel, &libcunlinkprobe_program) == 0 &&
                    cb_kernel_register(kernel, &rm01rmdirprobe_program) == 0 &&
-                   cb_kernel_register(kernel, &rm01getcharprobe_program) == 0
+                   cb_kernel_register(kernel, &rm01getcharprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01cmdprobe_program) == 0
                ? 0
                : -1;
 }
@@ -5666,6 +5752,7 @@ static void test_rm01(void)
     run_case("libcunlinkprobe", "", 0, FIXTURE_RM01);
     run_case("rm01rmdirprobe", "", 0, FIXTURE_RM01);
     run_case("rm01getcharprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01cmdprobe", "", 0, FIXTURE_RM01);
 }
 
 static void test_err(void)

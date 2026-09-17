@@ -17,6 +17,7 @@ char *strcpy(char *dest, const char *src) __asm__("cb_libc_strcpy");
 #endif
 #define strchr cb_libc_strchr
 #define strrchr cb_libc_strrchr
+#define strmode cb_libc_strmode
 
 #if defined(CANNEDBSD_BUILDING_LIBC_MEMSET)
 #if defined(__GNUC__) || defined(__clang__)

@@ -29,6 +29,7 @@
 #define EFAULT CB_EFAULT
 #define EOVERFLOW CB_EOVERFLOW
 #define EXDEV CB_EXDEV
+#define ETXTBSY CB_ETXTBSY
 
 #define errno (*cb_libc_errno_location())
 

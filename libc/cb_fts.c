@@ -246,8 +246,19 @@ FTSENT *cb_libc_fts_read(FTS *ftsp)
             ftsp->pending_free = top->entry;
             return top->entry;
         }
-        if (ftsp->path_argv[ftsp->root_index] == NULL)
+        if (ftsp->path_argv[ftsp->root_index] == NULL) {
+            /* Real fts_read()'s documented contract: a clean end of the
+               whole walk must leave errno reflecting only a genuine
+               fts-level failure, never leftover state from a per-entry
+               condition (FTS_NS/FTS_DNR/etc.) this function already
+               reported through fts_info/fts_errno. Callers rely on this
+               directly -- rm.c's own rm_tree() checks `if (errno)
+               err(1, "fts_read")` immediately after this loop ends, with
+               no errno reset of its own; found via rm -rf on a missing
+               path falsely exiting 1 instead of 0, not by inspection. */
+            errno = 0;
             return NULL;
+        }
         {
             FTSENT *root = entry_create(NULL,
                                         ftsp->path_argv[ftsp->root_index],

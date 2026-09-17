@@ -177,6 +177,11 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
     stat_buf->st_size = (int64_t)raw_stat->size;
     stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
     stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
+    /* RAMFS has no per-node ownership or multi-device concept at all --
+       see the struct stat comment in cannedbsd/libc.h. */
+    stat_buf->st_uid = 0;
+    stat_buf->st_gid = 0;
+    stat_buf->st_dev = 0;
 }
 
 int cb_libc_stat(const char *path, struct stat *stat_buf)
@@ -256,6 +261,158 @@ int cb_libc_rmdir(const char *path)
         return -1;
     }
     return bound_api->rmdir(path);
+}
+
+/* See the block comment in cannedbsd/libc.h introducing this group. */
+
+cb_off_t cb_libc_lseek(int descriptor, cb_off_t offset, int whence)
+{
+    return bound_api->lseek(descriptor, offset, whence);
+}
+
+int cb_libc_fsync(int descriptor)
+{
+    /* RAMFS has no write-back cache: every write is already durable in
+       the only "storage" this backend has, so there is never anything
+       to flush. Returning success is a correct description of that
+       fact, not a false claim about a capability that does not exist. */
+    (void)descriptor;
+    return 0;
+}
+
+void cb_libc_sync(void)
+{
+    /* Same reasoning as cb_libc_fsync, for every open file at once. */
+}
+
+uint32_t cb_libc_arc4random(void)
+{
+    /* NOT a cryptographic RNG. RM-01's only call site (rm -P's secure
+       overwrite) is outside the accepted matrix and unreachable in
+       practice: rm_overwrite()'s open() call already fails first, since
+       O_SYNC/O_RSYNC/O_NOFOLLOW are not in cb_libc_open's known flag
+       set. This exists only so the file links; nothing in the accepted
+       matrix depends on its output being unpredictable. */
+    static uint32_t state = 2463534242u;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
+int cb_libc_access(const char *path, int mode)
+{
+    /* RAMFS never enforces mode bits for any operation -- open()/write()
+       succeed regardless of st_mode's permission bits, matching this
+       project's stated "permission enforcement deferred" policy. So
+       "is this path accessible for R/W/X" is truthfully "yes, for
+       anything that exists" on this backend, not a claim about
+       permission-checking machinery that does not exist. Confirmed
+       necessary, not assumed: an earlier ENOSYS-always version of this
+       function was caught making check()'s "ask before removing an
+       unwritable file" heuristic fire on every ordinary rm, inverting
+       its intended default -- see notes/iterations/RM-01.md. */
+    struct cb_stat_v1 probe;
+    (void)mode;
+    if (bound_api->stat == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    probe.abi_version = CB_ABI_VERSION_V1;
+    probe.struct_size = sizeof(probe);
+    return bound_api->stat(path, &probe) < 0 ? -1 : 0;
+}
+
+int cb_libc_undelete(const char *path)
+{
+    /* RAMFS has no whiteout concept -- same conclusion FTS-CORE-01's
+       design reached for FTS_WHITEOUT. No node this backend can ever
+       produce satisfies S_ISWHT, so rm.c's own logic never calls this
+       for a file it actually stat'd; it exists only so -W's branch
+       compiles and fails honestly if ever reached some other way. */
+    (void)path;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+static void uint_to_decimal(uint32_t value, char *buffer)
+{
+    char digits[10];
+    int count = 0;
+    if (value == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return;
+    }
+    while (value != 0) {
+        digits[count++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    while (count > 0)
+        *buffer++ = digits[--count];
+    *buffer = '\0';
+}
+
+void cb_libc_strmode(uint32_t mode, char *buffer)
+{
+    static const char *const permission_groups[] = {"---", "--x", "-w-",
+        "-wx", "r--", "r-x", "rw-", "rwx"};
+    char *p = buffer;
+
+    /* Inlined S_IS*(mode) tests: the S_IS* macros themselves live in
+       libc/include/sys/stat.h, not on this translation unit's include
+       path (matching every other cb_libc.c function that reads type
+       bits, e.g. translate_stat's own switch above). */
+    switch (mode & S_IFMT) {
+    case S_IFDIR: *p = 'd'; break;
+    case S_IFCHR: *p = 'c'; break;
+    case S_IFBLK: *p = 'b'; break;
+    case S_IFIFO: *p = 'p'; break;
+    case S_IFLNK: *p = 'l'; break;
+    case S_IFSOCK: *p = 's'; break;
+    case S_IFWHT: *p = 'w'; break;
+    default: *p = '-'; break;
+    }
+    ++p;
+
+    cb_libc_memcpy(p, permission_groups[(mode >> 6) & 07], 3); p += 3;
+    cb_libc_memcpy(p, permission_groups[(mode >> 3) & 07], 3); p += 3;
+    cb_libc_memcpy(p, permission_groups[mode & 07], 3); p += 3;
+    *p++ = ' ';
+    *p = '\0';
+}
+
+const char *cb_libc_user_from_uid(uint32_t uid, int nouser)
+{
+    /* No passwd database exists on this backend at all, so every uid is
+       "not found" -- real BSD's own user_from_uid falls back to exactly
+       this numeric rendering for any uid absent from the database,
+       which describes every uid here, not a special case invented for
+       this project. */
+    static char buffer[16];
+    if (nouser)
+        return NULL;
+    uint_to_decimal(uid, buffer);
+    return buffer;
+}
+
+const char *cb_libc_group_from_gid(uint32_t gid, int nogroup)
+{
+    static char buffer[16];
+    if (nogroup)
+        return NULL;
+    uint_to_decimal(gid, buffer);
+    return buffer;
+}
+
+/* PROVISIONAL PLACEHOLDER -- see libc/include/signal.h's own comment.
+   Always fails; never actually installs anything. */
+void (*cb_libc_signal(int sig, void (*handler)(int)))(int)
+{
+    (void)sig;
+    (void)handler;
+    bound_api->set_errno(CB_ENOSYS);
+    return (void (*)(int))-1;
 }
 
 void *cb_libc_malloc(size_t size)

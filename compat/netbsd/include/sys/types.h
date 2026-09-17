@@ -11,5 +11,8 @@
 typedef unsigned char u_char;
 typedef unsigned int u_int;
 typedef unsigned long u_long;
+/* RM-01: rm.c's -P macro (outside the accepted matrix) uses this legacy
+   BSD alias internally. */
+typedef uint32_t u_int32_t;
 
 #endif
