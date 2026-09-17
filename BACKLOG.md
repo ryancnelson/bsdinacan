@@ -162,6 +162,38 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
   bootstrap command retired in the same commit, and `-c`/`-l`/`-w` measured
   against the host `wc` on identical input.
 
+### BUILD-SYNC-01 — stop the Linux and mac68k builds diverging by hand
+
+- Status: Ready
+- Base: main
+- Depends: MAC68K-CMD-01 (the instance that motivates it)
+- Hypothesis: `Makefile` and `platform/mac68k/CMakeLists.txt` enumerate each
+  source's include paths, defines and flags independently, so a source that
+  gains a dependency compiles on Linux and fails only on mac68k — or worse,
+  compiles on both while differing in a flag that matters. This has now
+  produced three defects in one day, each a different symptom of the same
+  cause: `cb_file_probe` missing `-Icompat/netbsd/include` (compile error);
+  five commands registered in `src/programs.c` with no mac68k target at all
+  (link error); and `cb_memset` missing the GCC-only
+  `-fno-tree-loop-distribute-patterns` that `UPSTREAM.md`'s standing
+  constraint requires (no symptom at all — unbounded self-recursion reachable
+  only at runtime, on the one target whose runtime gate is currently offline).
+  The third is the one that matters: hand-maintained parallel build
+  descriptions fail *silently*, and the existing gate cannot see it.
+- Red test: a check that fails when a source's mac68k flag set diverges from
+  the Linux rule for the same source. It must fail today if
+  `-fno-tree-loop-distribute-patterns` is deleted from the `cb_memset` target
+  while remaining in the Makefile, which no current check does.
+- Acceptance: one authority for per-source include paths and defines that both
+  builds consume, or a `check-build-parity` target in `ci` that compares them
+  and names the diverging source and flag. Prefer the check to a refactor if
+  the refactor would require restructuring either build: the goal is that the
+  next divergence is caught, not that the two builds become one.
+- Explicitly out of scope: making the two builds compile the same *set* of
+  sources. mac68k legitimately omits host-specific translation units, and
+  `MAC68K-CMD-01` showed the omission set must be a deliberate, reviewed list
+  rather than whatever nobody noticed. Record that list; do not try to empty it.
+
 ### MKDIR-CMD-01 — a `mkdir` command so directories are reachable
 
 - Status: Blocked
