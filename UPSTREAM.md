@@ -484,3 +484,34 @@ RAMFS output/error files internally, including the65538-byte boundary, binary
 bytes and checked pipe producer/consumer statuses. Source/symbol fences pin the
 import and reject unprefixed libc dependencies. Compiler stack-usage reports
 are isolated function-frame evidence, not a claim of a measured peak call chain.
+
+## NetBSD `mv`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mv/mv.c`
+- Local path: `upstream/netbsd/bin/mv/mv.c`
+- SHA-256: `df5de897a14e2f8210140e468b94319eaf100018490bfebe564152bf337bfd54`
+- Embedded RCS identifier: `$NetBSD: mv.c,v 1.46 2020/06/24 16:58:12 riastradh Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+## NetBSD `mv` `pathnames.h`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mv/pathnames.h`
+- Local path: `upstream/netbsd/bin/mv/pathnames.h`
+- SHA-256: `82819eb682b4e2e8ec84604d8b9b11532f987427d697989ff21c6aa56fc30d6a`
+- Embedded RCS identifier: `$NetBSD: pathnames.h,v 1.8 2004/08/19 22:26:07 christos Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+Both imported files are byte-for-byte unchanged. All adaptation is outside them:
+the build renames `main` to `cb_mv_main`, cannedBSD private headers satisfy the
+POSIX utility veneer (`sys/extattr.h`, `sys/time.h`, `sys/wait.h`, `signal.h`,
+`pwd.h`, `grp.h`, `unistd.h`, `sys/stat.h`, `stdio.h`, `string.h`, `err.h`),
+and `commands/mv_module.c` supplies the native-program descriptor. Same-mount
+moves use native VFS `rename` as the common path; cross-mount `EXDEV` fallbacks
+execute fastcopy with non-fatal `fcpxattr` `ENOSYS` warning absorption.
+

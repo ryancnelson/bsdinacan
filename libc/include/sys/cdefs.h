@@ -10,8 +10,10 @@
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __dead __attribute__((__noreturn__))
+#define __unused __attribute__((__unused__))
 #else
 #define __dead
+#define __unused
 #endif
 
 #endif

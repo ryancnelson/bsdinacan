@@ -60,4 +60,10 @@ int strcmp(const char *left, const char *right) __asm__("cb_libc_strcmp");
 #define strcmp cb_libc_strcmp
 #endif
 
+#define strlcpy cb_libc_strlcpy
+#define strrchr cb_libc_strrchr
+
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
+char *cb_libc_strrchr(const char *text, int character);
+
 #endif

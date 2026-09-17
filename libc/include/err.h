@@ -7,7 +7,9 @@
 void cb_libc_errx(int eval, const char *fmt, ...) __dead;
 void cb_libc_err(int eval, const char *fmt, ...) __dead;
 void cb_libc_warn(const char *fmt, ...);
+void cb_libc_warnx(const char *fmt, ...);
 #define warn cb_libc_warn
+#define warnx cb_libc_warnx
 #define errx cb_libc_errx
 #define err cb_libc_err
 

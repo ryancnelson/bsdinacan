@@ -97,6 +97,25 @@ char *cb_libc_basename(char *path);
 #define S_IFLNK  0120000
 #define S_IFSOCK 0140000
 
+#define S_ISUID 0004000
+#define S_ISGID 0002000
+#define S_ISVTX 0001000
+
+#define S_IRWXU 0000700
+#define S_IRUSR 0000400
+#define S_IWUSR 0000200
+#define S_IXUSR 0000100
+
+#define S_IRWXG 0000070
+#define S_IRGRP 0000040
+#define S_IWGRP 0000020
+#define S_IXGRP 0000010
+
+#define S_IRWXO 0000007
+#define S_IROTH 0000004
+#define S_IWOTH 0000002
+#define S_IXOTH 0000001
+
 /*
  * POSIX struct stat definition, shared between cb_libc.c (which populates it)
  * and libc/include/sys/stat.h (which exposes it to ordinary source).
@@ -104,16 +123,48 @@ char *cb_libc_basename(char *path);
  * matching ino_t, mode_t, off_t, blksize_t, blkcnt_t.
  */
 struct stat {
+    uint32_t st_dev;
     uint64_t st_ino;
     uint32_t st_mode;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t st_rdev;
     int64_t st_size;
+    uint32_t st_atime;
+    uint32_t st_mtime;
+    uint32_t st_ctime;
     int32_t st_blksize;
     int64_t st_blocks;
+    uint32_t st_flags;
 };
+
+struct timeval;
 
 int cb_libc_stat(const char *path, struct stat *stat_buf);
 int cb_libc_fstat(int descriptor, struct stat *stat_buf);
 int cb_libc_lstat(const char *path, struct stat *stat_buf);
+int cb_libc_rename(const char *old_path, const char *new_path);
+int cb_libc_unlink(const char *path);
+int cb_libc_rmdir(const char *path);
+int cb_libc_access(const char *path, int mode);
+int cb_libc_fcpxattr(int from_descriptor, int to_descriptor);
+void cb_libc_warnx(const char *fmt, ...);
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
+char *cb_libc_strrchr(const char *text, int character);
+int cb_libc_getchar(void);
+void cb_libc_strmode(uint32_t mode, char *p);
+const char *cb_libc_user_from_uid(uint32_t uid, int nouser);
+const char *cb_libc_group_from_gid(uint32_t gid, int nogroup);
+int cb_libc_fchmod(int descriptor, uint32_t mode);
+int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid);
+int cb_libc_fchflags(int descriptor, uint32_t flags);
+int cb_libc_futimes(int descriptor, const struct timeval *times);
+int cb_libc_utimes(const char *path, const struct timeval *times);
+void (*cb_libc_signal(int sig, void (*func)(int)))(int);
+int32_t cb_libc_vfork(void);
+int cb_libc_execl(const char *path, const char *arg0, ...);
+int32_t cb_libc_waitpid(int32_t pid, int *status, int options);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

@@ -98,6 +98,10 @@ the latest commit must have green required checks.
 - Do not add speculative libc surface. Compile the pinned target source and
   choose the smallest independent missing interface demonstrated by its actual
   diagnostics.
+- An interface we have not implemented must fail in a way the caller can
+  detect (`ENOSYS`, `EOPNOTSUPP`, or `NULL`) -- never return a fabricated success
+  stub that silences the caller without performing the operation, and never
+  return fabricated data.
 - Imported NetBSD files remain byte-for-byte unchanged at the pinned revision,
   retain their file license, and receive a hash and `UPSTREAM.md` entry. Put all
   renaming, compatibility, and runtime adaptation in cannedBSD-owned files.
