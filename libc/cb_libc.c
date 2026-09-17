@@ -260,7 +260,23 @@ int cb_libc_unlink(const char *path)
         bound_api->set_errno(CB_EFAULT);
         return -1;
     }
+    if (bound_api->unlink == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
     return bound_api->unlink(path);
+}
+
+/* rmdir was appended by VFS-04, past api_is_usable's checked struct_size
+   boundary -- unlike unlink (present since the original base table), an
+   old-table bind can genuinely be too small to reach this field at all,
+   not just have it left NULL. Same shape as opendir_api_available above. */
+static int rmdir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, rmdir) +
+                   sizeof(bound_api->rmdir) &&
+           bound_api->rmdir != NULL;
 }
 
 int cb_libc_rmdir(const char *path)
@@ -269,31 +285,87 @@ int cb_libc_rmdir(const char *path)
         bound_api->set_errno(CB_EFAULT);
         return -1;
     }
-    if (bound_api->struct_size < offsetof(struct cb_api_v1, rename) ||
-        bound_api->rmdir == NULL) {
+    if (!rmdir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
     }
     return bound_api->rmdir(path);
 }
 
+/* See the block comment in cannedbsd/libc.h introducing this group. */
+
+cb_off_t cb_libc_lseek(int descriptor, cb_off_t offset, int whence)
+{
+    return bound_api->lseek(descriptor, offset, whence);
+}
+
+int cb_libc_fsync(int descriptor)
+{
+    /* RAMFS has no write-back cache: every write is already durable in
+       the only "storage" this backend has, so there is never anything
+       to flush. Returning success is a correct description of that
+       fact, not a false claim about a capability that does not exist. */
+    (void)descriptor;
+    return 0;
+}
+
+void cb_libc_sync(void)
+{
+    /* Same reasoning as cb_libc_fsync, for every open file at once. */
+}
+
+uint32_t cb_libc_arc4random(void)
+{
+    /* NOT a cryptographic RNG. RM-01's only call site (rm -P's secure
+       overwrite) is outside the accepted matrix and unreachable in
+       practice: rm_overwrite()'s open() call already fails first, since
+       O_SYNC/O_RSYNC/O_NOFOLLOW are not in cb_libc_open's known flag
+       set. This exists only so the file links; nothing in the accepted
+       matrix depends on its output being unpredictable. */
+    static uint32_t state = 2463534242u;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
 int cb_libc_access(const char *path, int mode)
 {
-    struct cb_stat_v1 raw_stat;
-    int result;
-
+    /* RAMFS never enforces mode bits for any operation -- open()/write()
+       succeed regardless of st_mode's permission bits, matching this
+       project's stated "permission enforcement deferred" policy. So
+       "is this path accessible for R/W/X" is truthfully "yes, for
+       anything that exists" on this backend, not a claim about
+       permission-checking machinery that does not exist. Confirmed
+       necessary, not assumed: an earlier ENOSYS-always version of this
+       function was caught making check()'s "ask before removing an
+       unwritable file" heuristic fire on every ordinary rm, inverting
+       its intended default -- see notes/iterations/RM-01.md. */
+    struct cb_stat_v1 probe;
     (void)mode;
     if (path == NULL) {
         bound_api->set_errno(CB_EFAULT);
         return -1;
     }
-    raw_stat.abi_version = CB_ABI_VERSION_V1;
-    raw_stat.struct_size = sizeof(struct cb_stat_v1);
-    result = bound_api->stat(path, &raw_stat);
-    if (result < 0) {
+    if (bound_api->stat == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
         return -1;
     }
-    return 0;
+    probe.abi_version = CB_ABI_VERSION_V1;
+    probe.struct_size = sizeof(probe);
+    return bound_api->stat(path, &probe) < 0 ? -1 : 0;
+}
+
+int cb_libc_undelete(const char *path)
+{
+    /* RAMFS has no whiteout concept -- same conclusion FTS-CORE-01's
+       design reached for FTS_WHITEOUT. No node this backend can ever
+       produce satisfies S_ISWHT, so rm.c's own logic never calls this
+       for a file it actually stat'd; it exists only so -W's branch
+       compiles and fails honestly if ever reached some other way. */
+    (void)path;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
 }
 
 int cb_libc_fcpxattr(int from_descriptor, int to_descriptor)
@@ -302,6 +374,24 @@ int cb_libc_fcpxattr(int from_descriptor, int to_descriptor)
     (void)to_descriptor;
     bound_api->set_errno(CB_ENOSYS);
     return -1;
+}
+
+static void uint_to_decimal(uint32_t value, char *buffer)
+{
+    char digits[10];
+    int count = 0;
+    if (value == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return;
+    }
+    while (value != 0) {
+        digits[count++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    while (count > 0)
+        *buffer++ = digits[--count];
+    *buffer = '\0';
 }
 
 /*
@@ -351,11 +441,16 @@ int cb_libc_utimes(const char *path, const struct timeval *times)
     return -1;
 }
 
+/* PROVISIONAL PLACEHOLDER -- see libc/include/signal.h's own comment.
+   Always fails (SIG_ERR, matching real POSIX signal()'s own failure
+   return); never actually installs anything. Both rm.c and mv.c discard
+   the return value, so this is a silent, honest no-op either way. */
 void (*cb_libc_signal(int sig, void (*func)(int)))(int)
 {
     (void)sig;
     (void)func;
-    return (void (*)(int))0;
+    bound_api->set_errno(CB_ENOSYS);
+    return (void (*)(int))-1;
 }
 
 int32_t cb_libc_vfork(void)
@@ -557,10 +652,18 @@ int cb_libc_fcntl(int fd, int cmd, ...)
     return -1;
 }
 
+/* More complete than a plain rwx rendering: handles setuid/setgid/sticky
+   bit overlays (s/S/t/T), which rm's own check() prompt formatting can
+   actually display given the isatty()-always-true caveat recorded in
+   notes/iterations/RM-01.md. */
 void cb_libc_strmode(uint32_t mode, char *p)
 {
     if (p == NULL)
         return;
+    /* Inlined S_IS*(mode) tests: the S_IS* macros themselves live in
+       libc/include/sys/stat.h, not on this translation unit's include
+       path (matching every other cb_libc.c function that reads type
+       bits, e.g. translate_stat's own switch above). */
     switch (mode & S_IFMT) {
     case S_IFDIR:  p[0] = 'd'; break;
     case S_IFCHR:  p[0] = 'c'; break;
@@ -569,6 +672,7 @@ void cb_libc_strmode(uint32_t mode, char *p)
     case S_IFLNK:  p[0] = 'l'; break;
     case S_IFSOCK: p[0] = 's'; break;
     case S_IFIFO:  p[0] = 'p'; break;
+    case S_IFWHT:  p[0] = 'w'; break;
     default:       p[0] = '?'; break;
     }
     p[1] = (mode & S_IRUSR) ? 'r' : '-';
@@ -586,16 +690,25 @@ void cb_libc_strmode(uint32_t mode, char *p)
 
 const char *cb_libc_user_from_uid(uint32_t uid, int nouser)
 {
-    (void)uid;
-    (void)nouser;
-    return NULL;
+    /* No passwd database exists on this backend at all, so every uid is
+       "not found" -- real BSD's own user_from_uid falls back to exactly
+       this numeric rendering for any uid absent from the database,
+       which describes every uid here, not a special case invented for
+       this project. */
+    static char buffer[16];
+    if (nouser)
+        return NULL;
+    uint_to_decimal(uid, buffer);
+    return buffer;
 }
 
 const char *cb_libc_group_from_gid(uint32_t gid, int nogroup)
 {
-    (void)gid;
-    (void)nogroup;
-    return NULL;
+    static char buffer[16];
+    if (nogroup)
+        return NULL;
+    uint_to_decimal(gid, buffer);
+    return buffer;
 }
 
 size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz)
@@ -612,21 +725,14 @@ size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz)
     return srclen;
 }
 
-char *cb_libc_strrchr(const char *text, int character)
-{
-    const char *last = NULL;
-    char ch;
-    if (text == NULL)
-        return NULL;
-    ch = (char)character;
-    for (const char *p = text; *p != '\0'; p++) {
-        if (*p == ch)
-            last = p;
-    }
-    if (ch == '\0')
-        return (char *)(text + cb_libc_strlen(text));
-    return (char *)last;
-}
+/* cb_libc_strrchr is NOT defined here: it is the pinned NetBSD import
+   (upstream/netbsd/common/lib/libc/string/strrchr.c, see UPSTREAM.md),
+   archived into libcannedbsd.a via string.h's plain #define rename, the
+   same treatment as its strchr sibling. A hand-written duplicate body
+   here would be a genuine link-time duplicate-symbol conflict, not just
+   redundant, and would abandon this project's established convention of
+   pinning real upstream sources for standard library primitives instead
+   of hand-rolling them. */
 
 void *cb_libc_malloc(size_t size)
 {
@@ -1205,8 +1311,9 @@ void cb_libc_warn(const char *fmt, ...)
 
 void cb_libc_warnx(const char *fmt, ...)
 {
-    va_list arguments;
+    int saved_error = bound_api->get_errno();
     const char *name = bound_api->getprogname();
+    va_list arguments;
     if (name == NULL)
         name = "";
     write_all(2, name, cb_libc_strlen(name));
@@ -1217,6 +1324,7 @@ void cb_libc_warnx(const char *fmt, ...)
         va_end(arguments);
     }
     write_all(2, "\n", 1);
+    bound_api->set_errno(saved_error);
 }
 
 void cb_libc_err(int eval, const char *fmt, ...)

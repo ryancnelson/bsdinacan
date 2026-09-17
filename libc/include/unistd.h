@@ -28,6 +28,14 @@
 #define readlink cb_libc_readlink
 #define lchown cb_libc_lchown
 
+#define SEEK_SET CB_SEEK_SET
+#define SEEK_CUR CB_SEEK_CUR
+#define SEEK_END CB_SEEK_END
+#define lseek cb_libc_lseek
+#define fsync cb_libc_fsync
+#define sync cb_libc_sync
+#define undelete cb_libc_undelete
+
 #define F_OK 0
 #define X_OK 1
 #define W_OK 2

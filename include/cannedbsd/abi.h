@@ -38,7 +38,8 @@ enum cb_error {
     CB_ENOTEMPTY = 66,
     CB_EFAULT = 14,
     CB_EOVERFLOW = 84,
-    CB_EXDEV = 18
+    CB_EXDEV = 18,
+    CB_ETXTBSY = 26
 };
 
 enum cb_open_flag {

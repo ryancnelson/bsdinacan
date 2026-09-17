@@ -52,6 +52,32 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
+/*
+ * unlink/rmdir/access/strmode/user_from_uid/group_from_gid/signal and
+ * cb_libc_stat/fstat/lstat are declared further below, alongside
+ * STAT-02/MV-01's struct stat and their own fuller cluster of metadata
+ * operations (cb_libc_rename/fcpxattr/fchmod/fchown/fchflags/etc.) --
+ * MV-01 landed needing nearly the same POSIX-utility-heuristic surface
+ * RM-01 does (both rm's and mv's own interactive-confirmation checks use
+ * access/strmode/user_from_uid/group_from_gid; both use signal/SIGINFO
+ * for ^T progress reporting), so this file used to also carry a second,
+ * now-redundant copy of those declarations here; merged down to one.
+ * lseek/fsync/sync/arc4random/undelete are RM-01-only (rm -P's macros),
+ * declared here since MV-01 never needed them:
+ *
+ * cb_off_t (*)lseek is a real, always-available base ABI op, and RAMFS's
+ * genuinely nothing-to-flush semantics make fsync/sync's success a
+ * correct description of this backend, not a claimed capability. Both
+ * get real implementations. arc4random/undelete back capabilities this
+ * backend genuinely does not have (secure-erase randomness, whiteout)
+ * and fail/are-inert honestly instead. See notes/iterations/RM-01.md.
+ */
+cb_off_t cb_libc_lseek(int descriptor, cb_off_t offset, int whence);
+int cb_libc_fsync(int descriptor);
+void cb_libc_sync(void);
+uint32_t cb_libc_arc4random(void);
+int cb_libc_undelete(const char *path);
+
 int cb_libc_isatty(int descriptor);
 int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes);
 int cb_libc_tcsetattr(int descriptor, int action,
@@ -87,6 +113,8 @@ void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);
 int cb_libc_memcmp(const void *left, const void *right, size_t count);
 char *cb_libc_strchr(const char *text, int character);
+char *cb_libc_strrchr(const char *text, int character);
+void *cb_libc_memset(void *destination, int character, size_t count);
 char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
 char *cb_libc_basename_upstream(char *path);
@@ -99,6 +127,10 @@ char *cb_libc_basename(char *path);
 #define S_IFREG  0100000
 #define S_IFLNK  0120000
 #define S_IFSOCK 0140000
+/* RM-01: see libc/include/sys/stat.h's own comment on S_IFWHT/S_ISWHT.
+   The bit constant is needed here too, so cb_libc_strmode (compiled
+   without libc/include on its path) can test for it directly. */
+#define S_IFWHT 0160000
 
 #define S_ISUID 0004000
 #define S_ISGID 0002000
@@ -167,7 +199,6 @@ int cb_libc_access(const char *path, int mode);
 int cb_libc_fcpxattr(int from_descriptor, int to_descriptor);
 void cb_libc_warnx(const char *fmt, ...);
 size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
-char *cb_libc_strrchr(const char *text, int character);
 int cb_libc_getchar(void);
 void cb_libc_strmode(uint32_t mode, char *p);
 const char *cb_libc_user_from_uid(uint32_t uid, int nouser);

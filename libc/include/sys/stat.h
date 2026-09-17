@@ -15,6 +15,15 @@
 #define S_ISLNK(m)  (((m) & S_IFMT) == S_IFLNK)
 #define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
 
+/* RM-01: RAMFS has no whiteout concept at all (same conclusion
+   FTS-CORE-01's design reached for FTS_WHITEOUT). No node this backend
+   can ever produce satisfies S_ISWHT; exists only so rm.c's -W branch
+   (outside the accepted matrix) compiles. S_IFWHT itself (0160000, the
+   one S_IFMT slot none of the other seven type bits above already use)
+   is defined in cannedbsd/libc.h alongside its siblings, so
+   cb_libc_strmode can test for it without libc/include on its path. */
+#define S_ISWHT(m) (((m) & S_IFMT) == S_IFWHT)
+
 /*
  * File mode permission bits
  */

@@ -11,6 +11,7 @@ extern const struct cb_program_v1 cb_basename_program;
 extern const struct cb_program_v1 cb_netbsdecho_program;
 extern const struct cb_program_v1 cb_head_program;
 extern const struct cb_program_v1 cb_ls_program;
+extern const struct cb_program_v1 cb_rm_program;
 extern const struct cb_program_v1 cb_mv_program;
 
 static int write_all(const struct cb_api_v1 *api, int descriptor,
@@ -225,6 +226,7 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_netbsdecho_program,
         &cb_head_program,
         &cb_ls_program,
+        &cb_rm_program,
         &cb_mv_program
     };
     size_t index;

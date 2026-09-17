@@ -1,5 +1,51 @@
 # Imported upstream source
 
+## Standing constraint: compiler idiom recognition on link-name-bound imports
+
+Any imported source whose function is bound to its private link name via
+the `__asm__("cb_libc_X")` declaration trick (as opposed to a plain
+preprocessor `#define X cb_libc_X`, which renames the source-level
+identifier itself before the compiler ever sees the standard library
+name) keeps its *source-level* name as the standard, compiler-recognized
+one — `memset`, `memcpy`, `memmove`, `memcmp`, `strcpy`, `strcmp` today.
+GCC's loop-idiom recognition (`-ftree-loop-distribute-patterns`, on by
+default from `-O2`) can rewrite a loop inside such a function's own body
+into a call back to that same standard name if the loop shape matches a
+known idiom (a constant-fill loop matching `memset` is the textbook
+case). Because the `__asm__` binding is in effect for the whole
+translation unit, that compiler-generated call resolves back to the
+function currently being compiled, producing unbounded self-recursion —
+a stack-overflow segfault at runtime, with no compile-time symptom.
+`memset.c` hit this exactly (see its entry below); fixed there with
+`-fno-builtin-memset` plus a GCC-only `-fno-tree-loop-distribute-patterns`
+(Clang rejects that flag outright, so it is conditional on `$(CC)` in the
+Makefile).
+
+**Checked empirically, not by analogy, whether the same risk is live in
+every other already-merged link-name-bound import** (`strcpy`, `strcmp`,
+`memcpy`, `memmove`, `memcmp`): compiled each with its current, unmodified
+Makefile flags and disassembled the result. None contain any call
+instruction at all — every one compiles to fully straight-line code, so
+the idiom-recognition rewrite never fires for any of their loop shapes.
+This is a property of those specific loops (byte-at-a-time copy/compare
+with a NUL or count termination condition, not a plain constant-fill),
+not a guarantee that would survive a future GCC version, a changed
+optimization level, or a future edit to any of these files. **No flags
+were added to their build rules**, since AGENTS.md's rule against libc
+surface unsupported by a measured diagnostic applies here too: adding
+`-fno-builtin-*` to functions with no measured self-recursion would be
+exactly the kind of unearned, speculative change this project avoids.
+
+**Recipe for any future import binding a new function to a compiler-
+recognized standard name via this `__asm__` trick:** disassemble the
+compiled object and grep for a call/branch-and-link instruction targeting
+either the function's own private symbol or the plain standard name
+before considering the import safe at whatever optimization level the
+Makefile actually uses. Do not infer safety from an import compiling and
+its own direct unit tests passing — the recursion is only reachable
+through GCC's own idiom-matching, which is independent of what the
+imported source or the tests do.
+
 ## NetBSD `yes`
 
 - Repository: `https://github.com/NetBSD/src`
@@ -485,6 +531,95 @@ bytes and checked pipe producer/consumer statuses. Source/symbol fences pin the
 import and reject unprefixed libc dependencies. Compiler stack-usage reports
 are isolated function-frame evidence, not a claim of a measured peak call chain.
 
+## NetBSD `rm`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/rm/rm.c`
+- Local path: `upstream/netbsd/bin/rm/rm.c`
+- SHA-256: `aebdd0b46b263ca8d5c6b12cc5bf27a21b878c5ad8230c6248583b43ace53f22`
+- Embedded RCS identifier: `$NetBSD: rm.c,v 1.58 2026/04/26 01:49:28 jschauma Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1990, 1993, 1994, 2003), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/rm_module.c`; see `notes/iterations/RM-01.md` for the full
+veneer this needed (`struct stat`/`lstat` from `STAT-02`, `fts` from
+`FTS-CORE-01`, `warnx` from `LIBC-ERR-02`, plus this ID's own
+`strrchr`/`memset`/`getchar`/`unlink`/`rmdir`), the two real bugs found
+and fixed along the way (an `access()` draft that made `check()`'s
+ask-before-removing heuristic fire on every ordinary `rm`, and
+`fts_read()`'s errno-clearing contract on a clean end of walk), and
+`VFS-05`, the directory-iteration cursor fix `rm -r` on a multi-entry
+directory needed and blocked this ID landing until it existed.
+
+## NetBSD `strrchr`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/strrchr.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/strrchr.c`
+- SHA-256: `2a5533ac29b3de543e1e8bdfd34b67a0e0420004e01154edd4b90aa0d3f96d55`
+- Embedded RCS identifier: `$NetBSD: strrchr.c,v 1.7 2020/04/07 08:07:58 skrll Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1988, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Same treatment as the
+already-imported `strchr.c` sibling: `string.h`'s plain `#define strrchr
+cb_libc_strrchr` renames the pinned definition itself (this file has no
+`#undef strrchr`, unlike `memset.c` below), so no link-name adapter is
+needed. `RM-01`'s own gap: `rm.c`'s `checkdot()` calls `strrchr(s, '\0')`
+unconditionally to find its own argument's terminator before trimming
+trailing slashes, and `strrchr(s, '/')` to extract the basename.
+
+## NetBSD `memset`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/memset.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/memset.c`
+- SHA-256: `0ccb3b88060b85f8a5a01785e2b142f96cbadada6b15970d7adf62e887c580ee`
+- Embedded RCS identifier: `$NetBSD: memset.c,v 1.12 2019/03/30 10:18:03 jmcneill Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1990, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged, but needed more than
+`strrchr` did to build and run correctly, both found by a failing test
+rather than assumed away:
+
+1. **Link-name adapter required.** Unlike `strchr`/`strrchr`, `memset.c`
+   does an unconditional `#undef memset` right after including
+   `<string.h>`, which defeats a plain `#define`. Uses the same
+   `__asm__("cb_libc_memset")` treatment as `strcpy`/`strcmp`/`memcpy`/
+   `memmove`/`memcmp`, gated on `CANNEDBSD_BUILDING_LIBC_MEMSET`.
+2. **`u_char`/`u_int`/`u_long` added to `compat/netbsd/include/sys/types.h`**
+   — legacy BSD aliases this file uses internally that the existing
+   import-only shim didn't have.
+3. **`UINT_MAX` added to `compat/netbsd/include/limits.h`** — the word-fill
+   fast path replicates a byte pattern across a full word by testing `#if
+   UINT_MAX > 0xffff` / `> 0xffffffff`. An undefined `UINT_MAX` evaluates
+   to 0 in `#if`, silently skipping the replication steps and leaving the
+   upper bytes of every word-sized store zeroed instead of pattern-filled.
+   Caught by a failing `memsetprobe` test asserting on filled-buffer
+   contents, not by inspection.
+4. **Compiled with `-fno-builtin-memset -fno-tree-loop-distribute-patterns`.**
+   Without these, GCC's loop-idiom recognition rewrites this file's own
+   fill loops into calls back to `memset` — which resolves, via the same
+   link-name binding this file itself installs, to this exact function,
+   producing unbounded self-recursion and a stack-overflow segfault at
+   runtime (not a compile-time symptom). Confirmed via `gdb`'s backtrace
+   showing `cb_libc_memset` calling itself over a thousand frames deep.
+   `memcpy`/`memmove` avoid this by building at `-Os`, which happens not to
+   enable this particular pass on this compiler; `-Os` alone was tried
+   here first and did not prevent it, so the two `-fno-*` flags are used
+   directly instead of relying on optimization-level side effects.
+
+`RM-01`'s own gap: `rm.c`'s `-P` (secure overwrite) macros call `memset`;
+out of scope for the accepted matrix (see `notes/iterations/RM-01.md`), but
+the declaration and a correct implementation still need to exist for the
+file to parse and for other, in-scope code paths to link against the same
+archive member.
+
 ## NetBSD `mv`
 
 - Repository: `https://github.com/NetBSD/src`
@@ -514,4 +649,3 @@ POSIX utility veneer (`sys/extattr.h`, `sys/time.h`, `sys/wait.h`, `signal.h`,
 and `commands/mv_module.c` supplies the native-program descriptor. Same-mount
 moves use native VFS `rename` as the common path; cross-mount `EXDEV` fallbacks
 execute fastcopy with non-fatal `fcpxattr` `ENOSYS` warning absorption.
-
