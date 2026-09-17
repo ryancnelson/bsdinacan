@@ -1,16 +1,19 @@
 # CAT-01: NetBSD `cat(1)` import design and prerequisite decomposition
 
-- **Status:** All six prerequisites landed; re-measured against current
-  origin/main and import attempted. `fclose(stdout/stderr)` gap **RESOLVED**
-  per coordinator decision (option 1, implemented honestly — see "Finding 2,
-  resolved" below). `O_NONBLOCK` rejected by `cb_libc_open` (blocking `-f`)
-  **FIXED directly** (Finding 4 below) — squarely this ID's own scope, a
-  compilation-only gap left by `FCNTL-01`, not a reasoned decision. Full
-  accepted matrix now green in `make ci` **except** `-n`/`-b`, which need
-  `%d`/width-`%s` support in the internal `printf`/`fprintf` formatter that
-  does not exist on `origin/main` today (Finding 3, unresolved, needs a
-  coordinator decision) — excluded from the accepted matrix pending that
-  call, matching `rm -P`/`-W`'s precedent for flag-gated deferred surface.
+- **Status:** Done. All six prerequisites landed; import complete on
+  `work/CAT-01`, landing to `main`. `fclose(stdout/stderr)` gap
+  **RESOLVED** per coordinator decision (option 1, implemented honestly —
+  see "Finding 2, resolved" below). `O_NONBLOCK` rejected by
+  `cb_libc_open` (blocking `-f`) **FIXED directly** (Finding 4 below) —
+  squarely this ID's own scope, a compilation-only gap left by
+  `FCNTL-01`, not a reasoned decision. `-n`/`-b` **excluded from the
+  accepted matrix as flag-gated deferred surface** per coordinator
+  decision (option 3 — see "Finding 3, resolved" below): they need
+  `%d`/width-`%s` support in the internal `printf`/`fprintf` formatter
+  that does not exist on `origin/main`, which is `FORMAT-01`'s scope, now
+  corrected by this ID's measurement and taken as a follow-on. Full
+  accepted matrix green in `make ci` (normal, sanitizer, isolation)
+  except `-n`/`-b`, documented inline rather than silently dropped.
 - **Base SHA:** `7e1fd6a` (`origin/main`), re-merged to current `origin/main`
   (`81e8f62`) before implementation.
 - **Branch:** `work/CAT-01`
@@ -423,7 +426,7 @@ yet, so the next reader knows it was reasoned, not validated.
 
 ---
 
-## 7. Finding 3 (BLOCKING, not fixed — needs a coordinator decision): the internal `printf`/`fprintf` formatter has no `%d` or width-`%s` support
+## 7. Finding 3, RESOLVED per coordinator decision (option 3): the internal `printf`/`fprintf` formatter has no `%d` or width-`%s` support
 
 With `fclose(stdout)` resolved, basic concatenation and the `-` stdin
 operand both measured correctly (`bsdinacan -c 'echo hi > /tmp/a; cat
@@ -495,8 +498,33 @@ because nothing existed yet). Options for the coordinator:
    paths, at the cost of leaving two flags from the original accepted
    matrix (section 5, item 4) unimplemented.
 
-I have not touched `FORMAT-01`'s branch or design. `CAT-01` is paused at
-this checkpoint pending the coordinator's call on Finding 3.
+**Resolution:** the coordinator selected option 3. Reasoning recorded for
+the next reader: the deciding distinction is that `-n`/`-b` are flag-
+gated, unlike `fclose(stdout)`'s unconditional, every-invocation failure.
+Deferring `fclose` would have meant `cat` could never exit 0 at all — not
+an accepted matrix, a broken utility. Deferring `-n`/`-b` leaves the zero-
+flag path and every other flag (`-s`/`-e`/`-t`/`-v`/`-u`/`-B`/`-f`) fully
+working, putting these two in exactly the same category as `cat -l`,
+`rm`'s `-P`/`-W`, `cp -p`, and `mv`'s cross-mount directory move: real
+functionality, honestly documented as outside the accepted matrix, with
+the reason recorded — not silently dropped. The milestone goal (create,
+list, copy, move, delete, inspect) is fully satisfied by `cat` without
+line numbering.
+
+This finding is also the input to a **scope correction on `FORMAT-01`
+itself**, not scope creep: that design was reasoned for one consumer
+(`uniq`) and a second consumer (`cat`) arrived with different
+requirements before implementation landed. Per the coordinator, `FORMAT-
+01` is taken as a follow-on to `CAT-01` (see `notes/iterations/FORMAT-
+01.md` and `BACKLOG.md`'s `FORMAT-01-design` entry once that work starts)
+to rebase `work/FORMAT-01`'s existing `%Nd` implementation onto current
+`main`, extend it to cover width-qualified `%s`, and record why the
+original `uniq`-only scope was insufficient, with `cat -n`/`-b` as the
+named, measured second consumer.
+
+`CAT-01` itself lands now with `-n`/`-b` excluded from its accepted
+matrix, documented inline in `tests/test_cat_behavior.sh` and here rather
+than silently omitted.
 
 ---
 
@@ -560,5 +588,5 @@ provenance, private-veneer symbol boundary), matching `rm`/`mv`'s
 precedent.
 
 **Accepted matrix status:** full section 5 of this note passes except
-`-n`/`-b` (Finding 3, blocked on `FORMAT-01`). Committed on `work/CAT-01`;
-not merged to `main` while Finding 3 is open.
+`-n`/`-b`, excluded per the coordinator's resolution of Finding 3
+(section 7). Landing to `main`.

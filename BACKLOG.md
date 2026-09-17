@@ -90,8 +90,25 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### CAT-01 — unchanged NetBSD `cat`
 
-- **Status:** Ready after FILEUTIL-01, but **larger than first scoped**. The
-  audit measured eleven distinct missing interfaces, none of them `fts`,
+- **Status:** Done. All six prerequisites landed; import complete on
+  `work/CAT-01`. Two real runtime gaps found by actual execution (not
+  compilation) and fixed: `fclose(stdout/stderr)` now honestly succeeds
+  (a coordinator-approved revision of `STDIN-01-design.md`'s original
+  policy — see its addendum), and `O_NONBLOCK` (declared by `FCNTL-01`
+  but never wired) is now accepted and harmlessly discarded by
+  `cb_libc_open` since RAMFS opens never block. `-n`/`-b` are **excluded
+  from the accepted matrix as flag-gated deferred surface** — same
+  category as `cat -l`, `rm -P`/`-W`, `cp -p`, `mv`'s cross-mount
+  directory move: real functionality, honestly documented as out of
+  scope. Reason: cat.c's line-numbering path needs `%d`/width-`%s`
+  support in the internal `printf`/`fprintf` formatter, which does not
+  exist on `origin/main`. That gap is `FORMAT-01`'s, not this ID's —
+  `FORMAT-01`'s own design turns out to need extending (see its entry)
+  since it was scoped only for `uniq`'s bare-`%d` need and never
+  anticipated `%s`-with-width. Full `make ci` green (normal, sanitizer,
+  isolation) for the complete matrix except `-n`/`-b`. See
+  `notes/iterations/CAT-01.md` for the full record.
+- The audit measured eleven distinct missing interfaces, none of them `fts`,
   termcap, pwd/grp or `extattr`, and none needing a new VFS verb: record locking
   (`struct flock`, `fcntl`, `F_WRLCK`, `F_SETLKW`), `strtol`, `setbuf`,
   `SEEK_SET`/`BUFSIZ`, `fileno`, `warnx`, `clearerr`, `isascii`/`toascii`/
@@ -592,6 +609,19 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 
 - **Status:** Done; reviewed design `fda45c5` with exact #404 all-three CI success.
   Runtime implementation remains unassigned after signal/tee priority.
+- **Scope correction found by `CAT-01` (2026-09-17):** this design was scoped
+  for a single consumer (`uniq`'s `"%4d %s"`) and explicitly, deliberately
+  excludes width-qualified `%s` on the grounds that `uniq` never needs it. A
+  second consumer arrived before implementation landed: pinned `cat.c`'s `-b`
+  blank-line-continuation case needs exactly `%6s\t` (width-qualified `%s`).
+  `work/FORMAT-01` at `c0d36f7` already has a real, close-to-design `%Nd`
+  implementation (bounded width 1-32, `INT_MIN`-safe), but it is not on
+  `origin/main` and its own note still reads "implementation pending." Next
+  implementation pass must rebase that work onto current `main`, extend the
+  design to cover width-qualified `%s` with `cat -n`/`-b` as the named,
+  measured second consumer, and record why the original `uniq`-only scope
+  was insufficient — a scope correction driven by a real second consumer,
+  not scope creep. See `notes/iterations/CAT-01.md` section 7.
 - **Base:** existing feature base; preserve the worktree and record its full SHA.
 - **Scope:** own iteration note only; no formatter implementation or uniq import.
 - **Accept:** inspect the pinned cached uniq source and current formatter; specify
