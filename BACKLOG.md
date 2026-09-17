@@ -117,7 +117,7 @@ Second end-to-end exploratory measurement of the milestone's acceptance sentence
 taken by driving `build/bsdinacan` with scripted interactive sessions in the
 Alpine 3.22 gate environment following the landing of `CP-01` (`a9a936d`),
 `FS-STAT-01` (`e6dcb3d`), `FORMAT-01` (`a007331`), `MKDIR-CMD-01` (`5039fda`),
-`BUILD-SYNC-01` (`8791698`), `WC-02` (`bae004b`), and `MILESTONE-E2E-01` (`883f3f5`).
+`BUILD-SYNC-01` (`8791698`), `WC-02` (`bae004b`), and `MILESTONE-E2E-01` (merge `c2ff582`, branch commit `2d3bd32`).
 
 Working, exit status 0, verified via scripted sessions:
 
@@ -144,6 +144,34 @@ Gaps and observations:
 3. **Honest failure invariant holds across the entire surface:** non-existent paths,
    unsupported options, and missing parents without `-p` produce diagnostics on
    stderr and exit status 1 without crashes or silent passes.
+
+### ECHO-02 — retire the `echo` placeholder the way `cat`'s import did
+
+- Status: Ready
+- Base: main
+- Depends: none
+- Hypothesis: `echo` is the only verb where a pinned import was registered
+  under an aliased name instead of replacing its bootstrap placeholder.
+  `src/programs.c:159` registers the owned `echo_main` as `"echo"`, so
+  `/bin/echo` is the placeholder, while the pinned NetBSD import is registered
+  as `netbsdecho` at `:178`. `CAT-01` faced the identical situation and retired
+  the placeholder in the same commit, because registering both names hit
+  `EEXIST` and aborted kernel boot. Two conventions now exist for one
+  situation, and the one a user reaches is the placeholder.
+- Measured at `bae004b` under `MILESTONE-REMEASURE-01`: standard arguments and
+  `-n` produce identical output from both, so there is no behavioural
+  divergence to fix today. This is a convention and provenance problem, not a
+  correctness one, which is why it is `Ready` rather than urgent.
+- Red test: a behavioural case asserting that `/bin/echo` is served by the
+  pinned import. It must fail today, since `echo` resolves to `echo_main`.
+- Acceptance: retire the owned `echo` placeholder and register the pinned
+  import as `echo`, following `CAT-01`'s pattern exactly, including whatever
+  `EEXIST`-avoidance that required. Keep `netbsdecho` only if something
+  measurably depends on the name; if nothing does, remove it rather than
+  leaving a second spelling. Extend `tests/test_echo_behavior.sh` to assert the
+  pinned import's own diagnostics, and state in `UPSTREAM.md` that `echo` now
+  serves the import. Do not widen `echo`'s option surface -- this item changes
+  which implementation answers, nothing else.
 
 ### MILESTONE-REMEASURE-01 — exploratory re-measurement of file manipulation milestone at `bae004b`
 
