@@ -165,3 +165,89 @@ has no concept of regardless).
 - `MV-01` can now cite this item's own direct-source-reading justification
   for `rename` rather than re-deriving it; `RM-01` needs only `rmdir` from
   here, once `FTS-01` (or a scoped-down `rm` without `-r`) exists.
+
+## Post-acceptance fix: `rename` could construct a real cycle, no concurrency needed
+
+Found while designing `FTS-01`'s cycle detection (thinking through whether
+node-pointer-identity ancestor tracking could be defeated by a concurrent
+`rename`), not by a dedicated audit — but the defect is in `rename` itself,
+independent of any concurrent walk.
+
+**The bug:** `cb_vfs_rename_paths` never checked whether the destination is
+a descendant of the node being moved. `rename("/A", "/A/B/A")` would:
+resolve `old_node=A`; resolve `new_parent=B` by walking straight through
+`A` (that resolution succeeds fine — there is no infinite loop in *getting*
+there); pass the `EXDEV` and type-mismatch checks (same mount, no
+conflicting existing target); then relink `A` under `B`. Result: `A`'s
+parent becomes `B`, but `B`'s parent is still `A` — `ramfs_rename` only ever
+touches the node being moved, never `new_parent`'s own parent pointer. That
+is a real two-node cycle, and it is simultaneously disconnected from root
+entirely, since `A` was removed from root's own children list and never
+reachable again. POSIX `rename(2)` rejects this explicitly with `EINVAL`;
+this implementation didn't. Reachable with a plain `mv /A /A/B/` — no
+concurrency, no `fts` walk, no race required.
+
+**Why this doesn't undermine `FTS-01`'s cycle-detection design:** node-
+pointer-identity up a retained ancestor array would still correctly flag a
+*real* cycle as `FTS_DC` if a walk ever reached one, for whatever reason it
+exists. The design survives; the thing it would have detected turned out to
+be constructible for an unrelated reason.
+
+**The fix:** before any further checks, walk upward from `new_parent` via
+the existing `parent` node op (bounded at `CB_PATH_MAX / 2`, the same bound
+`cwd_string` and `FTS-01`'s own ancestor walk use); if `old_node` is ever
+reached — including `new_parent == old_node` itself, the one-level case —
+reject with `EINVAL` before anything is resolved further, let alone
+mutated.
+
+**Test, per the director's explicit requirement — asserts topology, not
+just a return code:** constructs the exact cycle (`/cycleA/cycleB`,
+attempt `rename("/cycleA", "/cycleA/cycleB/cycleA")`), confirms `EINVAL`,
+then confirms `cycleA` is still reachable from root as the *same node* it
+was before the attempt, and that `cycleB`'s parent is still `cycleA` —
+neither pointer was touched by the rejected attempt. A separate case covers
+the one-level form (`new_parent == old_node`). Red captured honestly: the
+fix was written, then reverted via `git checkout -- src/vfs.c` with the new
+tests left in place, rebuilt, and failed exactly as expected
+(`FAIL: renaming a directory into its own descendant did not return EINVAL`),
+then restored — the same discipline as every other red/green record in this
+project.
+
+**Audit of the rest of POSIX rename's `EINVAL`/`EPERM` set, per the
+director's explicit request — checked directly, not assumed:**
+- `.`/`..` as an operand: never reaches resolution as a literal path
+  component in the first place — `cb_test_path_normalize` collapses both
+  during normalization. `rename("/x/.", "/y")` normalizes `old_path` to
+  plain `/x`, an ordinary rename. `rename("/x", "/x/..")` normalizes
+  `new_path` to `/`, and `resolve_parent` already rejects a bare `/` (no
+  name component after the final slash) with `EINVAL` — confirmed by an
+  added test case, not inferred from reading the code.
+- Renaming the true filesystem root: any same-mount `new_parent` is
+  necessarily root itself or a descendant of it (root has no sibling, and
+  everything in that mount chains back to it via `parent()`), so the new
+  descendant-of-self walk above catches `old_node == root` unconditionally
+  and returns `EINVAL` before `old_node->ops->rename()` is ever called.
+  `ramfs_rename`'s own pre-existing `node->parent == NULL` check is genuine
+  defense in depth here, not the layer actually reached in practice —
+  confirmed by checking the observed errno (`EINVAL`, not the lower layer's
+  `EPERM`) directly, added as its own test case.
+- Directory-onto-directory replacement (`ENOTEMPTY`) and `EXDEV`/`EISDIR`/
+  `ENOTDIR` were already covered by the original accept criteria and remain
+  unchanged by this fix.
+
+**The review-process lesson, on the record because the failure mode is
+worth naming, not as self-criticism of the reviewer:** antigravity's own
+review of `VFS-04` checked the errno-collision question, verified the ABI
+pointers were genuinely appended at the struct end, and traced the
+allocation-ordering argument for `rename`'s `ENOMEM` path — all real,
+correct checks — but never checked `rename`'s behavior against POSIX's full
+error set, which is exactly where this gap was. The allocation-ordering
+argument was clean enough that it didn't prompt a look for a *different*
+class of defect. "The reviewer checked the parts the author reasoned about"
+is a real, specific failure mode, distinct from "the reviewer didn't look
+hard enough."
+
+**Status:** `VFS-04` was still unmerged (`work/VFS-04` at `0bc7d5f`, not
+`main`) when this was found, so this fix lands as a correction on an
+unlanded branch rather than a regression discovered after merge. That is
+fortunate timing, not a property of the process that produced it.

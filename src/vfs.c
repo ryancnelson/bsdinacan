@@ -534,6 +534,37 @@ int cb_vfs_rename_paths(struct cb_task *task, const char *old_path,
             }
         }
     }
+    /* POSIX rename(2): reject making a directory a subdirectory of itself.
+       Without this, new_parent could already be old_node itself or any
+       descendant of it (reached by resolve_parent walking straight through
+       old_node, which succeeds fine -- there is no infinite loop in getting
+       here). Relinking old_node under such a new_parent would make
+       old_node's own descendant its new parent while that descendant's
+       parent pointer still points at old_node, producing a cycle
+       disconnected from root entirely (ramfs_rename only ever touches the
+       node being moved, never new_parent's own parent pointer). Walk
+       upward from new_parent via the existing parent op; if old_node is
+       ever reached (including new_parent == old_node itself), reject with
+       EINVAL before anything is resolved further, let alone mutated.
+       Bounded the same way cwd_string/the fts ancestor walk are, so a
+       pre-existing corrupt tree can't spin this loop forever either. */
+    if (result >= 0) {
+        struct cb_vfs_node *walk = new_parent;
+        size_t hops = 0;
+        while (walk != NULL) {
+            if (walk == old_node) {
+                result = -CB_EINVAL;
+                break;
+            }
+            if (++hops > CB_PATH_MAX / 2) {
+                result = -CB_ENAMETOOLONG;
+                break;
+            }
+            if (!node_ops_valid(walk->ops))
+                break;
+            walk = walk->ops->parent(walk);
+        }
+    }
     if (result >= 0)
         result = old_node->ops->stat(old_node, &old_status);
     if (result >= 0) {

@@ -5112,6 +5112,81 @@ static void test_vfs_rmdir_rename(void)
     if (cb_vfs_rename_paths(&task, "/repltarget", "/renamedelsewhere") < 0)
         fail("rename through the restored real table should succeed");
 
+    /* POSIX EINVAL: reject making a directory a subdirectory of itself.
+       This is the exact cycle libby's cycle-detection review surfaced:
+       rename('/cycleA', '/cycleA/cycleB/cycleA') would otherwise resolve
+       new_parent=cycleB by walking straight through cycleA (no infinite
+       loop in getting there), pass every other check, and relink cycleA
+       under cycleB -- leaving cycleB's own parent pointer still pointing
+       at cycleA, a two-node cycle disconnected from root entirely. Assert
+       topology after the rejection, not just the error code: the whole
+       danger was corrupted structure, not a missing return value. */
+    if (cb_vfs_mkdir_path(&task, "/cycleA", 0777) < 0)
+        fail("mkdir /cycleA");
+    if (cb_vfs_mkdir_path(&task, "/cycleA/cycleB", 0777) < 0)
+        fail("mkdir /cycleA/cycleB");
+    if (cb_vfs_lookup_node(&task, "/cycleA", &node) < 0)
+        fail("lookup /cycleA before rejected cycle rename");
+    if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+        fail("lookup /cycleA/cycleB before rejected cycle rename");
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/cycleB/cycleA") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory into its own descendant did not return EINVAL");
+    /* Topology assertions: A is still reachable from root as the same
+       node, and B's parent is still A -- neither pointer was touched by
+       the rejected attempt. */
+    {
+        struct cb_vfs_node *reresolved_a, *b_parent;
+        if (cb_vfs_lookup_node(&task, "/cycleA", &reresolved_a) < 0 ||
+            reresolved_a != node)
+            fail("cycleA must still be reachable from root as the same node after rejection");
+        if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+            fail("cycleA/cycleB must still resolve after rejection");
+        b_parent = node2->ops->parent(node2);
+        if (b_parent != node)
+            fail("cycleB's parent must still be cycleA after the rejected rename");
+    }
+    /* One-level case: new_parent is old_node itself, not just a descendant
+       of it (rename('/cycleA', '/cycleA/x')). Same EINVAL, same walk --
+       old_node is reached on the very first hop. */
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/x") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory directly into itself did not return EINVAL");
+
+    /* Audit, per the director's request, of the rest of POSIX rename's
+       EINVAL set: '.'/'..' as an operand, and renaming the true root.
+       Neither needed a new check -- both are already correctly rejected
+       by existing machinery, verified here rather than assumed. */
+
+    /* '.' and '..' are never literal path components by the time they
+       reach resolution: cb_test_path_normalize collapses them during
+       normalization. rename("/cycleA/.", "/elsewhere") normalizes old_path
+       to plain "/cycleA" -- an ordinary, harmless rename, not a special
+       case. rename("/cycleA", "/cycleA/..") normalizes new_path to "/",
+       and resolve_parent already rejects a bare "/" (no name component
+       after the final slash) with EINVAL -- confirmed directly below,
+       not assumed from reading the code. */
+    if (cb_vfs_mkdir_path(&task, "/dotcheck", 0777) < 0)
+        fail("mkdir /dotcheck");
+    if (cb_vfs_rename_paths(&task, "/dotcheck/.", "/dotcheck2") < 0)
+        fail("rename with a trailing '.' on the source should behave as an ordinary rename");
+    if (cb_vfs_rename_paths(&task, "/dotcheck2", "/dotcheck2/..") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming onto a path that normalizes to '/' did not return EINVAL");
+
+    /* True root: any same-mount new_parent is necessarily root itself or a
+       descendant of it (root has no sibling; everything in this mount
+       chains back to it via parent()), so the new descendant-of-self walk
+       above catches old_node == root unconditionally and returns EINVAL
+       before ever reaching old_node->ops->rename(). ramfs_rename's own
+       node->parent == NULL check (the original, lower-level protection)
+       is genuine defense in depth here, not the layer actually reached --
+       confirmed directly by checking the observed errno, not assumed from
+       reading the code. */
+    if (cb_vfs_rename_paths(&task, "/", "/newroot") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming the true filesystem root did not return EINVAL");
+
     cb_release(&kernel, task.error_cell);
     cb_vfs_node_release(task.cwd);
     cb_vfs_node_release(task.root);
