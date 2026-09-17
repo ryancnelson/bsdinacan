@@ -49,7 +49,23 @@
 All six link-name-bound imports (`memset`, `memcmp`, `memcpy`, `memmove`, `strcpy`, `strcmp`) were disassembled from their compiled Retro68 m68k `.c.obj` files using `m68k-apple-macos-objdump -d` and inspected for subroutine calls (`bsr`/`jsr` or recursive standard library symbol references):
 
 1. **`cb_libc_memset`:**
-   - Disassembly: `movel %sp@(4),%d0; movel %d0,%d1; addl %sp@(12),%d1; moveal %d0,%a0; cmpl %a0,%d1; bnes 12; rts; moveb %sp@(11),%a0@+; bras c`
+   - Raw `m68k-apple-macos-objdump -d` excerpt:
+     ```text
+     CMakeFiles/cb_memset.dir/src/upstream/netbsd/common/lib/libc/string/memset.c.obj:     file format elf32-m68k
+
+     Disassembly of section .text.cb_libc_memset:
+
+     00000000 <cb_libc_memset>:
+        0:	202f 0004      	movel %sp@(4),%d0
+        4:	2200           	movel %d0,%d1
+        6:	d2af 000c      	addl %sp@(12),%d1
+        a:	2040           	moveal %d0,%a0
+        c:	b288           	cmpl %a0,%d1
+        e:	6602           	bnes 12 <cb_libc_memset+0x12>
+       10:	4e75           	rts
+       12:	10ef 000b      	moveb %sp@(11),%a0@+
+       16:	60f4           	bras c <cb_libc_memset+0xc>
+     ```
    - Branches/calls: Only local branch `bras` and `bnes`. **Zero `bsr`/`jsr` calls.**
 2. **`cb_libc_memcmp`:**
    - Disassembly: straight-line longword/byte compare loops.
