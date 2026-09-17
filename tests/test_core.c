@@ -4604,7 +4604,7 @@ static int register_conv_probes(struct cb_kernel *kernel)
            0 : -1;
 }
 
-/* Adding netbsdecho as a 13th base command (cb_register_base_programs)
+/* Adding a 13th base command (cb_register_base_programs)
  * would have pushed FIXTURE_FULL's shared baseline plus its own explicit
  * list past CB_MAX_PROGRAMS's 64-slot ceiling. Scoping yesreader/yesprobe
  * out of FIXTURE_FULL and into their own fixture frees exactly the one
