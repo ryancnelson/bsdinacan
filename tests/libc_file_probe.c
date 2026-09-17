@@ -24,6 +24,15 @@ int main(int argc, char **argv)
         if (madvise((void *)0x1000, 1024, MADV_SEQUENTIAL) != 0) return 82;
         return 0;
     }
+    if (strcmp(mode, "mkdir-probe") == 0) {
+        struct stat sb;
+        if (mkdir("/tmp/libc-mkdir-dir", 0755) != 0) return 83;
+        if (stat("/tmp/libc-mkdir-dir", &sb) != 0 || !S_ISDIR(sb.st_mode)) return 84;
+        if (mkdir("/tmp/libc-mkdir-dir", 0755) != -1 || errno != EEXIST) return 85;
+        if (mkdir(NULL, 0755) != -1 || errno != EFAULT) return 86;
+        if (rmdir("/tmp/libc-mkdir-dir") != 0) return 87;
+        return 0;
+    }
     if (strcmp(mode, "default-mode") == 0) {
         int fd = open("/tmp/default-mode", O_CREAT | O_WRONLY, DEFFILEMODE);
         if (fd != 3) { if (fd >= 0) close(fd); return 34; }

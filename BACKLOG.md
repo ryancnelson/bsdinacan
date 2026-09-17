@@ -459,7 +459,7 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 
 ### VFS-MKDIR-01 — restore `cb_libc_mkdir` on measured `cp` demand
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
 - **Base:** main
 - **Depends on:** FILEUTIL-01 (Done)
 - **Scope:** Restore `cb_libc_mkdir` in `libc/cb_libc.c` and declare `mkdir` in `libc/include/sys/stat.h`.
