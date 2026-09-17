@@ -88,6 +88,61 @@ int main(int argc, char **argv)
 
         return 0;
     }
+    if (strcmp(mode, "stdio-probe") == 0) {
+        char dummy[16];
+        FILE *fp;
+
+        /* Constants */
+        if (BUFSIZ != 1024) return 130;
+        if (SEEK_SET != 0 || SEEK_CUR != 1 || SEEK_END != 2) return 131;
+
+        /* fileno */
+        if (fileno(stdin) != 0) return 132;
+        if (fileno(stdout) != 1) return 133;
+        if (fileno(stderr) != 2) return 134;
+        errno = 0;
+        if (fileno(NULL) != -1 || errno != EBADF) return 135;
+        errno = 0;
+        if (fileno((FILE *)1) != -1 || errno != EBADF) return 136;
+
+        /* setbuf */
+        errno = 0x5a5a;
+        setbuf(stdout, NULL);
+        if (errno != 0x5a5a) return 137;
+        setbuf(stdin, NULL);
+        if (errno != 0x5a5a) return 138;
+        errno = 0;
+        setbuf(stdout, dummy);
+        if (errno != ENOSYS) return 139;
+        errno = 0;
+        setbuf(NULL, NULL);
+        if (errno != EINVAL) return 140;
+
+        /* Dynamic stream tests: open, fileno, setbuf, read, eof, clearerr, close */
+        fp = fopen("/tmp/stream-input", "r");
+        if (fp == NULL) return 141;
+        if (fileno(fp) <= 2) { fclose(fp); return 142; }
+        errno = 0x5a5a;
+        setbuf(fp, NULL);
+        if (errno != 0x5a5a) { fclose(fp); return 143; }
+        errno = 0;
+        setbuf(fp, dummy);
+        if (errno != ENOSYS) { fclose(fp); return 144; }
+
+        /* Read to EOF */
+        while (getc(fp) != EOF) {}
+        if (!feof(fp)) { fclose(fp); return 145; }
+        clearerr(fp);
+        if (feof(fp) || ferror(fp)) { fclose(fp); return 146; }
+
+        /* clearerr on stdout / stderr */
+        clearerr(stdout);
+        clearerr(stderr);
+        clearerr(NULL);
+
+        if (fclose(fp) != 0) return 147;
+        return 0;
+    }
     if (strcmp(mode, "mman-probe") == 0) {
         void *p;
         errno = 0;

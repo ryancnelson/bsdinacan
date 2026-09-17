@@ -1628,6 +1628,72 @@ int cb_libc_ferror(struct cb_libc_file *stream)
     return stream == cb_libc_stdout_stream ? state->stdout_error : state->stderr_error;
 }
 
+void cb_libc_clearerr(struct cb_libc_file *stream)
+{
+    if (stream == NULL)
+        return;
+    if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream) {
+        struct cb_stdio_state_v1 *state = stdio_state();
+        if (state != NULL) {
+            if (stream == cb_libc_stdout_stream)
+                state->stdout_error = 0;
+            else
+                state->stderr_error = 0;
+        }
+        return;
+    }
+    struct input_reference ref;
+    if (resolve_input(stream, &ref) == 0) {
+        *ref.eof = 0;
+        *ref.error = 0;
+    }
+}
+
+int cb_libc_fileno(struct cb_libc_file *stream)
+{
+    if (stream == NULL) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_EBADF);
+        return -1;
+    }
+    if (stream == cb_libc_stdin_stream)
+        return 0;
+    if (stream == cb_libc_stdout_stream)
+        return 1;
+    if (stream == cb_libc_stderr_stream)
+        return 2;
+    struct input_reference ref;
+    if (resolve_input(stream, &ref) < 0) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_EBADF);
+        return -1;
+    }
+    return ref.descriptor;
+}
+
+void cb_libc_setbuf(struct cb_libc_file *stream, char *buf)
+{
+    if (stream == NULL) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_EINVAL);
+        return;
+    }
+    if (buf != NULL) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_ENOSYS);
+        return;
+    }
+    if (stream != cb_libc_stdin_stream && stream != cb_libc_stdout_stream &&
+        stream != cb_libc_stderr_stream) {
+        struct input_reference ref;
+        if (resolve_input(stream, &ref) < 0) {
+            if (bound_api != NULL && bound_api->set_errno != NULL)
+                bound_api->set_errno(CB_EBADF);
+            return;
+        }
+    }
+}
+
 
 size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_libc_file *stream)
 {
