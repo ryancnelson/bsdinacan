@@ -14,6 +14,7 @@ extern const struct cb_program_v1 cb_ls_program;
 extern const struct cb_program_v1 cb_rm_program;
 extern const struct cb_program_v1 cb_mv_program;
 extern const struct cb_program_v1 cb_cat_program;
+extern const struct cb_program_v1 cb_cp_program;
 
 static int write_all(const struct cb_api_v1 *api, int descriptor,
                      const void *buffer, size_t count)
@@ -178,7 +179,8 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_ls_program,
         &cb_rm_program,
         &cb_mv_program,
-        &cb_cat_program
+        &cb_cat_program,
+        &cb_cp_program
     };
     size_t index;
     for (index = 0; index < sizeof(programs) / sizeof(programs[0]); ++index) {

@@ -676,3 +676,43 @@ opens never block), and the one gap still open (`-n`/`-b` need `%d`/width-
 `%s` support in the internal formatter -- `FORMAT-01`, excluded from the
 accepted matrix until it lands). `cat -l` is documented as outside the
 accepted matrix, same precedent as `rm`'s own `-P`/`-W`.
+
+## NetBSD `cp`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/cp/cp.c`
+- Local path: `upstream/netbsd/bin/cp/cp.c`
+- SHA-256: `fef86b0fbc0161c436a5b6e4c8255c19e86cd9033b71f72f81a3963551d06613`
+- Embedded RCS identifier: `$NetBSD: cp.c,v 1.63 2024/06/07 21:01:00 andvar Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1988, 1993, 1994), retained verbatim in the imported file.
+
+## NetBSD `cp` `utils.c`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/cp/utils.c`
+- Local path: `upstream/netbsd/bin/cp/utils.c`
+- SHA-256: `d20b071192c52f559082183fda12692ea99b6c19beec5680a58ed3475ae99ca2`
+- Embedded RCS identifier: `$NetBSD: utils.c,v 1.50 2024/01/15 17:41:06 christos Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1991, 1993, 1994), retained verbatim in the imported file.
+
+## NetBSD `cp` `extern.h`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/cp/extern.h`
+- Local path: `upstream/netbsd/bin/cp/extern.h`
+- SHA-256: `6299aea50a1f960547bb0f426b3b7bfaed614258aba488287c4efbdc074e5ff6`
+- Embedded RCS identifier: `$NetBSD: extern.h,v 1.20 2020/09/07 03:09:55 mrg Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1991, 1993, 1994), retained verbatim in the imported file.
+
+All three imported files are byte-for-byte unchanged. Registered via
+`commands/cp_module.c`. `cp` executes entirely in-process using `fts(3)`
+directory traversal, VFS `mkdir`, and chunked 64KB read/write fallback loops
+when `mmap` returns `MAP_FAILED` (`ENOSYS`). It makes 0 calls to `vfork`,
+`fork`, `exec*`, `spawn`, `system`, or `popen`. Compiled with `-DSMALL
+-Dmain=cb_cp_main`.

@@ -509,12 +509,12 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 
 ### CP-01 — unchanged NetBSD `cp`
 
-- **Status:** Blocked on VFS-05
+- **Status:** Done; merged to main.
 - **Base:** main
-- **Depends on:** COMPAT-CDEFS-01 (Done), LIBC-MMAN-01 (Done), VFS-MKDIR-01 (Done), LIBC-CP-STUB-01 (Done), FTS-CORE-01 (Done), EXTATTR-01 (Done), STAT-02 (Done), FILEUTIL-01 (Done), VFS-05
+- **Depends on:** COMPAT-CDEFS-01 (Done), LIBC-MMAN-01 (Done), VFS-MKDIR-01 (Done), LIBC-CP-STUB-01 (Done), FTS-CORE-01 (Done), EXTATTR-01 (Done), STAT-02 (Done), FILEUTIL-01 (Done), VFS-05 (Done)
 - **Scope:** Import pinned NetBSD `cp.c` (SHA-256: `fef86b0f...`), `utils.c` (SHA-256: `d20b0711...`), and `extern.h` (SHA-256: `6299aea5...`) byte-for-byte unmodified. Compile with `-DSMALL -Dmain=cb_cp_main`, link into `bsdinacan`, register in `src/programs.c`, and add `UPSTREAM.md` entries.
 - **Process Model Note:** Unchanged `cp` executes entirely in-process using `fts(3)` directory traversal and VFS `mkdir`/`open`/`read`/`write`. It makes 0 calls to `vfork`, `fork`, `exec*`, `spawn`, `system`, or `popen`, avoiding the single-process `vfork` limitation seen in `mv`.
-- **Accepted Behavioral Matrix:** Default file copying, overwriting, multi-file copying to target directory, recursive copying (`-r` and `-R`), forced copy (`-f`), missing source error handling, empty file copy, and cross-mount file/recursive copies. `-p` and `-a` are explicitly excluded from the accepted matrix (metadata preservation deferred).
+- **Accepted Behavioral Matrix:** Default file copying, overwriting, multi-file copying to target directory, recursive copying (`-r` and `-R`), forced copy (`-f`), missing source error handling, empty file copy, and cross-mount file/recursive copies. `-p` and `-a` are explicitly excluded from the accepted matrix (metadata preservation deferred). Full `make ci` green. See `notes/iterations/CP-01.md`.
 
 ### LS-01 — single-column `ls` without terminal width or `-l`
 

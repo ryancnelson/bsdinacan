@@ -312,4 +312,54 @@ for symbol in clearerr close err fclose fcntl ferror fileno fopen fprintf \
     fi
 done
 
+cp_source=upstream/netbsd/bin/cp/cp.c
+cp_extern=upstream/netbsd/bin/cp/extern.h
+cp_utils_source=upstream/netbsd/bin/cp/utils.c
+cp_object=$build_path/netbsd_cp.o
+cp_utils_object=$build_path/netbsd_cp_utils.o
+cp_hash=fef86b0fbc0161c436a5b6e4c8255c19e86cd9033b71f72f81a3963551d06613
+cp_extern_hash=6299aea50a1f960547bb0f426b3b7bfaed614258aba488287c4efbdc074e5ff6
+cp_utils_hash=d20b071192c52f559082183fda12692ea99b6c19beec5680a58ed3475ae99ca2
+
+if [[ $(sha256sum "$cp_source" | awk '{print $1}') != "$cp_hash" ]] ||
+   ! matches "$cp_hash" "$provenance_file"; then
+    echo 'FAIL: cp source/provenance pin differs' >&2
+    exit 1
+fi
+if [[ $(sha256sum "$cp_extern" | awk '{print $1}') != "$cp_extern_hash" ]] ||
+   ! matches "$cp_extern_hash" "$provenance_file"; then
+    echo 'FAIL: cp extern source/provenance pin differs' >&2
+    exit 1
+fi
+if [[ $(sha256sum "$cp_utils_source" | awk '{print $1}') != "$cp_utils_hash" ]] ||
+   ! matches "$cp_utils_hash" "$provenance_file"; then
+    echo 'FAIL: cp utils source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$cp_object" | matches '[[:space:]]T[[:space:]]+cb_cp_main$' ||
+   nm "$cp_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: cp entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in chmod err errno_location errx exit fts_children fts_close \
+        fts_open fts_read fts_set getopt getopt_state_location getprogname \
+        getuid lstat mkdir printf setlocale setprogname signal stat \
+        stderr_stream stdin_stream stdout_stream strlcpy strlen strrchr \
+        umask warn warnx; do
+    if nm -u "$cp_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: cp imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+for symbol in chflags chmod close errno_location fcpxattr fts_set \
+        getprogname lchmod lchown link lutimens madvise mkfifo mknod \
+        mmap munmap open read readlink setprogname stat stderr_stream \
+        stdout_stream strcmp strlcpy strlen strncat symlink unlink warn \
+        warnx write; do
+    if nm -u "$cp_utils_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: cp utils imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'
