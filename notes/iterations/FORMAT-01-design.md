@@ -62,3 +62,31 @@ The base source/hash evidence above remains the original design's evidence;
 these additional cases are specified, not executed runtime results. Future
 implementation still requires actual red/green tests, full exact Woodpecker
 checks, and native Solaris/Mac qualification under the project policy.
+
+## Addendum: scope revision -- width-qualified `%s` is now in scope
+
+This design's "Strict String Match" rule above -- *"the syntax `%4s` is
+explicitly not required by the `uniq` scope and will be actively rejected
+with `CB_EINVAL`. Only a bare `%s` remains valid"* -- was reasoned against
+the single consumer known at design time (`uniq`, not yet imported). It
+was correct for that consumer and insufficient once a second one arrived:
+`CAT-01` measured pinned `cat.c`'s `-b` blank-line-continuation path
+calling `fprintf(stdout, "%6s\t", "")`, which this design's own exclusion
+would reject. The coordinator separately named `ls -l` and `wc` (queued as
+`LS-02`/`WC-02`) as additional consumers needing right-aligned columns of
+differing widths on one output line.
+
+**Revision:** width-qualified `%s` is now in scope, using the exact same
+bounded 1-32 width and immediate-`CB_EINVAL`-on-anything-else policy
+already specified above for `%d`, with the same non-truncating semantics
+(pad if the string is shorter than the field; never truncate if it is
+already wider). No other scope expansion -- still no flags, no precision,
+no length modifiers, no floating point, on either `%d` or `%s`. Full
+implementation, the multi-field verification proving independent widths
+don't leak state between conversions in one line, and the exact consumer
+measurements live in `notes/iterations/FORMAT-01.md`.
+
+This is the same shape as `STDIN-01-design.md`'s `fclose` addendum and
+`VFS-03.md`'s `VFS-05` addendum: an explicit, reasoned extension of a
+decision made before its second consumer existed, recorded here rather
+than silently overridden in the implementation alone.

@@ -66,15 +66,11 @@ check_case() {
 
 # Each check_case is a fresh boot (a new `$program -c` process).
 #
-# -n/-b are deliberately NOT exercised here: cat.c's line-numbering path
-# uses fprintf(stdout, "%6d\t", ...) and "%6s\t", and this project's
-# internal printf/fprintf formatter supports only %% and a bare %s today
-# (no %d, no width). That gap belongs to FORMAT-01, a separate backlog
-# ID -- see notes/iterations/CAT-01.md section 7. cat.c's own
-# (void)fprintf(...) discards the resulting failure silently, so those
-# two flags currently produce plain, unnumbered output rather than an
-# error; they are excluded from this accepted matrix until FORMAT-01
-# lands.
+# -n/-b were excluded here until FORMAT-01 landed width-qualified %d/%s
+# support in the internal printf/fprintf formatter (cat.c's line-
+# numbering path uses fprintf(stdout, "%6d\t", ...) and "%6s\t"). Now
+# exercised below -- see notes/iterations/CAT-01.md section 7 and
+# notes/iterations/FORMAT-01.md for the finding and fix.
 
 # 1. Basic single-file concatenation, byte-exact
 check_case 'echo hello > /tmp/a; cat /tmp/a' \
@@ -88,32 +84,40 @@ check_case 'echo one > /tmp/a; echo two > /tmp/b; cat /tmp/a /tmp/b' \
 check_case 'echo piped | cat -' \
     0 "piped\n" "" "stdin operand -"
 
-# 4. -s squeezes multiple adjacent blank lines into one
+# 4. -n numbers every output line
+check_case 'echo a > /tmp/n; echo b >> /tmp/n; cat -n /tmp/n' \
+    0 "     1\ta\n     2\tb\n" "" "-n numbers every line"
+
+# 5. -b numbers only non-blank lines, leaving blank lines unnumbered
+check_case 'echo a > /tmp/nb; echo >> /tmp/nb; echo b >> /tmp/nb; cat -b /tmp/nb' \
+    0 "     1\ta\n\n     2\tb\n" "" "-b numbers only non-blank lines"
+
+# 6. -s squeezes multiple adjacent blank lines into one
 check_case 'echo a > /tmp/sq; echo >> /tmp/sq; echo >> /tmp/sq; echo >> /tmp/sq; echo b >> /tmp/sq; cat -s /tmp/sq' \
     0 "a\n\nb\n" "" "-s squeezes adjacent blank lines"
 
-# 5. -e marks end of line with $
+# 7. -e marks end of line with $
 check_case 'echo a > /tmp/e; echo b >> /tmp/e; cat -e /tmp/e' \
     0 "a\$\nb\$\n" "" "-e appends end-of-line marker"
 
-# 6. -B bsize accepts a custom buffer size and still concatenates correctly
+# 8. -B bsize accepts a custom buffer size and still concatenates correctly
 check_case 'echo bsz > /tmp/bs; cat -B 4096 /tmp/bs' \
     0 "bsz\n" "" "-B custom buffer size"
 
-# 7. -u unbuffered output still produces correct content
+# 9. -u unbuffered output still produces correct content
 check_case 'echo unb > /tmp/u; cat -u /tmp/u' \
     0 "unb\n" "" "-u unbuffered execution"
 
-# 8. -f regular-file gate passes an actual regular file through untouched
+# 10. -f regular-file gate passes an actual regular file through untouched
 check_case 'echo regular > /tmp/reg; cat -f /tmp/reg' \
     0 "regular\n" "" "-f regular file gate passes a real regular file"
 
-# 9. Missing file: diagnostic, exit 1, and processing continues to later operands
+# 11. Missing file: diagnostic, exit 1, and processing continues to later operands
 check_case 'echo ok > /tmp/g; cat /tmp/g /tmp/gone' \
     1 "ok\n" "cat: /tmp/gone: no such file or directory\n" \
     "missing file reports and continues"
 
-# 10. -l is outside the accepted matrix: FCNTL-01's honest ENOSYS on lock
+# 12. -l is outside the accepted matrix: FCNTL-01's honest ENOSYS on lock
 #     commands makes cat -l fail loudly rather than fake an exclusive lock.
 check_case 'echo x > /tmp/lf; cat -l /tmp/lf' \
     1 "" "cat: stdout: function not implemented\n" \
