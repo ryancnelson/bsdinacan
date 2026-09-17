@@ -18,6 +18,63 @@ int main(int argc, char **argv)
         if (fd != 3) { if (fd >= 0) close(fd); return 34; }
         return close(fd) == 0 ? 0 : 35;
     }
+    if (strcmp(mode, "stat-probe") == 0) {
+        struct stat sb, fsb;
+        int fd, pipe_fds[2];
+
+        /* Pathname stat on regular file */
+        if (stat("/tmp/stream-input", &sb) != 0) return 60;
+        if (!S_ISREG(sb.st_mode) || S_ISDIR(sb.st_mode) ||
+            S_ISCHR(sb.st_mode) || S_ISFIFO(sb.st_mode)) return 61;
+        if ((sb.st_mode & 0777) != 0600 || sb.st_size != 3) return 62;
+        if (sb.st_blksize != 1024 || sb.st_blocks != 1) return 63;
+        if (sb.st_ino == 0) return 64;
+
+        /* lstat on regular file */
+        if (lstat("/tmp/stream-input", &fsb) != 0) return 65;
+        if (fsb.st_ino != sb.st_ino || fsb.st_mode != sb.st_mode ||
+            fsb.st_size != sb.st_size) return 66;
+
+        /* Descriptor fstat on regular file */
+        fd = open("/tmp/stream-input", O_RDONLY, 0);
+        if (fd < 0) return 67;
+        if (fstat(fd, &fsb) != 0) { close(fd); return 68; }
+        if (fsb.st_ino != sb.st_ino || fsb.st_mode != sb.st_mode ||
+            fsb.st_size != sb.st_size || fsb.st_blksize != sb.st_blksize ||
+            fsb.st_blocks != sb.st_blocks) { close(fd); return 69; }
+        if (close(fd) != 0) return 70;
+
+        /* fstat on closed descriptor */
+        if (fstat(fd, &fsb) != -1 || errno != EBADF) return 71;
+
+        /* Pathname stat on directory */
+        if (stat("/", &sb) != 0) return 72;
+        if (!S_ISDIR(sb.st_mode) || S_ISREG(sb.st_mode) ||
+            S_ISCHR(sb.st_mode) || S_ISFIFO(sb.st_mode)) return 73;
+
+        /* Pathname stat on non-existent file */
+        if (stat("/no/such/file", &sb) != -1 || errno != ENOENT) return 74;
+
+        /* Pathname stat with NULL path / stat buffer */
+        if (stat(NULL, &sb) != -1 || errno != EFAULT) return 75;
+        if (stat("/", NULL) != -1 || errno != EFAULT) return 76;
+        if (fstat(0, NULL) != -1 || errno != EFAULT) return 77;
+
+        /* fstat on pipe */
+        if (pipe(pipe_fds) != 0) return 78;
+        if (fstat(pipe_fds[0], &fsb) != 0) return 79;
+        if (!S_ISFIFO(fsb.st_mode) || S_ISREG(fsb.st_mode) ||
+            S_ISDIR(fsb.st_mode) || S_ISCHR(fsb.st_mode)) return 80;
+        if (close(pipe_fds[0]) != 0 || close(pipe_fds[1]) != 0) return 81;
+
+        /* fstat on terminal / stdin (if chr) */
+        if (fstat(0, &fsb) == 0 && S_ISCHR(fsb.st_mode)) {
+            if (S_ISREG(fsb.st_mode) || S_ISDIR(fsb.st_mode) ||
+                S_ISFIFO(fsb.st_mode)) return 82;
+        }
+
+        return 0;
+    }
     if (strcmp(mode, "open-one") == 0 || strcmp(mode, "open-two") == 0) {
         errno = EPIPE;
         first = fopen("/tmp/stream-input", "r");

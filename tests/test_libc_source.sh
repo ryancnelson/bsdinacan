@@ -500,7 +500,7 @@ if ! matches 'libc/include/sys/stat\.h' "$build_path/libc_file_probe.d" ||
     echo 'FAIL: file probe did not compile against private sys/stat.h' >&2
     exit 1
 fi
-for symbol in open close fopen fclose getc feof ferror errno_location; do
+for symbol in open close fopen fclose getc feof ferror errno_location stat fstat lstat; do
     if nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
        ! nm -u "$file_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
         echo "FAIL: file probe lacks private $symbol boundary" >&2

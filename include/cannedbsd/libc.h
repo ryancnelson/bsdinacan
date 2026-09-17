@@ -88,6 +88,34 @@ char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
 char *cb_libc_basename_upstream(char *path);
 char *cb_libc_basename(char *path);
+#define S_IFMT   0170000
+#define S_IFIFO  0010000
+#define S_IFCHR  0020000
+#define S_IFDIR  0040000
+#define S_IFBLK  0060000
+#define S_IFREG  0100000
+#define S_IFLNK  0120000
+#define S_IFSOCK 0140000
+
+/*
+ * POSIX struct stat definition, shared between cb_libc.c (which populates it)
+ * and libc/include/sys/stat.h (which exposes it to ordinary source).
+ * Types are standard integer types (uint64_t, uint32_t, int64_t, int32_t)
+ * matching ino_t, mode_t, off_t, blksize_t, blkcnt_t.
+ */
+struct stat {
+    uint64_t st_ino;
+    uint32_t st_mode;
+    int64_t st_size;
+    int32_t st_blksize;
+    int64_t st_blocks;
+};
+
+int cb_libc_stat(const char *path, struct stat *stat_buf);
+int cb_libc_fstat(int descriptor, struct stat *stat_buf);
+int cb_libc_lstat(const char *path, struct stat *stat_buf);
+int cb_libc_mkdir(const char *path, uint32_t mode);
+
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
 int cb_libc_closedir(struct cb_libc_dir *dirp);

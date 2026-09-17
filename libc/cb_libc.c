@@ -150,6 +150,93 @@ int cb_libc_ftruncate(int descriptor, cb_off_t length)
     return bound_api->ftruncate(descriptor, length);
 }
 
+static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_buf)
+{
+    uint32_t type_bits = 0;
+    switch (raw_stat->type) {
+    case CB_NODE_REGULAR:
+    case CB_NODE_EXECUTABLE:
+        type_bits = S_IFREG;
+        break;
+    case CB_NODE_DIRECTORY:
+        type_bits = S_IFDIR;
+        break;
+    case CB_NODE_TERMINAL:
+        type_bits = S_IFCHR;
+        break;
+    case CB_NODE_PIPE:
+        type_bits = S_IFIFO;
+        break;
+    default:
+        type_bits = 0;
+        break;
+    }
+
+    stat_buf->st_ino = raw_stat->inode;
+    stat_buf->st_mode = type_bits | (raw_stat->mode & 07777);
+    stat_buf->st_size = (int64_t)raw_stat->size;
+    stat_buf->st_blksize = 1024;
+    stat_buf->st_blocks = (int64_t)((raw_stat->size + 511) / 512);
+}
+
+int cb_libc_stat(const char *path, struct stat *stat_buf)
+{
+    struct cb_stat_v1 raw_stat;
+    int result;
+
+    if (path == NULL || stat_buf == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+
+    raw_stat.abi_version = CB_ABI_VERSION_V1;
+    raw_stat.struct_size = sizeof(struct cb_stat_v1);
+
+    result = bound_api->stat(path, &raw_stat);
+    if (result < 0) {
+        return -1;
+    }
+
+    translate_stat(&raw_stat, stat_buf);
+    return 0;
+}
+
+int cb_libc_fstat(int descriptor, struct stat *stat_buf)
+{
+    struct cb_stat_v1 raw_stat;
+    int result;
+
+    if (stat_buf == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+
+    raw_stat.abi_version = CB_ABI_VERSION_V1;
+    raw_stat.struct_size = sizeof(struct cb_stat_v1);
+
+    result = bound_api->fstat(descriptor, &raw_stat);
+    if (result < 0) {
+        return -1;
+    }
+
+    translate_stat(&raw_stat, stat_buf);
+    return 0;
+}
+
+int cb_libc_lstat(const char *path, struct stat *stat_buf)
+{
+    return cb_libc_stat(path, stat_buf);
+}
+
+int cb_libc_mkdir(const char *path, uint32_t mode)
+{
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    return bound_api->mkdir(path, mode);
+}
+
 void *cb_libc_malloc(size_t size)
 {
     return bound_api->allocate(size);

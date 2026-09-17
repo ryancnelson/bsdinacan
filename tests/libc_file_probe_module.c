@@ -59,7 +59,8 @@ static int entry(const struct cb_api_v1 *api, int argc,
         api->unlink("/tmp/default-mode") != 0 ||
         api->stat("/tmp/default-mode", &metadata) != -1 ||
         api->get_errno() != CB_ENOENT) return 56;
-    if (cb_file_prepare(api) != 0 || cb_file_call(api, "invalid") != 0 ||
+    if (cb_file_prepare(api) != 0 || cb_file_call(api, "stat-probe") != 0 ||
+        cb_file_call(api, "invalid") != 0 ||
         cb_file_call(api, "missing-directory") != 0 ||
         cb_file_call(api, "open-two") != 0) return 44;
     head = state->input_streams;
