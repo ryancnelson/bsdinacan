@@ -783,6 +783,24 @@ void cb_libc_warn(const char *fmt, ...)
     bound_api->set_errno(saved_error);
 }
 
+void cb_libc_warnx(const char *fmt, ...)
+{
+    int saved_error = bound_api->get_errno();
+    const char *name = bound_api->getprogname();
+    va_list arguments;
+    if (name == NULL)
+        name = "";
+    write_all(2, name, cb_libc_strlen(name));
+    write_all(2, ": ", 2);
+    if (fmt != NULL) {
+        va_start(arguments, fmt);
+        format_output(2, fmt, arguments);
+        va_end(arguments);
+    }
+    write_all(2, "\n", 1);
+    bound_api->set_errno(saved_error);
+}
+
 void cb_libc_err(int eval, const char *fmt, ...)
 {
     int saved_error = bound_api->get_errno();
