@@ -164,7 +164,10 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### BUILD-SYNC-01 — stop the Linux and mac68k builds diverging by hand
 
-- Status: Ready
+- Status: Done; `check-build-parity` in the `ci` target, implemented as the
+  check rather than the refactor this item's acceptance allowed. All three
+  invariants were falsified by reintroducing the exact defect each exists for;
+  see `notes/iterations/BUILD-SYNC-01.md` for the three red outputs.
 - Base: main
 - Depends: MAC68K-CMD-01 (the instance that motivates it)
 - Hypothesis: `Makefile` and `platform/mac68k/CMakeLists.txt` enumerate each

@@ -136,7 +136,7 @@ LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
 LIBC_OBJECTS += $(FTS_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
-.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
+.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication check-build-parity print-program
 
 all: $(PROGRAM)
 
@@ -642,6 +642,12 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
+# Compares this Makefile against platform/mac68k/CMakeLists.txt. Needs no
+# compiler and no toolchain, so it runs first in ci and fails in under a
+# second. See tests/test_build_parity.py for why each invariant exists.
+check-build-parity:
+	python3 tests/test_build_parity.py
+
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
 		$(LIBC_STDIO_TEST_OBJECT) check-architecture
@@ -880,6 +886,7 @@ check-linux-write: $(BUILD)/test_linux_write
 	$(BUILD)/test_linux_write
 
 ci:
+	$(MAKE) check-build-parity
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py
