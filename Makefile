@@ -11,13 +11,21 @@ SANITIZE_CC ?= $(CC)
 # calls back to memset, which resolves to this exact function via the
 # link-name binding it installs, causing unbounded self-recursion.
 # -fno-tree-loop-distribute-patterns is the fix, but it is a GCC-only
-# flag Clang rejects outright ("unknown argument"); Clang's build (used
-# for BUILD_VARIANT=sanitize) does not exhibit the bug at its lower
-# optimization level, so it does not need this flag at all.
-ifeq ($(findstring clang,$(CC)),)
-MEMSET_NO_IDIOM_FLAGS := -fno-builtin-memset -fno-tree-loop-distribute-patterns
-else
+# flag Clang rejects outright ("unknown argument"), so it can only be
+# passed to a compiler that accepts it.
+#
+# Probe for acceptance rather than matching "clang" in $(CC): the Clang
+# driver is installed as plain `cc` on macOS and FreeBSD (and on many
+# Linux distributions), where a name match does not fire and the build
+# dies on every host whose default `cc` is Clang. -Werror is part of the
+# probe so a compiler that merely warns about the unknown argument is
+# also treated as not accepting it.
 MEMSET_NO_IDIOM_FLAGS := -fno-builtin-memset
+CC_ACCEPTS_NO_LOOP_DISTRIBUTE := $(shell $(CC) -Werror \
+	-fno-tree-loop-distribute-patterns -E -x c /dev/null \
+	>/dev/null 2>&1 && echo yes)
+ifeq ($(CC_ACCEPTS_NO_LOOP_DISTRIBUTE),yes)
+MEMSET_NO_IDIOM_FLAGS += -fno-tree-loop-distribute-patterns
 endif
 
 BUILD_ROOT := build

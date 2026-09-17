@@ -61,6 +61,115 @@ permanently out of scope, because the audit showed four of six utilities cannot
 proceed without them. `cb_stat_v1` field growth is no longer a blanket
 exclusion: `CAT-01` forces an explicit decision on it.
 
+### Measured milestone status at `89ef526` (2026-09-17)
+
+First end-to-end measurement of the milestone's own acceptance sentence, taken
+by driving `build/bsdinacan` with a scripted session in the Alpine 3.22 gate
+environment. Every prior item was accepted against its own tests; none of them
+exercised the six verbs in one session, so this is the first evidence about the
+milestone as stated rather than about its parts.
+
+Working, exit status 0, each result confirmed by a subsequent listing:
+
+- create — `echo hello-cannedbsd > /f1`
+- inspect — `cat /f1`, `wc -c /f1`
+- copy — `cat /f1 > /f2` (no `cp` yet; redirection stands in)
+- move — `mv /f2 /f3`
+- delete — `rm /f3`
+- pipelines and broken-pipe propagation — `cat /f1 | wc -l` correctly reports
+  `cat: /f1: broken pipe` when the reader exits early
+
+Gaps the measurement exposed, none of which were visible from per-item tests:
+
+1. **`ls` rejects every option.** `ls -l /` is a usage error with status 1.
+   `commands/ls.c` is cannedBSD-owned and honestly documented as such, so this
+   is scope, not a defect — but `list` is one of the six verbs and the command
+   serving it is a stand-in without the long form. See `LS-02`.
+2. **`wc` rejects every option except `-c`.** `wc -l` is a usage error. See
+   `WC-02`.
+3. **No `mkdir` command exists**, so no directory can be created from inside a
+   session. `VFS-04`'s `rmdir`, `VFS-05`'s `rm -r` look-ahead cursor and
+   `FTS-CHILDREN-01` therefore have no reachable consumer through the shell.
+   This is the fourth instance of the recurring pattern where a decision
+   reasoned without a consumer is validated only once the consumer arrives; it
+   is the reason `MKDIR-CMD-01` is queued rather than left implicit inside
+   `VFS-MKDIR-01`.
+4. **Nine of eleven registered commands are pinned imports** (`cat`, `echo`,
+   `mv`, `rm`, `head`, `basename`, `dirname`, `printenv`, `yes`); `ls` and `wc`
+   are owned stand-ins. The milestone sentence says "unchanged NetBSD
+   utilities," so it cannot be declared met while the `list` verb is served by
+   an owned command.
+5. **`cp` and `mkdir` both fail honestly** with `sh: cp: no such file or
+   directory` and status 127. The honest-failure rule holds at the shell layer.
+
+### MILESTONE-E2E-01 — commit the six-verb session acceptance test
+
+- Status: Ready
+- Base: main
+- Depends: none
+- Hypothesis: the milestone's acceptance sentence has no automated test, so a
+  regression in any single verb, or in the shell wiring that joins them, would
+  pass `make ci` unnoticed. Every existing behavioral test drives one command.
+- Red test: a script that drives `build/bsdinacan` through create, list, copy,
+  move, delete and inspect in one session and asserts both the exit status and
+  the resulting directory listing at each step. It must fail today if any verb
+  is removed from `cb_register_base_programs`, which no current test does.
+- Acceptance: `tests/test_file_manipulation_session.sh` in the `ci` target,
+  asserting observed output rather than only status, and recording in a comment
+  that copy is served by redirection until `CP-01` lands. Do not assert on
+  `ls -l` or `wc -l` until `LS-02` and `WC-02` land.
+
+### LS-02 — unchanged NetBSD `ls` with the long form
+
+- Status: Blocked
+- Base: main
+- Depends: FS-STAT-01, FTS-CHILDREN-01
+- Hypothesis: `LS-01` deliberately shipped an owned single-column command
+  because no public `struct stat` existed. `FS-STAT-01` and
+  `FTS-CHILDREN-01` were queued to remove exactly that constraint, so the
+  pinned `ls.c` becomes importable once both land, and the milestone's
+  "unchanged NetBSD utilities" wording becomes literally true.
+- Red test: `ls -l /f1` must print a long-form record rather than
+  `usage: ls [file]`.
+- Acceptance: byte-for-byte import with a SHA-256 `UPSTREAM.md` entry, the
+  owned `commands/ls.c` retired in the same commit, and a measured statement of
+  which options are supported and which fail honestly. Termcap and multi-column
+  width stay out of scope; `-l` must not depend on them. Permissions remain
+  deferred per this milestone, so decide and write down what `-l` prints in the
+  mode column rather than fabricating one.
+
+### WC-02 — unchanged NetBSD `wc`
+
+- Status: Ready
+- Base: main
+- Depends: LIBC-STRTOL-01 (Done), FS-STAT-01
+- Hypothesis: the current `wc` is the bootstrap command recorded in
+  `UPSTREAM.md`'s `strcmp` entry and supports only `-c`. The pinned `wc.c` needs
+  little beyond what `CAT-01` already landed, making it the cheapest conversion
+  of an owned stand-in into a real import.
+- Red test: `cat /f1 | wc -l` must print a line count rather than
+  `usage: wc -c [file]`.
+- Acceptance: byte-for-byte import with a SHA-256 `UPSTREAM.md` entry, the
+  bootstrap command retired in the same commit, and `-c`/`-l`/`-w` measured
+  against the host `wc` on identical input.
+
+### MKDIR-CMD-01 — a `mkdir` command so directories are reachable
+
+- Status: Blocked
+- Base: main
+- Depends: VFS-MKDIR-01
+- Hypothesis: `VFS-MKDIR-01` restores `cb_libc_mkdir` for `cp`'s benefit, but a
+  libc entry point no shell command reaches leaves directory behavior
+  untestable from a session. Exposing it as a command is what makes `rmdir`,
+  `rm -r` and directory listing observable end to end.
+- Red test: `mkdir /d1` followed by `ls /` must show `d1`; today `mkdir` exits
+  127.
+- Acceptance: prefer the pinned NetBSD `mkdir.c` if it imports without new libc
+  surface; if it does not, state the measured reason and land an owned command
+  documented as such, the way `commands/ls.c` is. Then extend
+  `MILESTONE-E2E-01` to create a directory, move a file into it, list it and
+  remove it recursively — which is the first real consumer of `VFS-05`.
+
 ### FILEUTIL-01 — measure the file-manipulation utility set
 
 - **Status:** Done; audit on `work/FILEUTIL-01` at `f201d0a`, pinned NetBSD rev
