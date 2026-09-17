@@ -196,20 +196,19 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### MKDIR-CMD-01 — a `mkdir` command so directories are reachable
 
-- Status: Blocked
-- Base: main
-- Depends: VFS-MKDIR-01
-- Hypothesis: `VFS-MKDIR-01` restores `cb_libc_mkdir` for `cp`'s benefit, but a
-  libc entry point no shell command reaches leaves directory behavior
-  untestable from a session. Exposing it as a command is what makes `rmdir`,
-  `rm -r` and directory listing observable end to end.
-- Red test: `mkdir /d1` followed by `ls /` must show `d1`; today `mkdir` exits
-  127.
-- Acceptance: prefer the pinned NetBSD `mkdir.c` if it imports without new libc
-  surface; if it does not, state the measured reason and land an owned command
-  documented as such, the way `commands/ls.c` is. Then extend
-  `MILESTONE-E2E-01` to create a directory, move a file into it, list it and
-  remove it recursively — which is the first real consumer of `VFS-05`.
+- **Status:** Done; ready for merge.
+- **Base:** main
+- **Depends:** VFS-MKDIR-01 (Done)
+- **Scope:** Import pinned NetBSD `bin/mkdir/mkdir.c` (SHA-256: `a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8`) byte-for-byte unmodified. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
+- **Hypothesis:** `VFS-MKDIR-01` restored `cb_libc_mkdir` for `cp`'s benefit, but a libc entry point no shell command reaches left directory behavior untestable from a session. Exposing it as a command makes `mkdir`, `mkdir -p`, `rmdir`, `rm -r` and directory listing observable end to end.
+- **Veneer & Libc Support:**
+  - Added `cb_libc_strspn` and `cb_libc_strcspn` in `libc/cb_libc.c` (declared in `libc/include/string.h`) for `mkdir.c`'s `mkpath` helper.
+  - Added `cb_libc_setmode` and `cb_libc_getmode` in `libc/cb_libc.c` (declared in `libc/include/unistd.h`). `setmode` sets `errno = CB_EINVAL` and returns `NULL`, causing `mkdir -m` to honestly and cleanly fail with exit status 1 while unflagged `mkdir` and `mkdir -p` succeed completely without calling `setmode`.
+- **Wiring & Parity:**
+  - Registered `cb_mkdir_program` in `commands/mkdir_module.c` and `src/programs.c`.
+  - Added `netbsd_mkdir.o` to `Makefile` and `cb_mkdir` to `platform/mac68k/CMakeLists.txt` in the same commit.
+- **Red Test:** `tests/test_mkdir_behavior.sh` and extended session test in `tests/test_file_manipulation_session.sh` failed as expected (`expected status 0, got 127` / output mismatch) before wiring `cb_mkdir_program`.
+- **Acceptance:** Full behavioral test matrix in `tests/test_mkdir_behavior.sh` (single directory, multiple directories, `-p` nested paths, existing directories, trailing slashes, `-m` rejection, permissions errors) and 6th session test in `tests/test_file_manipulation_session.sh` verifying directory creation, nested file population, directory listing, and recursive deletion via `rm -r` (`VFS-05` / `fts`). Full `make ci` green. See `notes/iterations/MKDIR-CMD-01.md`.
 
 ### FILEUTIL-01 — measure the file-manipulation utility set
 
