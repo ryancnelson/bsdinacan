@@ -651,6 +651,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	PROGRAM_PATH='$(PROGRAM)' tests/test_mv_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cat_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cp_behavior.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_file_manipulation_session.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
