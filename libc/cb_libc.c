@@ -378,6 +378,21 @@ int32_t cb_libc_waitpid(int32_t pid, int *status, int options)
     return -1;
 }
 
+int cb_libc_mkdir(const char *path, uint32_t mode)
+{
+    if (path == NULL) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    if (bound_api == NULL || bound_api->mkdir == NULL) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->mkdir(path, mode);
+}
+
 void *cb_libc_mmap(void *addr, size_t len, int prot, int flags, int fd, cb_off_t offset)
 {
     (void)addr;

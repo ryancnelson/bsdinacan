@@ -147,6 +147,7 @@ int cb_libc_lstat(const char *path, struct stat *stat_buf);
 int cb_libc_rename(const char *old_path, const char *new_path);
 int cb_libc_unlink(const char *path);
 int cb_libc_rmdir(const char *path);
+int cb_libc_mkdir(const char *path, uint32_t mode);
 int cb_libc_access(const char *path, int mode);
 int cb_libc_fcpxattr(int from_descriptor, int to_descriptor);
 void cb_libc_warnx(const char *fmt, ...);
