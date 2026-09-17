@@ -30,6 +30,7 @@
 #define EOVERFLOW CB_EOVERFLOW
 #define EXDEV CB_EXDEV
 #define ETXTBSY CB_ETXTBSY
+#define EOPNOTSUPP CB_ENOSYS
 
 #define errno (*cb_libc_errno_location())
 

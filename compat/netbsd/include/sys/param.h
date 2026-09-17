@@ -7,8 +7,15 @@
  * libc include path -- the real sys/param.h exposes page sizes, howmany(),
  * and other surface this project does not implement.
  */
+#include "sys/types.h"
+#include "signal.h"
+
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef MAXPATHLEN
+#define MAXPATHLEN 1024
 #endif
 
 #endif

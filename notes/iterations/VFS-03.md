@@ -425,3 +425,53 @@ that was pending in the preceding historical sections.
 Two focus interruptions preceded output creation. The coordinator moved the
 emulator window left and resumed the same staged run. The successful resumed
 automation took 15.02 seconds; it is not evidence of a 15.02-second cold boot.
+
+## Addendum (`VFS-05`): the concurrency reasoning above was incomplete for single-handle self-mutation, not wrong about races
+
+This is an extension of §2's reasoning, not a reversal of it. The design
+doc's choice of an ordinal, re-walked-from-head `child_at()` index, and
+its explicit decision to accept a skip-on-removal and a duplicate-on-
+insertion as within-POSIX-spec, was sound for what it was reasoning
+about: a **generic external mutator** racing an iterator it has no
+relationship to. Item 4a/4b's own tests (`direntmutationprobe`, at the
+time this addendum is written) proved exactly that shape of case worked
+as designed.
+
+`RM-01` surfaced a shape of case this design never considered, because no
+consumer that needed it existed yet: **the same task, through the same
+open directory handle, deliberately removing the entry it just visited
+before asking for the next one.** `rm -r` does this on every single
+directory it recurses into — not occasionally, not as a race, as its
+entire access pattern. Under the original `child_at()` design this fires
+the accepted skip case on every removal rather than occasionally,
+silently leaving an entire subtree unvisited and unremoved. This is not
+"POSIX already permits this" territory in the way a genuine external
+race is — real filesystems do not drop entries for exactly this pattern,
+because their directory representations use a stable offset cursor that
+does not shift when the entry at the *current* position is removed.
+
+`VFS-05` fixes this specific case with a look-ahead cursor: capture the
+current entry's own next-sibling identity, via the new `next_sibling`
+node op, **before** returning the current entry to the caller (in the
+same `readdir()` call), rather than deferring that lookup to the
+following call. This sidesteps the exact hazard §2 rejected the naive
+"retain and advance later" cursor for — `ramfs_unlink` clearing a removed
+node's own `next_sibling` to `NULL` — because the lookup never happens
+after a node might have been unlinked, only before. `struct cb_dir_handle`
+now holds the next entry by live node pointer (retained across the gap
+between two `readdir()` calls, released on advance or on `closedir()`)
+instead of `child_at()`'s ordinal position; the first entry at `opendir()`
+time still comes from `child_at(dir, 0, ...)`, which is unaffected by
+this change since nothing has mutated yet at that point.
+
+One correctness property changes as a direct, not merely incidental,
+consequence: the duplicate-on-insertion case in item 4b no longer occurs
+either, because a live node identity captured before some unrelated
+insertion is not perturbed by that insertion happening elsewhere in the
+list. `direntmutationprobe`'s own two sub-cases were updated to assert
+the corrected behavior (no skip, no duplicate) rather than the original
+accepted-looseness outcomes; a new `direntdrainprobe` test proves the
+actual motivating pattern directly — visit-then-remove every entry in a
+multi-entry directory through one handle, confirming every entry is
+visited exactly once. See `notes/iterations/VFS-05.md` for the full
+implementation record.

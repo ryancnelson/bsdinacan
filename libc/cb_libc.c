@@ -172,16 +172,20 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
         break;
     }
 
+    stat_buf->st_dev = 1;
     stat_buf->st_ino = raw_stat->inode;
     stat_buf->st_mode = type_bits | (raw_stat->mode & 07777);
-    stat_buf->st_size = (int64_t)raw_stat->size;
-    stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
-    stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
-    /* RAMFS has no per-node ownership or multi-device concept at all --
-       see the struct stat comment in cannedbsd/libc.h. */
+    stat_buf->st_nlink = 1;
     stat_buf->st_uid = 0;
     stat_buf->st_gid = 0;
-    stat_buf->st_dev = 0;
+    stat_buf->st_rdev = 0;
+    stat_buf->st_size = (int64_t)raw_stat->size;
+    stat_buf->st_atime = 0;
+    stat_buf->st_mtime = 0;
+    stat_buf->st_ctime = 0;
+    stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
+    stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
+    stat_buf->st_flags = 0;
 }
 
 int cb_libc_stat(const char *path, struct stat *stat_buf)
@@ -233,8 +237,26 @@ int cb_libc_lstat(const char *path, struct stat *stat_buf)
     return cb_libc_stat(path, stat_buf);
 }
 
+int cb_libc_rename(const char *old_path, const char *new_path)
+{
+    if (old_path == NULL || new_path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    if (bound_api->struct_size < sizeof(struct cb_api_v1) ||
+        bound_api->rename == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->rename(old_path, new_path);
+}
+
 int cb_libc_unlink(const char *path)
 {
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
     if (bound_api->unlink == NULL) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
@@ -256,6 +278,10 @@ static int rmdir_api_available(void)
 
 int cb_libc_rmdir(const char *path)
 {
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
     if (!rmdir_api_available()) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
@@ -314,6 +340,10 @@ int cb_libc_access(const char *path, int mode)
        its intended default -- see notes/iterations/RM-01.md. */
     struct cb_stat_v1 probe;
     (void)mode;
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
     if (bound_api->stat == NULL) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;
@@ -331,6 +361,14 @@ int cb_libc_undelete(const char *path)
        for a file it actually stat'd; it exists only so -W's branch
        compiles and fails honestly if ever reached some other way. */
     (void)path;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_fcpxattr(int from_descriptor, int to_descriptor)
+{
+    (void)from_descriptor;
+    (void)to_descriptor;
     bound_api->set_errno(CB_ENOSYS);
     return -1;
 }
@@ -353,33 +391,122 @@ static void uint_to_decimal(uint32_t value, char *buffer)
     *buffer = '\0';
 }
 
-void cb_libc_strmode(uint32_t mode, char *buffer)
+/*
+ * In fastcopy(), open(to, O_CREAT | O_TRUNC | O_WRONLY, sbp->st_mode) has
+ * already created the destination file with the exact synthesized st_mode
+ * bits (incorporating raw_stat->mode & 07777). Because the target descriptor
+ * was already instantiated with the requested mode bits at creation time,
+ * this descriptor-mode confirmation returns 0 truthfully.
+ */
+int cb_libc_fchmod(int descriptor, uint32_t mode)
 {
-    static const char *const permission_groups[] = {"---", "--x", "-w-",
-        "-wx", "r--", "r-x", "rw-", "rwx"};
-    char *p = buffer;
+    (void)descriptor;
+    (void)mode;
+    return 0;
+}
 
+int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid)
+{
+    (void)descriptor;
+    (void)uid;
+    (void)gid;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_fchflags(int descriptor, uint32_t flags)
+{
+    (void)descriptor;
+    (void)flags;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_futimes(int descriptor, const struct timeval *times)
+{
+    (void)descriptor;
+    (void)times;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_utimes(const char *path, const struct timeval *times)
+{
+    (void)path;
+    (void)times;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+/* PROVISIONAL PLACEHOLDER -- see libc/include/signal.h's own comment.
+   Always fails (SIG_ERR, matching real POSIX signal()'s own failure
+   return); never actually installs anything. Both rm.c and mv.c discard
+   the return value, so this is a silent, honest no-op either way. */
+void (*cb_libc_signal(int sig, void (*func)(int)))(int)
+{
+    (void)sig;
+    (void)func;
+    bound_api->set_errno(CB_ENOSYS);
+    return (void (*)(int))-1;
+}
+
+int32_t cb_libc_vfork(void)
+{
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_execl(const char *path, const char *arg0, ...)
+{
+    (void)path;
+    (void)arg0;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int32_t cb_libc_waitpid(int32_t pid, int *status, int options)
+{
+    (void)pid;
+    (void)status;
+    (void)options;
+    bound_api->set_errno(CB_ECHILD);
+    return -1;
+}
+
+/* More complete than a plain rwx rendering: handles setuid/setgid/sticky
+   bit overlays (s/S/t/T), which rm's own check() prompt formatting can
+   actually display given the isatty()-always-true caveat recorded in
+   notes/iterations/RM-01.md. */
+void cb_libc_strmode(uint32_t mode, char *p)
+{
+    if (p == NULL)
+        return;
     /* Inlined S_IS*(mode) tests: the S_IS* macros themselves live in
        libc/include/sys/stat.h, not on this translation unit's include
        path (matching every other cb_libc.c function that reads type
        bits, e.g. translate_stat's own switch above). */
     switch (mode & S_IFMT) {
-    case S_IFDIR: *p = 'd'; break;
-    case S_IFCHR: *p = 'c'; break;
-    case S_IFBLK: *p = 'b'; break;
-    case S_IFIFO: *p = 'p'; break;
-    case S_IFLNK: *p = 'l'; break;
-    case S_IFSOCK: *p = 's'; break;
-    case S_IFWHT: *p = 'w'; break;
-    default: *p = '-'; break;
+    case S_IFDIR:  p[0] = 'd'; break;
+    case S_IFCHR:  p[0] = 'c'; break;
+    case S_IFBLK:  p[0] = 'b'; break;
+    case S_IFREG:  p[0] = '-'; break;
+    case S_IFLNK:  p[0] = 'l'; break;
+    case S_IFSOCK: p[0] = 's'; break;
+    case S_IFIFO:  p[0] = 'p'; break;
+    case S_IFWHT:  p[0] = 'w'; break;
+    default:       p[0] = '?'; break;
     }
-    ++p;
-
-    cb_libc_memcpy(p, permission_groups[(mode >> 6) & 07], 3); p += 3;
-    cb_libc_memcpy(p, permission_groups[(mode >> 3) & 07], 3); p += 3;
-    cb_libc_memcpy(p, permission_groups[mode & 07], 3); p += 3;
-    *p++ = ' ';
-    *p = '\0';
+    p[1] = (mode & S_IRUSR) ? 'r' : '-';
+    p[2] = (mode & S_IWUSR) ? 'w' : '-';
+    p[3] = (mode & S_ISUID) ? ((mode & S_IXUSR) ? 's' : 'S') : ((mode & S_IXUSR) ? 'x' : '-');
+    p[4] = (mode & S_IRGRP) ? 'r' : '-';
+    p[5] = (mode & S_IWGRP) ? 'w' : '-';
+    p[6] = (mode & S_ISGID) ? ((mode & S_IXGRP) ? 's' : 'S') : ((mode & S_IXGRP) ? 'x' : '-');
+    p[7] = (mode & S_IROTH) ? 'r' : '-';
+    p[8] = (mode & S_IWOTH) ? 'w' : '-';
+    p[9] = (mode & S_ISVTX) ? ((mode & S_IXOTH) ? 't' : 'T') : ((mode & S_IXOTH) ? 'x' : '-');
+    p[10] = ' ';
+    p[11] = '\0';
 }
 
 const char *cb_libc_user_from_uid(uint32_t uid, int nouser)
@@ -405,15 +532,28 @@ const char *cb_libc_group_from_gid(uint32_t gid, int nogroup)
     return buffer;
 }
 
-/* PROVISIONAL PLACEHOLDER -- see libc/include/signal.h's own comment.
-   Always fails; never actually installs anything. */
-void (*cb_libc_signal(int sig, void (*handler)(int)))(int)
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz)
 {
-    (void)sig;
-    (void)handler;
-    bound_api->set_errno(CB_ENOSYS);
-    return (void (*)(int))-1;
+    size_t srclen;
+    if (src == NULL)
+        return 0;
+    srclen = cb_libc_strlen(src);
+    if (siz != 0 && dst != NULL) {
+        size_t copylen = (srclen >= siz) ? (siz - 1) : srclen;
+        cb_libc_memcpy(dst, src, copylen);
+        dst[copylen] = '\0';
+    }
+    return srclen;
 }
+
+/* cb_libc_strrchr is NOT defined here: it is the pinned NetBSD import
+   (upstream/netbsd/common/lib/libc/string/strrchr.c, see UPSTREAM.md),
+   archived into libcannedbsd.a via string.h's plain #define rename, the
+   same treatment as its strchr sibling. A hand-written duplicate body
+   here would be a genuine link-time duplicate-symbol conflict, not just
+   redundant, and would abandon this project's established convention of
+   pinning real upstream sources for standard library primitives instead
+   of hand-rolling them. */
 
 void *cb_libc_malloc(size_t size)
 {
@@ -736,6 +876,11 @@ int cb_libc_getc(struct cb_libc_file *stream)
     if (resolve_input(stream, &ref) < 0)
         return EOF;
     return read_input(&ref, &byte, 1) <= 0 ? EOF : (int)byte;
+}
+
+int cb_libc_getchar(void)
+{
+    return cb_libc_getc(cb_libc_stdin_stream);
 }
 
 size_t cb_libc_fread(void *buffer, size_t size, size_t count,

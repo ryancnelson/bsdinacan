@@ -52,48 +52,31 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
-/* Thin pass-throughs to bound_api->unlink/rmdir. unlink has been on the
-   base table since before this project's optional-extension convention
-   existed, so only a NULL check is needed. rmdir was appended by VFS-04,
-   so it additionally needs the struct_size guard every appended field
-   gets (matching cb_libc_opendir's family). cb_libc_stat/fstat/lstat are
-   declared further below, alongside STAT-02's struct stat -- this file
-   used to also declare an interim cb_stat_v1-shaped cb_libc_stat here for
-   FTS-CORE-01's own use before STAT-02 existed; STAT-02's reconciliation
-   of cb_fts.c replaced that need, so it is not re-declared here. */
-int cb_libc_unlink(const char *path);
-int cb_libc_rmdir(const char *path);
-
 /*
- * The remaining declarations in this block exist so pinned rm.c compiles
- * in full. Every one of them backs a call site that is outside RM-01's
- * accepted matrix (documented in notes/iterations/RM-01.md: -P secure
- * overwrite, -W whiteout, check()'s auto-ask-on-unwritable heuristic) and
- * is never exercised by any test -- but "byte-for-byte unmodified pinned
- * source" means the file must still parse and link as a whole. Each is
- * implemented honestly for what it actually is, not stubbed to falsely
- * claim success: cb_off_t (*lseek is a real, always-available base ABI
- * op) and RAMFS's genuinely nothing-to-flush semantics for fsync/sync
- * (a no-op is CORRECT for an all-in-memory filesystem, not dishonest,
- * unlike a fake success for a capability that does not exist) get real
- * implementations; capabilities RAMFS truly does not have (whiteout,
- * a passwd/group database, permission-bit access checks, secure-erase
- * randomness) fail honestly or fall back to the same numeric-ID
- * rendering real BSD's own user_from_uid/group_from_gid use for any
- * uid/gid absent from the passwd/group database, which describes every
- * uid/gid here, not a special case.
+ * unlink/rmdir/access/strmode/user_from_uid/group_from_gid/signal and
+ * cb_libc_stat/fstat/lstat are declared further below, alongside
+ * STAT-02/MV-01's struct stat and their own fuller cluster of metadata
+ * operations (cb_libc_rename/fcpxattr/fchmod/fchown/fchflags/etc.) --
+ * MV-01 landed needing nearly the same POSIX-utility-heuristic surface
+ * RM-01 does (both rm's and mv's own interactive-confirmation checks use
+ * access/strmode/user_from_uid/group_from_gid; both use signal/SIGINFO
+ * for ^T progress reporting), so this file used to also carry a second,
+ * now-redundant copy of those declarations here; merged down to one.
+ * lseek/fsync/sync/arc4random/undelete are RM-01-only (rm -P's macros),
+ * declared here since MV-01 never needed them:
+ *
+ * cb_off_t (*)lseek is a real, always-available base ABI op, and RAMFS's
+ * genuinely nothing-to-flush semantics make fsync/sync's success a
+ * correct description of this backend, not a claimed capability. Both
+ * get real implementations. arc4random/undelete back capabilities this
+ * backend genuinely does not have (secure-erase randomness, whiteout)
+ * and fail/are-inert honestly instead. See notes/iterations/RM-01.md.
  */
 cb_off_t cb_libc_lseek(int descriptor, cb_off_t offset, int whence);
 int cb_libc_fsync(int descriptor);
 void cb_libc_sync(void);
 uint32_t cb_libc_arc4random(void);
-int cb_libc_access(const char *path, int mode);
 int cb_libc_undelete(const char *path);
-void cb_libc_strmode(uint32_t mode, char *buffer);
-const char *cb_libc_user_from_uid(uint32_t uid, int nouser);
-const char *cb_libc_group_from_gid(uint32_t gid, int nogroup);
-/* Provisional placeholder -- see libc/include/signal.h's own comment. */
-void (*cb_libc_signal(int sig, void (*handler)(int)))(int);
 
 int cb_libc_isatty(int descriptor);
 int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes);
@@ -146,39 +129,73 @@ char *cb_libc_basename(char *path);
    without libc/include on its path) can test for it directly. */
 #define S_IFWHT 0160000
 
+#define S_ISUID 0004000
+#define S_ISGID 0002000
+#define S_ISVTX 0001000
+
+#define S_IRWXU 0000700
+#define S_IRUSR 0000400
+#define S_IWUSR 0000200
+#define S_IXUSR 0000100
+
+#define S_IRWXG 0000070
+#define S_IRGRP 0000040
+#define S_IWGRP 0000020
+#define S_IXGRP 0000010
+
+#define S_IRWXO 0000007
+#define S_IROTH 0000004
+#define S_IWOTH 0000002
+#define S_IXOTH 0000001
+
 /*
  * POSIX struct stat definition, shared between cb_libc.c (which populates it)
  * and libc/include/sys/stat.h (which exposes it to ordinary source).
  * Types are standard integer types (uint64_t, uint32_t, int64_t, int32_t)
  * matching ino_t, mode_t, off_t, blksize_t, blkcnt_t.
  */
-/*
- * st_uid/st_gid/st_dev added by RM-01. RAMFS has no per-node ownership or
- * multi-device concept at all (confirmed by reading struct cb_ramfs_node's
- * field list), so these are always 0 -- the same kind of reasonable,
- * explicitly-arbitrary sentinel STAT-02 already established for
- * st_blksize/st_blocks, not a claim about real file ownership. Needed for
- * rm.c's check()/rm_overwrite() to compile; both call sites are outside
- * the accepted matrix (see notes/iterations/RM-01.md) and never reached
- * by any test, but a plain, non-ABI-versioned struct stat carries none of
- * cb_stat_v1's struct_size/backward-compatibility concerns, so extending
- * it here does not risk the kind of duplicated-shape problem avoided by
- * not touching cb_stat_v1 itself.
- */
 struct stat {
+    uint32_t st_dev;
     uint64_t st_ino;
     uint32_t st_mode;
-    int64_t st_size;
-    int32_t st_blksize;
-    int64_t st_blocks;
+    uint32_t st_nlink;
     uint32_t st_uid;
     uint32_t st_gid;
-    uint32_t st_dev;
+    uint32_t st_rdev;
+    int64_t st_size;
+    uint32_t st_atime;
+    uint32_t st_mtime;
+    uint32_t st_ctime;
+    int32_t st_blksize;
+    int64_t st_blocks;
+    uint32_t st_flags;
 };
+
+struct timeval;
 
 int cb_libc_stat(const char *path, struct stat *stat_buf);
 int cb_libc_fstat(int descriptor, struct stat *stat_buf);
 int cb_libc_lstat(const char *path, struct stat *stat_buf);
+int cb_libc_rename(const char *old_path, const char *new_path);
+int cb_libc_unlink(const char *path);
+int cb_libc_rmdir(const char *path);
+int cb_libc_access(const char *path, int mode);
+int cb_libc_fcpxattr(int from_descriptor, int to_descriptor);
+void cb_libc_warnx(const char *fmt, ...);
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
+int cb_libc_getchar(void);
+void cb_libc_strmode(uint32_t mode, char *p);
+const char *cb_libc_user_from_uid(uint32_t uid, int nouser);
+const char *cb_libc_group_from_gid(uint32_t gid, int nogroup);
+int cb_libc_fchmod(int descriptor, uint32_t mode);
+int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid);
+int cb_libc_fchflags(int descriptor, uint32_t flags);
+int cb_libc_futimes(int descriptor, const struct timeval *times);
+int cb_libc_utimes(const char *path, const struct timeval *times);
+void (*cb_libc_signal(int sig, void (*func)(int)))(int);
+int32_t cb_libc_vfork(void);
+int cb_libc_execl(const char *path, const char *arg0, ...);
+int32_t cb_libc_waitpid(int32_t pid, int *status, int options);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

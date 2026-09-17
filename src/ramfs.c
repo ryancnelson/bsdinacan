@@ -60,6 +60,8 @@ static int ramfs_rmdir(struct cb_vfs_node *common);
 static int ramfs_rename(struct cb_vfs_node *common,
                         struct cb_vfs_node *new_parent_common,
                         char *new_name_owned);
+static int ramfs_next_sibling(struct cb_vfs_node *common,
+                              struct cb_vfs_node **sibling_out);
 static struct cb_vfs_node *ramfs_mount_root(struct cb_vfs_mount *common);
 static void ramfs_mount_destroy(struct cb_vfs_mount *common);
 
@@ -88,7 +90,8 @@ static const struct cb_vfs_node_ops ramfs_node_ops = {
     ramfs_truncate,
     ramfs_child_at,
     ramfs_rmdir,
-    ramfs_rename
+    ramfs_rename,
+    ramfs_next_sibling
 };
 
 static const struct cb_vfs_mount_ops ramfs_mount_ops = {
@@ -315,6 +318,24 @@ static int ramfs_child_at(struct cb_vfs_node *common, size_t index,
         }
     }
     *child_out = NULL;
+    return 0;
+}
+
+/* See notes/iterations/VFS-05.md. node's own next_sibling field already
+   gives exactly this, for any node (file or directory) with a parent --
+   no type check needed, unlike child_at (which only makes sense on a
+   directory). Called on a node before it is ever unlinked (the caller's
+   contract, documented on the node_ops field itself); ramfs_unlink
+   clears an unlinked node's own next_sibling to NULL, so calling this
+   afterward would not give the right answer, but nothing here needs to
+   guard against that misuse -- it is the caller's obligation, exactly
+   like every other node op that requires calling in a particular order
+   (e.g. rename's new_name_owned ownership contract). */
+static int ramfs_next_sibling(struct cb_vfs_node *common,
+                              struct cb_vfs_node **sibling_out)
+{
+    struct cb_ramfs_node *node = ramfs_node(common);
+    *sibling_out = node->next_sibling ? &node->next_sibling->common : NULL;
     return 0;
 }
 

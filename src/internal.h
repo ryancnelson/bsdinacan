@@ -146,6 +146,18 @@ struct cb_vfs_node_ops {
        state, so this call itself cannot fail for allocation reasons. */
     int (*rename)(struct cb_vfs_node *node, struct cb_vfs_node *new_parent,
                   char *new_name_owned);
+    /* Appended by VFS-05. Optional extension; callers must check
+       struct_size before reading. Returns 0 and *sibling_out = NULL if
+       node is the last child of its parent (not an error); a negative
+       -CB_E* value for a real error. Exists so a directory iterator can
+       advance by live node identity instead of child_at()'s ordinal
+       position -- see notes/iterations/VFS-05.md. Must be called on
+       node BEFORE node is unlinked (ramfs_unlink clears an unlinked
+       node's own sibling link, per VFS-03's own note); once looked up,
+       the result is unaffected by anything happening elsewhere in the
+       list, including removal of node itself afterward. */
+    int (*next_sibling)(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out);
 };
 
 struct cb_vfs_mount_entry {
@@ -218,8 +230,13 @@ struct cb_fd_entry {
 #define CB_MAX_DIRS 16
 
 struct cb_dir_handle {
-    struct cb_vfs_node *node;  /* retained while in_use */
-    size_t index;
+    struct cb_vfs_node *node;  /* the directory itself; retained while in_use */
+    /* VFS-05: the entry the NEXT readdir() call will return, identified
+       by live node pointer (retained while non-NULL) rather than
+       child_at()'s ordinal position -- see notes/iterations/VFS-05.md.
+       NULL means either "not primed yet" (never happens: opendir()
+       always primes this before returning) or "exhausted." */
+    struct cb_vfs_node *next;
     int in_use;
 };
 
@@ -341,6 +358,8 @@ struct cb_vfs_node *cb_vfs_opendir_path(struct cb_task *task,
                                         const char *path);
 int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
                     struct cb_vfs_node **child_out);
+int cb_vfs_next_sibling(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out);
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
 int cb_vfs_unlink_path(struct cb_task *task, const char *path);
 int cb_vfs_rmdir_path(struct cb_task *task, const char *path);

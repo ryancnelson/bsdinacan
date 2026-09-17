@@ -1678,19 +1678,38 @@ static int api_opendir(const char *path)
 {
     struct cb_task *task = active_kernel->current;
     struct cb_vfs_node *node;
+    struct cb_vfs_node *first;
     int descriptor;
+    int result;
     node = cb_vfs_opendir_path(task, path);
     if (node == NULL)
         return -1;
+    /* VFS-05: prime the look-ahead cursor here, at open time, rather
+       than lazily on the first readdir() -- see notes/iterations/
+       VFS-05.md and struct cb_dir_handle's own comment. Failure here is
+       provably unreachable today (cb_vfs_opendir_path above already
+       guarantees node is a directory, and RAMFS always implements
+       child_at), but is handled honestly rather than assumed away, for
+       whatever future mount type might not implement it. */
+    result = cb_vfs_child_at(node, 0, &first);
+    if (result < 0) {
+        cb_vfs_node_release(node);
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (first != NULL)
+        cb_vfs_node_retain(first);
     for (descriptor = 0; descriptor < CB_MAX_DIRS; ++descriptor) {
         if (!task->directories[descriptor].in_use) {
             task->directories[descriptor].node = node;
-            task->directories[descriptor].index = 0;
+            task->directories[descriptor].next = first;
             task->directories[descriptor].in_use = 1;
             cb_task_set_error(task, 0);
             return descriptor;
         }
     }
+    if (first != NULL)
+        cb_vfs_node_release(first);
     cb_vfs_node_release(node);
     cb_task_set_error(task, CB_EMFILE);
     return -1;
@@ -1702,6 +1721,7 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
     struct cb_task *task = active_kernel->current;
     struct cb_dir_handle *handle;
     struct cb_vfs_node *child;
+    struct cb_vfs_node *lookahead;
     struct cb_stat_v1 status;
     const char *name;
     size_t length;
@@ -1716,11 +1736,7 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
         return -1;
     }
     handle = &task->directories[descriptor];
-    result = cb_vfs_child_at(handle->node, handle->index, &child);
-    if (result < 0) {
-        cb_task_set_error(task, -result);
-        return -1;
-    }
+    child = handle->next;
     if (child == NULL) {
         name_out[0] = '\0';
         /* Clean end of directory is not an error: errno is left exactly
@@ -1732,24 +1748,39 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
     name = child->ops->name(child);
     length = strlen(name);
     if (length >= name_size) {
-        /* The entry is not consumed: the cursor does not advance, so a
+        /* The entry is not consumed: handle->next is untouched, so a
            caller with a larger buffer can still observe this exact entry
            rather than silently receiving a truncated, wrong name for it. */
         cb_task_set_error(task, CB_ENAMETOOLONG);
         return -1;
     }
-    memcpy(name_out, name, length);
-    name_out[length] = '\0';
     result = child->ops->stat(child, &status);
     if (result < 0) {
         cb_task_set_error(task, -result);
         return -1;
     }
+    /* Look ahead to child's own next sibling now, by live node identity,
+       BEFORE returning control to the caller -- who may unlink child
+       (VFS-05's whole reason for existing: rm -r does exactly this,
+       through this same open handle, before asking for the next entry).
+       ramfs_unlink clears an unlinked node's own next_sibling to NULL,
+       so this MUST happen before that can occur, never deferred to the
+       following call. */
+    result = cb_vfs_next_sibling(child, &lookahead);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (lookahead != NULL)
+        cb_vfs_node_retain(lookahead);
+    memcpy(name_out, name, length);
+    name_out[length] = '\0';
     if (inode_out != NULL)
         *inode_out = status.inode;
     if (type_out != NULL)
         *type_out = status.type;
-    ++handle->index;
+    cb_vfs_node_release(child);
+    handle->next = lookahead;
     cb_task_set_error(task, 0);
     return 0;
 }
@@ -1762,8 +1793,11 @@ static int api_closedir(int descriptor)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+    if (task->directories[descriptor].next != NULL)
+        cb_vfs_node_release(task->directories[descriptor].next);
     cb_vfs_node_release(task->directories[descriptor].node);
     task->directories[descriptor].node = NULL;
+    task->directories[descriptor].next = NULL;
     task->directories[descriptor].in_use = 0;
     cb_task_set_error(task, 0);
     return 0;

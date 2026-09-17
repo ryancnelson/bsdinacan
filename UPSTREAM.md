@@ -542,12 +542,16 @@ are isolated function-frame evidence, not a claim of a measured peak call chain.
 - License: file-specific three-clause Regents of the University of California
   license (1990, 1993, 1994, 2003), retained verbatim in the imported file.
 
-The imported file is byte-for-byte unchanged; vendored under `RM-01`, per
-`notes/iterations/RM-01.md`. Wiring (build rule, veneer additions,
-`commands/rm_module.c`) is not yet in place — see that note for the measured
-dependency on `STAT-02` (unclaimed as of this commit) that blocks completing
-the build, and for the small set of independent gaps (`strrchr`, `memset`,
-`getchar`, `__unused`, public `unlink`/`rmdir`) this ID owns directly.
+The imported file is byte-for-byte unchanged. Registered via
+`commands/rm_module.c`; see `notes/iterations/RM-01.md` for the full
+veneer this needed (`struct stat`/`lstat` from `STAT-02`, `fts` from
+`FTS-CORE-01`, `warnx` from `LIBC-ERR-02`, plus this ID's own
+`strrchr`/`memset`/`getchar`/`unlink`/`rmdir`), the two real bugs found
+and fixed along the way (an `access()` draft that made `check()`'s
+ask-before-removing heuristic fire on every ordinary `rm`, and
+`fts_read()`'s errno-clearing contract on a clean end of walk), and
+`VFS-05`, the directory-iteration cursor fix `rm -r` on a multi-entry
+directory needed and blocked this ID landing until it existed.
 
 ## NetBSD `strrchr`
 
@@ -615,3 +619,33 @@ out of scope for the accepted matrix (see `notes/iterations/RM-01.md`), but
 the declaration and a correct implementation still need to exist for the
 file to parse and for other, in-scope code paths to link against the same
 archive member.
+
+## NetBSD `mv`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mv/mv.c`
+- Local path: `upstream/netbsd/bin/mv/mv.c`
+- SHA-256: `df5de897a14e2f8210140e468b94319eaf100018490bfebe564152bf337bfd54`
+- Embedded RCS identifier: `$NetBSD: mv.c,v 1.46 2020/06/24 16:58:12 riastradh Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+## NetBSD `mv` `pathnames.h`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mv/pathnames.h`
+- Local path: `upstream/netbsd/bin/mv/pathnames.h`
+- SHA-256: `82819eb682b4e2e8ec84604d8b9b11532f987427d697989ff21c6aa56fc30d6a`
+- Embedded RCS identifier: `$NetBSD: pathnames.h,v 1.8 2004/08/19 22:26:07 christos Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license, retained verbatim in the imported file.
+
+Both imported files are byte-for-byte unchanged. All adaptation is outside them:
+the build renames `main` to `cb_mv_main`, cannedBSD private headers satisfy the
+POSIX utility veneer (`sys/extattr.h`, `sys/time.h`, `sys/wait.h`, `signal.h`,
+`pwd.h`, `grp.h`, `unistd.h`, `sys/stat.h`, `stdio.h`, `string.h`, `err.h`),
+and `commands/mv_module.c` supplies the native-program descriptor. Same-mount
+moves use native VFS `rename` as the common path; cross-mount `EXDEV` fallbacks
+execute fastcopy with non-fatal `fcpxattr` `ENOSYS` warning absorption.

@@ -1928,12 +1928,26 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     (void)argv;
     (void)envp;
 
-    /* 4a, skip on removal: create C, B, A in that order so the resulting
-       list (newest-first) is [A, B, C]. Read A, unlink the ALREADY-
-       RETURNED A (not the next one), and confirm the following read
-       skips B entirely and returns C -- unlinking the next not-yet-
-       returned entry would only reflect ordinary shrinkage, not prove a
-       skip. */
+    /* VFS-05 changed this test's own expectations, not just the code
+       under test: readdir()'s cursor advances by live node identity
+       (looked ahead before returning the current entry), not child_at()'s
+       ordinal position re-walked from the live list -- see
+       notes/iterations/VFS-05.md. VFS-03's own design note explicitly
+       accepted a skip-on-removal and a duplicate-on-insertion as
+       within-POSIX-spec for a generic racing mutator; this same test
+       previously asserted exactly those two outcomes as correct. VFS-05
+       does not reopen that reasoning for a genuine external race -- it
+       fixes the specific case a generic race cannot cover: the SAME task,
+       through the SAME open handle, removing the entry it just visited
+       before asking for the next one (rm -r's own pattern). Neither a
+       skip nor a duplicate is within spec for that pattern.
+
+       4a, no skip despite removing the just-returned entry: create C, B,
+       A in that order so the resulting list (newest-first) is [A, B, C].
+       Read A, unlink the ALREADY-RETURNED A (not the next one), and
+       confirm the following read now correctly returns B, not C --
+       unlinking the next not-yet-returned entry would only reflect
+       ordinary shrinkage, not prove anything about this specific case. */
     if (api->mkdir("/tmp/skipdir", 0755) < 0)
         return 380;
     if ((fd = api->open("/tmp/skipdir/C", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1954,14 +1968,19 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->unlink("/tmp/skipdir/A") < 0)
         return 386;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "C") != 0)
+        strcmp(name, "B") != 0)
         return 387;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "C") != 0)
+        return 397;
     if (api->closedir(handle) < 0)
         return 388;
 
-    /* 4b, duplicate on insertion: create B, A in that order, so the list
-       is [A, B]. Read A, then create X (prepended, giving [X, A, B]),
-       and confirm the following read re-returns A rather than B or X. */
+    /* 4b, no duplicate despite an unrelated concurrent insertion: create
+       B, A in that order, so the list is [A, B]. Read A, then create X
+       (prepended, giving [X, A, B]), and confirm the following read
+       returns B -- neither a re-returned A nor the newly-inserted X,
+       which the look-ahead captured before X ever existed. */
     if (api->mkdir("/tmp/dupdir", 0755) < 0)
         return 389;
     if ((fd = api->open("/tmp/dupdir/B", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1980,10 +1999,87 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
         api->close(fd) < 0)
         return 394;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "A") != 0)
+        strcmp(name, "B") != 0)
         return 395;
     if (api->closedir(handle) < 0)
         return 396;
+    return 0;
+}
+
+/* VFS-05's actual motivating case: rm -r's own access pattern is not
+   "unlink one entry, read one more" (direntmutationprobe above) but
+   "visit and remove every entry in the directory through one open
+   handle, in a single pass." Builds a 5-entry directory, drains it by
+   unlinking each entry immediately after readdir() returns it, and
+   confirms every single one was visited exactly once -- no skip, no
+   duplicate, regardless of RAMFS's own newest-first ordering. */
+static int direntdrainprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    static const char *const files[] = {"a", "b", "c", "d", "e"};
+    int handle;
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    int fd;
+    int seen[5];
+    size_t index;
+    size_t visits;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/draindir", 0755) < 0)
+        return 500;
+    for (index = 0; index < 5; ++index) {
+        char path[CB_PATH_MAX];
+        strcpy(path, "/tmp/draindir/");
+        strcpy(path + strlen(path), files[index]);
+        if ((fd = api->open(path, CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+            api->close(fd) < 0)
+            return 501;
+        seen[index] = 0;
+    }
+
+    handle = api->opendir("/tmp/draindir");
+    if (handle < 0)
+        return 502;
+    visits = 0;
+    for (;;) {
+        result = api->readdir(handle, name, sizeof(name), &inode, &type);
+        if (result != 0)
+            return 503;
+        if (name[0] == '\0')
+            break;
+        for (index = 0; index < 5; ++index) {
+            if (strcmp(name, files[index]) == 0) {
+                if (seen[index] != 0)
+                    return 504; /* duplicate */
+                seen[index] = 1;
+                break;
+            }
+        }
+        if (index == 5)
+            return 505; /* unrecognized entry */
+        ++visits;
+        {
+            char path[CB_PATH_MAX];
+            strcpy(path, "/tmp/draindir/");
+            strcpy(path + strlen(path), name);
+            if (api->unlink(path) < 0)
+                return 506;
+        }
+        if (visits > 5)
+            return 507; /* would indicate an infinite loop */
+    }
+    if (visits != 5)
+        return 508; /* skip: not everything was visited */
+    for (index = 0; index < 5; ++index)
+        if (!seen[index])
+            return 509;
+    if (api->closedir(handle) < 0)
+        return 510;
     return 0;
 }
 
@@ -3457,6 +3553,11 @@ static const struct cb_program_v1 direntmutationprobe_program = {
     64 * 1024, direntmutationprobe_main
 };
 
+static const struct cb_program_v1 direntdrainprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntdrainprobe", 0,
+    64 * 1024, direntdrainprobe_main
+};
+
 static const struct cb_program_v1 direntisolationchild_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntisolationchild", 0,
     64 * 1024, direntisolationchild_main
@@ -4634,6 +4735,7 @@ static void run_case(const char *command, const char *expected_output,
         if (cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntdrainprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
@@ -5323,6 +5425,156 @@ static void test_vfs_rmdir_rename(void)
     cb_vfs_node_release(task.cwd);
     cb_vfs_node_release(task.root);
     cb_vfs_destroy(&kernel);
+}
+
+/* MV-01: cross-mount EXDEV move semantics and honest failure warnings. */
+static void test_mv_cross_mount(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    struct cb_task dummy_task;
+    struct cb_vfs_mount *mount2;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    int status;
+    static const char payload[] = "cross-mount test payload data\n";
+    char read_buffer[64];
+    cb_ssize_t nread;
+    static const char expected_file_stderr[] =
+        "mv: /mnt2/xdst: error copying extended attributes: function not implemented\n"
+        "mv: /mnt2/xdst: set times: function not implemented\n"
+        "mv: /mnt2/xdst: set owner/group: function not implemented\n";
+    static const char expected_dir_stderr[] =
+        "mv: /bin/cp: waitpid: no child processes\n";
+
+    base_allocate = host.allocate;
+    base_resize = host.resize;
+    host.allocate = controlled_allocate;
+    host.resize = controlled_resize;
+    allocation_failure_countdown = -1;
+    resize_failure_countdown = -1;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+
+    /* --- Case 1: Regular file cross-mount move (fastcopy fallback) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (file)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount file test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount file test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount file test");
+
+    file = cb_vfs_open(&dummy_task, "/xsrc", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xsrc for mv cross-mount file test");
+    if (file->ops->write(file, &dummy_task, payload, sizeof(payload) - 1) != (cb_ssize_t)(sizeof(payload) - 1))
+        fail("write payload to /xsrc");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xsrc /mnt2/xdst") < 0)
+        fail("boot mv cross-mount file test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 0) {
+        fprintf(stderr, "mv cross-mount file exit status: %d (expected 0)\n", status);
+        fail("mv cross-mount file exit status");
+    }
+    if (captured_streams[1][0] != '\0') {
+        fprintf(stderr, "unexpected stdout: <%s>\n", captured_streams[1]);
+        fail("mv cross-mount file stdout non-empty");
+    }
+    if (strcmp(captured_streams[2], expected_file_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_file_stderr, captured_streams[2]);
+        fail("mv cross-mount file stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xsrc", &st) == 0 || *dummy_task.error_cell != CB_ENOENT)
+        fail("mv cross-mount source /xsrc was not unlinked");
+
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/xdst", &st) != 0 || st.type != CB_NODE_REGULAR)
+        fail("mv cross-mount destination /mnt2/xdst stat failed");
+    if (st.size != sizeof(payload) - 1)
+        fail("mv cross-mount destination /mnt2/xdst size mismatch");
+
+    file = cb_vfs_open(&dummy_task, "/mnt2/xdst", CB_O_RDONLY, 0);
+    if (file == NULL)
+        fail("open /mnt2/xdst after mv cross-mount");
+    memset(read_buffer, 0, sizeof(read_buffer));
+    nread = file->ops->read(file, &dummy_task, read_buffer, sizeof(read_buffer));
+    if (nread != (cb_ssize_t)(sizeof(payload) - 1) ||
+        memcmp(read_buffer, payload, sizeof(payload) - 1) != 0)
+        fail("mv cross-mount destination payload content mismatch");
+    cb_open_file_release(file);
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
+
+    /* --- Case 2: Directory cross-mount move (copy fallback attempting /bin/cp) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (dir)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount dir test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount dir test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount dir test");
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/xdir", 0777) < 0)
+        fail("mkdir /xdir for mv cross-mount dir test");
+    file = cb_vfs_open(&dummy_task, "/xdir/child", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xdir/child for mv cross-mount dir test");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xdir /mnt2/ydir") < 0)
+        fail("boot mv cross-mount dir test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 1) {
+        fprintf(stderr, "mv cross-mount dir exit status: %d (expected 1)\n", status);
+        fail("mv cross-mount dir exit status");
+    }
+    if (strcmp(captured_streams[2], expected_dir_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_dir_stderr, captured_streams[2]);
+        fail("mv cross-mount dir stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xdir", &st) != 0 || st.type != CB_NODE_DIRECTORY)
+        fail("mv cross-mount dir source /xdir was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/xdir/child", &st) != 0)
+        fail("mv cross-mount dir source child was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/ydir", &st) == 0)
+        fail("mv cross-mount dir destination /mnt2/ydir must not exist");
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
 }
 
 /* VFS-04: proves the rename() allocation-failure path (cb_string_duplicate
@@ -6125,6 +6377,7 @@ int main(int argc, char **argv)
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
     test_vfs_rmdir_rename();
+    test_mv_cross_mount();
     test_fts();
     test_rm01();
     expect_path("/", "/", "/");
@@ -6232,6 +6485,7 @@ int main(int argc, char **argv)
     run_case("libcdirentprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntbasicprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntmutationprobe", "", 0, FIXTURE_DIRENT);
+    run_case("direntdrainprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntisolationprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntoldtableprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntopendirnulltableprobe", "", 0, FIXTURE_DIRENT);

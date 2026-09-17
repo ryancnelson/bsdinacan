@@ -54,13 +54,22 @@
 int stat(const char *path, struct stat *sb) __asm__("cb_libc_stat");
 int fstat(int fd, struct stat *sb) __asm__("cb_libc_fstat");
 int lstat(const char *path, struct stat *sb) __asm__("cb_libc_lstat");
+int fchmod(int fd, mode_t mode) __asm__("cb_libc_fchmod");
+int fchown(int fd, uid_t uid, gid_t gid) __asm__("cb_libc_fchown");
+int fchflags(int fd, uint32_t flags) __asm__("cb_libc_fchflags");
 #else
 int stat(const char *path, struct stat *sb);
 int fstat(int fd, struct stat *sb);
 int lstat(const char *path, struct stat *sb);
+int fchmod(int fd, mode_t mode);
+int fchown(int fd, uid_t uid, gid_t gid);
+int fchflags(int fd, uint32_t flags);
 #define stat cb_libc_stat
 #define fstat cb_libc_fstat
 #define lstat cb_libc_lstat
+#define fchmod cb_libc_fchmod
+#define fchown cb_libc_fchown
+#define fchflags cb_libc_fchflags
 #endif
 
 #endif
