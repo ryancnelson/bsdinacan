@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern int cb_netbsdecho_main(int argc, char **argv);
+extern int cb_echo_main(int argc, char **argv);
 
 static const struct cb_api_v1 *runtime_api;
 static int fail_stdout_write;
@@ -49,7 +49,7 @@ static cb_ssize_t injected_write(int fd, const void *data, size_t length)
     return (cb_ssize_t)length;
 }
 
-/* Calls the pinned upstream cb_netbsdecho_main directly (not through
+/* Calls the pinned upstream cb_echo_main directly (not through
    exec-by-name) with a private copy of the API whose write() is
    replaced, exactly mirroring test_stdio_state.c's injection technique.
    Both the fault and the ordinary case below spawn this same program;
@@ -63,16 +63,16 @@ static int fault_main(const struct cb_api_v1 *api, int argc,
     (void)envp;
     runtime_api = api;
     copy.write = injected_write;
-    return cb_libc_start(&copy, argc, argv, cb_netbsdecho_main);
+    return cb_libc_start(&copy, argc, argv, cb_echo_main);
 }
 static const struct cb_program_v1 fault_program = {
-    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "netbsdechofault", 0,
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "echofault", 0,
     64 * 1024, fault_main
 };
 
 /* Proves the write-error/task-isolation row from ECHO-01's prepared test
    matrix, which required STDOUT-01's fault-injection surface to exist.
-   Spawns the same registered "netbsdechofault" program twice from a
+   Spawns the same registered "echofault" program twice from a
    single parent task within one kernel, waiting on each in turn (never
    two children of this kernel running at once): the first spawn, with
    the fault armed, makes the pinned upstream echo main hit its own
@@ -85,9 +85,9 @@ static int parent_main(const struct cb_api_v1 *api, int argc,
                        char *const argv[], char *const envp[])
 {
     static const char expected_err[] =
-        "netbsdechofault: write error: broken pipe\n";
+        "echofault: write error: broken pipe\n";
     static const char expected_out[] = "hello world\n";
-    char *child_argv[] = {(char *)"netbsdechofault", (char *)"hello",
+    char *child_argv[] = {(char *)"echofault", (char *)"hello",
                           (char *)"world", NULL};
     cb_pid_t child;
     int status;
@@ -97,7 +97,7 @@ static int parent_main(const struct cb_api_v1 *api, int argc,
     fail_stdout_write = 1;
     captured_out_length = 0;
     captured_err_length = 0;
-    if (api->spawn("netbsdechofault", child_argv, envp, NULL, 0, &child) < 0)
+    if (api->spawn("echofault", child_argv, envp, NULL, 0, &child) < 0)
         return 90;
     if (api->waitpid(child, &status) != child)
         return 91;
@@ -123,7 +123,7 @@ static int parent_main(const struct cb_api_v1 *api, int argc,
     fail_stdout_write = 0;
     captured_out_length = 0;
     captured_err_length = 0;
-    if (api->spawn("netbsdechofault", child_argv, envp, NULL, 0, &child) < 0)
+    if (api->spawn("echofault", child_argv, envp, NULL, 0, &child) < 0)
         return 95;
     if (api->waitpid(child, &status) != child)
         return 96;

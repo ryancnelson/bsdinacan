@@ -204,7 +204,7 @@ if [[ ! -f $provenance_file ]] ||
 fi
 if [[ ! -f $echo_object ]] ||
         ! nm "$echo_object" |
-            matches '[[:space:]]T[[:space:]]+cb_netbsdecho_main$'; then
+            matches '[[:space:]]T[[:space:]]+cb_echo_main$'; then
     echo "FAIL: pinned NetBSD echo was not compiled as a command object" >&2
     exit 1
 fi

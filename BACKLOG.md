@@ -147,8 +147,8 @@ Gaps and observations:
 
 ### ECHO-02 — retire the `echo` placeholder the way `cat`'s import did
 
-- Status: Ready
-- Base: main
+- Status: Done; ready for merge.
+- Base: main (`652e869`)
 - Depends: none
 - Hypothesis: `echo` is the only verb where a pinned import was registered
   under an aliased name instead of replacing its bootstrap placeholder.
@@ -163,15 +163,15 @@ Gaps and observations:
   divergence to fix today. This is a convention and provenance problem, not a
   correctness one, which is why it is `Ready` rather than urgent.
 - Red test: a behavioural case asserting that `/bin/echo` is served by the
-  pinned import. It must fail today, since `echo` resolves to `echo_main`.
-- Acceptance: retire the owned `echo` placeholder and register the pinned
-  import as `echo`, following `CAT-01`'s pattern exactly, including whatever
-  `EEXIST`-avoidance that required. Keep `netbsdecho` only if something
-  measurably depends on the name; if nothing does, remove it rather than
-  leaving a second spelling. Extend `tests/test_echo_behavior.sh` to assert the
-  pinned import's own diagnostics, and state in `UPSTREAM.md` that `echo` now
-  serves the import. Do not widen `echo`'s option surface -- this item changes
-  which implementation answers, nothing else.
+  pinned import (`echo hello | false` asserting `echo: write error: broken pipe\n`
+  stderr diagnostic and exit status 1). Failed against bootstrap `echo_main`
+  which writes nothing to stderr on write error.
+- Acceptance: retired the owned `echo_main` placeholder in `src/programs.c`,
+  registered the pinned import as `"echo"` via `cb_echo_program` (`commands/echo_module.c`),
+  compiled via `-Dmain=cb_echo_main` across Linux `Makefile` and mac68k `CMakeLists.txt`,
+  updated `tests/test_echo_behavior.sh`, `tests/test_echo_state.c`, and
+  `platform/mac68k/acceptance_cases.def`. All three CI workflows green.
+  See `notes/iterations/ECHO-02.md`.
 
 ### MILESTONE-REMEASURE-01 — exploratory re-measurement of file manipulation milestone at `bae004b`
 

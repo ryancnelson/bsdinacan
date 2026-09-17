@@ -435,15 +435,15 @@ The imported file is byte-for-byte unchanged. The build renames `main` to `cb_di
 The imported file is byte-for-byte unchanged, matching the hash already
 measured in `notes/iterations/utility-roadmap-20260908.md`. It is compiled
 as its own command object (`netbsd_echo.o`, private link name
-`cb_netbsdecho_main`) once `PROGNAME-01` and `STDOUT-01` landed on `main`
-and were merged into this branch, exactly as `dirname`/`basename`/`yes`
-already do: `setprogname`, `setlocale`, `strcmp`, `printf`, `putchar`,
-`fflush`, `ferror`, and `err` all resolve to this project's private
-`cb_libc_*` veneers, never the host's. It registers under the distinct
-command name `netbsdecho`, per the design's item 3, rather than replacing
-the existing shell builtin `echo`. See `notes/iterations/ECHO-01.md` for
-the full integration record, including the executable exact-output/status
-test matrix and the write-failure/task-isolation coverage.
+`cb_echo_main`) once `PROGNAME-01` and `STDOUT-01` landed on `main`,
+exactly as `dirname`/`basename`/`yes` already do: `setprogname`, `setlocale`,
+`strcmp`, `printf`, `putchar`, `fflush`, `ferror`, and `err` all resolve
+to this project's private `cb_libc_*` veneers, never the host's.
+Under `ECHO-02`, it registers as the standard `echo` command
+(`cb_echo_program`), retiring the bootstrap placeholder in `src/programs.c`.
+See `notes/iterations/ECHO-01.md` and `notes/iterations/ECHO-02.md` for the
+integration records, including the executable exact-output/status test
+matrix and the write-failure/task-isolation coverage.
 
 The pinned source's `main` never reads `argc` (marked `/* ARGSUSED */`,
 a lint-only annotation with no effect on GCC/Clang warnings), so its

@@ -288,7 +288,7 @@ $(ECHO_COMMAND_OBJECT): upstream/netbsd/bin/echo/echo.c \
 		libc/include/stdlib.h libc/include/string.h \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Wno-unused-parameter \
-		-Dmain=cb_netbsdecho_main \
+		-Dmain=cb_echo_main \
 		-c upstream/netbsd/bin/echo/echo.c -o $@
 
 $(PRINTENV_COMMAND_OBJECT): upstream/netbsd/usr.bin/printenv/printenv.c \
@@ -735,7 +735,7 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_basename_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/basename/basename.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_netbsdecho_main \
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_echo_main \
 		-Wno-unused-parameter \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/bin/echo/echo.c

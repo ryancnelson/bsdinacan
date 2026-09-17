@@ -6673,9 +6673,11 @@ int main(int argc, char **argv)
     run_case("true | false; echo $?; false | true; echo $?", "1\n0\n", 0, 0);
     run_case("exit 7 | cat; echo $?", "0\n", 0, 0);
     run_case("echo hi | missing-command | cat; echo $?",
-             "sh: missing-command: no such file or directory\n127\n", 0, 0);
+             "sh: missing-command: no such file or directory\n"
+             "echo: write error: broken pipe\n127\n", 0, 0);
     expect_streams("127\n",
-                   "sh: missing-command: no such file or directory\n");
+                   "sh: missing-command: no such file or directory\n"
+                   "echo: write error: broken pipe\n");
     run_case("echo unterminated'", "sh: syntax error\n", 2, 0);
     expect_streams("", "sh: syntax error\n");
     run_case("echo trailing\\", "sh: syntax error\n", 2, 0);
@@ -6690,8 +6692,12 @@ int main(int argc, char **argv)
     run_case("cat /missing; echo $?",
              "cat: /missing: no such file or directory\n1\n", 0, 0);
     expect_streams("1\n", "cat: /missing: no such file or directory\n");
-    run_case("echo abc | tr z-a A-Z", "usage: tr string1 string2\n", 2, 0);
-    expect_streams("", "usage: tr string1 string2\n");
+    run_case("echo abc | tr z-a A-Z",
+             "usage: tr string1 string2\n"
+             "echo: write error: broken pipe\n", 2, 0);
+    expect_streams("",
+                   "usage: tr string1 string2\n"
+                   "echo: write error: broken pipe\n");
     run_case("exit 257", "", 1, 0);
     run_case("exit -1", "", 255, 0);
     run_case("exit 1 2; echo continued",
