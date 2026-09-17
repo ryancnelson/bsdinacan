@@ -385,4 +385,27 @@ for symbol in chmod err errno_location exit fprintf free getmode getopt \
     fi
 done
 
+wc_source=upstream/netbsd/usr.bin/wc/wc.c
+wc_object=$build_path/netbsd_wc.o
+wc_hash=e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f
+
+if [[ $(sha256sum "$wc_source" | awk '{print $1}') != "$wc_hash" ]] ||
+   ! matches "$wc_hash" "$provenance_file"; then
+    echo 'FAIL: wc source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$wc_object" | matches '[[:space:]]T[[:space:]]+cb_wc_main$' ||
+   nm "$wc_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: wc entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in close exit fprintf fstat getopt getopt_state_location \
+        getprogname iswspace mbrtowc memset open printf putchar read \
+        setlocale setprogname stderr_stream warn warnx; do
+    if nm -u "$wc_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: wc imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

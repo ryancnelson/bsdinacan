@@ -149,18 +149,23 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### WC-02 — unchanged NetBSD `wc`
 
-- Status: Ready
-- Base: main
-- Depends: LIBC-STRTOL-01 (Done), FS-STAT-01
-- Hypothesis: the current `wc` is the bootstrap command recorded in
-  `UPSTREAM.md`'s `strcmp` entry and supports only `-c`. The pinned `wc.c` needs
-  little beyond what `CAT-01` already landed, making it the cheapest conversion
-  of an owned stand-in into a real import.
-- Red test: `cat /f1 | wc -l` must print a line count rather than
-  `usage: wc -c [file]`.
-- Acceptance: byte-for-byte import with a SHA-256 `UPSTREAM.md` entry, the
-  bootstrap command retired in the same commit, and `-c`/`-l`/`-w` measured
-  against the host `wc` on identical input.
+- **Status:** Done; ready for merge.
+- **Base:** main
+- **Depends:** LIBC-STRTOL-01 (Done), FS-STAT-01 (Done)
+- **Scope:** Import pinned NetBSD `usr.bin/wc/wc.c` (SHA-256: `e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f`) byte-for-byte unmodified. Retire bootstrap `commands/wc.c` in the same commit. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
+- **Hypothesis:** The bootstrap `wc` supported only `-c` with custom formatting. The pinned `wc.c` requires only minimal `wchar`/`wctype` shims (`mbrtowc`, `iswspace`), `sys/file.h`, and `sys/types.h` typedefs (`quad_t`, `u_quad_t`), enabling full `-c`, `-l`, `-w`, `-m`, `-L`, multi-file, and standard formatting over `FS-STAT-01`.
+- **Veneer & Libc Support:**
+  - Added `libc/include/wchar.h` with `mbstate_t`, `wint_t`, `wchar_t`, and `cb_libc_mbrtowc`.
+  - Added `libc/include/wctype.h` with `wint_t` and `cb_libc_iswspace`.
+  - Added `compat/netbsd/include/sys/file.h` (`#include <fcntl.h>`).
+  - Added `quad_t` and `u_quad_t` typedefs in `compat/netbsd/include/sys/types.h`.
+  - Implemented ASCII/C-locale single-byte `cb_libc_mbrtowc` and `cb_libc_iswspace` in `libc/cb_libc.c` (declared in `include/cannedbsd/libc.h`).
+- **File-scope Statics Audit:** Audited all file-scope statics in `wc.c` (`tlinect`, `twordct`, `tcharct`, `tlongest`, `doline`, `doword`, `dobyte`, `dochar`, `dolongest`, `rval`); all are scalar integer/boolean counts with zero pointer statics and no heap caching across calls (zero heap-use-after-free risk).
+- **Wiring & Parity:**
+  - Registered `cb_wc_program` via `commands/wc_module.c`.
+  - Added `netbsd_wc.o` to `Makefile` and `cb_wc` to `platform/mac68k/CMakeLists.txt` in the same commit, satisfying `BUILD-SYNC-01` parity.
+- **Red Test:** `cat /f1 | wc -l` failed with usage error (`usage: wc -c [file]`) before the import; passed with exact line count afterwards.
+- **Acceptance:** Full behavioral test matrix in `tests/test_wc_behavior.sh` (12 test cases covering `-c`, `-l`, `-w`, `-L`, default invocation, pipelines, multiple files + total, missing file diagnostics, invalid options, and empty files). Session integration extended in `tests/test_file_manipulation_session.sh` exercising `cat <file> | wc -l`. Source pin and private symbol boundaries verified in `tests/test_netbsd_source.sh`. Full `make ci` green. See `notes/iterations/WC-02.md`.
 
 ### BUILD-SYNC-01 — stop the Linux and mac68k builds diverging by hand
 

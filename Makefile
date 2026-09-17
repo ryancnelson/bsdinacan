@@ -57,7 +57,7 @@ CORE_SOURCES := \
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
 TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
-WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
+WC_COMMAND_OBJECT := $(BUILD)/netbsd_wc.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
 DIRNAME_COMMAND_OBJECT := $(BUILD)/dirname_command.o
@@ -147,11 +147,23 @@ print-program:
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(WC_COMMAND_OBJECT): commands/wc.c include/cannedbsd/abi.h \
-		include/cannedbsd/libc.h libc/include/fcntl.h libc/include/stdlib.h \
-		libc/include/errno.h libc/include/string.h libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_wc_main \
-		-c commands/wc.c -o $@
+$(WC_COMMAND_OBJECT): upstream/netbsd/usr.bin/wc/wc.c \
+		compat/netbsd/include/cannedbsd_wc_state.h \
+		compat/netbsd/include/sys/file.h \
+		compat/netbsd/include/sys/param.h \
+		compat/netbsd/include/sys/types.h \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/ctype.h libc/include/err.h libc/include/errno.h \
+		libc/include/fcntl.h libc/include/locale.h \
+		libc/include/stdio.h \
+		libc/include/stdlib.h libc/include/string.h \
+		libc/include/sys/cdefs.h libc/include/sys/stat.h \
+		libc/include/sys/types.h libc/include/unistd.h \
+		libc/include/wchar.h libc/include/wctype.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-include compat/netbsd/include/cannedbsd_wc_state.h \
+		-Dmain=cb_wc_main \
+		-c $< -o $@
 
 # cannedBSD-owned; no upstream import, no UPSTREAM.md entry. See LS-01.
 $(LS_COMMAND_OBJECT): commands/ls.c include/cannedbsd/abi.h \
@@ -680,6 +692,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cat_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cp_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_mkdir_behavior.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_wc_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_file_manipulation_session.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
@@ -688,7 +701,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	$(PROGRAM) -c 'echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x'
 	$(PROGRAM) -c 'cd /tmp; pwd'
 	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
-		test "$$output" = 5 || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
+		test "$$output" = "       5" || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
 
 sanitize:
 	$(MAKE) clean
@@ -698,9 +711,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only libc/cb_libc.c \
 		$(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_wc_main \
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Dmain=cb_wc_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only commands/wc.c
+		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/wc/wc.c
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_yes_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/yes/yes.c
