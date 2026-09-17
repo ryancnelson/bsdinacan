@@ -11,6 +11,15 @@ enum cb_libc_open_flag {
     CB_LIBC_O_WRONLY = 0x0001,
     CB_LIBC_O_RDWR = 0x0002,
     CB_LIBC_O_ACCMODE = 0x0003,
+    /* CAT-01: FCNTL-01 declared O_NONBLOCK (fcntl.h) as a compile-time
+       symbol only, for cat -f's open() call, never wiring it into
+       translate_open_flags() -- a compilation-only gap, not a reasoned
+       rejection like O_SYNC/O_RSYNC/O_NOFOLLOW in RM-01. Accepted and
+       silently discarded rather than translated: RAMFS opens/reads/
+       writes never block in the first place, so "this open will not
+       block" is unconditionally true here regardless of this flag,
+       making acceptance honest rather than a fabricated capability. */
+    CB_LIBC_O_NONBLOCK = 0x0004,
     CB_LIBC_O_APPEND = 0x0008,
     CB_LIBC_O_CREAT = 0x0200,
     CB_LIBC_O_TRUNC = 0x0400

@@ -24,6 +24,7 @@ extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_warn_probe_program;
 extern const struct cb_program_v1 cb_warnx_probe_program;
+extern const struct cb_program_v1 cb_fclose_stdout_probe_program;
 extern const struct cb_program_v1 cb_strcpy_probe_program;
 extern const struct cb_program_v1 cb_head_probe_program, cb_head_pipe_program;
 extern int cb_strcpy_probe_main(int argc, char **argv);
@@ -4755,6 +4756,8 @@ static void run_case(const char *command, const char *expected_output,
             fail("warnprobe registration");
         if (cb_kernel_register(kernel, &cb_warnx_probe_program) < 0)
             fail("warnxprobe registration");
+        if (cb_kernel_register(kernel, &cb_fclose_stdout_probe_program) < 0)
+            fail("fclosestdoutprobe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -6027,6 +6030,12 @@ static void test_err(void)
     expect_streams("continued\n", "warnxprobe: \n");
     run_case("warnxprobe failed", "preserved\n", 0, FIXTURE_ERR);
     expect_streams("preserved\n", "");
+
+    /* CAT-01/STDIN-01 addendum: fclose(stdout)/fclose(stderr) now succeed
+       honestly -- prove a write after fclose genuinely fails rather than
+       silently succeeding, for both streams. */
+    run_case("fclosestdoutprobe", "before\nbefore\n", 0, FIXTURE_ERR);
+    expect_streams("before\n", "before\n");
 
     /* A zero-progress writer must not trap err in an infinite retry loop. */
     capture_write_limit = 0;

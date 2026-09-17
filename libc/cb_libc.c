@@ -99,7 +99,7 @@ static int translate_open_flags(int flags, int *translated_out)
 {
     int translated;
     int known = CB_LIBC_O_ACCMODE | CB_LIBC_O_APPEND | CB_LIBC_O_CREAT |
-                CB_LIBC_O_TRUNC;
+                CB_LIBC_O_TRUNC | CB_LIBC_O_NONBLOCK;
     if ((flags & ~known) != 0)
         return -1;
     switch (flags & CB_LIBC_O_ACCMODE) {
@@ -983,13 +983,86 @@ struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode)
     return stream;
 }
 
+static struct cb_stdio_state_v1 *stdio_state(void)
+{
+    struct cb_stdio_state_v1 *state = NULL;
+    int saved_errno = bound_api->get_errno();
+    if (bound_api->abi_version == CB_ABI_VERSION_V1 &&
+        bound_api->struct_size >= offsetof(struct cb_api_v1, stdio_state_location) +
+                                  sizeof(bound_api->stdio_state_location) &&
+        bound_api->stdio_state_location != NULL)
+        state = bound_api->stdio_state_location();
+    bound_api->set_errno(saved_errno);
+    if (state == NULL || state->abi_version != CB_ABI_VERSION_V1 ||
+        state->struct_size < sizeof(*state))
+        return NULL;
+    return state;
+}
+
+static void mark_stdio_error(int descriptor)
+{
+    struct cb_stdio_state_v1 *state = stdio_state();
+    if (state != NULL) {
+        if (descriptor == 1)
+            state->stdout_error = 1;
+        else if (descriptor == 2)
+            state->stderr_error = 1;
+    }
+}
+
+/* CAT-01: an old runtime whose stdio_state predates stdout_closed/
+   stderr_closed cannot honestly report closure, so treat it as open --
+   the struct_size guard below is what makes that fallback honest rather
+   than a silent assumption. */
+static int stdio_stream_closed(int descriptor)
+{
+    struct cb_stdio_state_v1 *state = stdio_state();
+    if (state == NULL || state->struct_size < CB_STDIO_STATE_V1_CLOSED_MIN_SIZE)
+        return 0;
+    if (descriptor == 1)
+        return state->stdout_closed;
+    if (descriptor == 2)
+        return state->stderr_closed;
+    return 0;
+}
+
 int cb_libc_fclose(struct cb_libc_file *stream)
 {
     struct cb_input_state_v1 *state;
     struct cb_libc_file *node, *previous;
     int result, error, saved_errno = bound_api->get_errno();
-    if (stream == NULL || stream == cb_libc_stdout_stream ||
-        stream == cb_libc_stderr_stream) {
+    if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream) {
+        struct cb_stdio_state_v1 *stdio = stdio_state();
+        int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
+        if (stdio == NULL ||
+            stdio->struct_size < CB_STDIO_STATE_V1_CLOSED_MIN_SIZE) {
+            /* No way to record closure honestly on this runtime; keep
+               the original honest rejection rather than claim a
+               closure we cannot enforce. */
+            bound_api->set_errno(CB_EINVAL);
+            return EOF;
+        }
+        if (stdio_stream_closed(descriptor)) {
+            bound_api->set_errno(CB_EINVAL);
+            return EOF;
+        }
+        /* Output is unbuffered by design (STDIN-01/FWRITE-01): every
+           write already reaches the descriptor immediately, so there is
+           nothing to flush here. Marking the stream closed from the
+           task's own perspective, rather than releasing descriptor 1/2
+           immediately, is what keeps this success return truthful --
+           write_all()/cb_libc_fwrite() now genuinely fail on it
+           afterward, and the descriptor itself is reclaimed at normal
+           task teardown like any other resource the task no longer
+           references. */
+        if (descriptor == 1)
+            stdio->stdout_closed = 1;
+        else
+            stdio->stderr_closed = 1;
+        bound_api->set_errno(saved_errno);
+        return 0;
+    }
+    if (stream == NULL) {
         bound_api->set_errno(CB_EINVAL);
         return EOF;
     }
@@ -1154,36 +1227,14 @@ long cb_libc_strtol(const char *nptr, char **endptr, int base)
     return (long)val;
 }
 
-static struct cb_stdio_state_v1 *stdio_state(void)
-{
-    struct cb_stdio_state_v1 *state = NULL;
-    int saved_errno = bound_api->get_errno();
-    if (bound_api->abi_version == CB_ABI_VERSION_V1 &&
-        bound_api->struct_size >= offsetof(struct cb_api_v1, stdio_state_location) +
-                                  sizeof(bound_api->stdio_state_location) &&
-        bound_api->stdio_state_location != NULL)
-        state = bound_api->stdio_state_location();
-    bound_api->set_errno(saved_errno);
-    if (state == NULL || state->abi_version != CB_ABI_VERSION_V1 ||
-        state->struct_size < sizeof(*state))
-        return NULL;
-    return state;
-}
-
-static void mark_stdio_error(int descriptor)
-{
-    struct cb_stdio_state_v1 *state = stdio_state();
-    if (state != NULL) {
-        if (descriptor == 1)
-            state->stdout_error = 1;
-        else if (descriptor == 2)
-            state->stderr_error = 1;
-    }
-}
-
 static int write_all(int descriptor, const char *text, size_t length)
 {
     int saved_incoming_errno = bound_api->get_errno();
+    if ((descriptor == 1 || descriptor == 2) &&
+        stdio_stream_closed(descriptor)) {
+        bound_api->set_errno(CB_EBADF);
+        return -1;
+    }
     while (length != 0) {
         cb_ssize_t written = bound_api->write(descriptor, text, length);
         if (written < 0) {
@@ -1608,6 +1659,13 @@ int cb_libc_fflush(struct cb_libc_file *stream)
         bound_api->set_errno(CB_ENOSYS);
         return EOF;
     }
+    if (stream != NULL) {
+        int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
+        if (stdio_stream_closed(descriptor)) {
+            bound_api->set_errno(CB_EBADF);
+            return EOF;
+        }
+    }
     return 0;
 }
 
@@ -1722,6 +1780,10 @@ size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_l
     }
 
     int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
+    if (stdio_stream_closed(descriptor)) {
+        bound_api->set_errno(CB_EBADF);
+        return 0;
+    }
     int saved_incoming_errno = bound_api->get_errno();
     size_t total_bytes = size * count;
     size_t remaining = total_bytes;

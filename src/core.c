@@ -767,6 +767,8 @@ static void task_finish_exec(struct cb_task *task)
     task->pending_executable_node = NULL;
     task->stdio_state.stdout_error = 0;
     task->stdio_state.stderr_error = 0;
+    task->stdio_state.stdout_closed = 0;
+    task->stdio_state.stderr_closed = 0;
     task->input_state.stdin_eof = 0;
     task->input_state.stdin_error = 0;
     task->input_state.stdin_closed = 0;

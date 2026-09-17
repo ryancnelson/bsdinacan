@@ -269,8 +269,14 @@ int main(int argc, char **argv)
                 return 10;
         if (fopen(NULL, "r") != NULL || errno != EINVAL ||
             fopen("/tmp/stream-input", NULL) != NULL || errno != EINVAL) return 11;
-        if (fclose(NULL) != EOF || errno != EINVAL || fclose(stdout) != EOF ||
-            errno != EINVAL || fclose(stderr) != EOF || errno != EINVAL) return 12;
+        if (fclose(NULL) != EOF || errno != EINVAL) return 12;
+        /* CAT-01/STDIN-01 addendum: fclose(stdout)/fclose(stderr) now
+           succeed honestly rather than being unconditionally invalid --
+           see notes/iterations/STDIN-01-design.md's addendum. The
+           write-after-close proof lives in
+           tests/libc_fclose_stdout_probe.c, not here; this probe already
+           runs in a shared process with other modes, so it must not
+           actually close stdout/stderr out from under them. */
         if (fclose((FILE *)1) != EOF || errno != EINVAL ||
             getc((FILE *)1) != EOF || errno != EINVAL ||
             feof((FILE *)1) || errno != EINVAL ||
