@@ -125,6 +125,24 @@ target_include_directories(cb_fts PRIVATE
 # MAX and sys/types.h, libc/include for the rest, upstream/netbsd/bin/ls
 # for the files' own mutual "ls.h"/"extern.h" includes). Replaces the
 # retired cannedBSD-owned commands/ls.c (LS-01).
+#
+# STATICS-RESET-01: ls/cat/mv/rm/cp's own file-scope statics need the same
+# objcopy --redefine-sym/--globalize-symbol rename this ID's Linux Makefile
+# rule applies -- see src/static_reset.c's own top comment for why a
+# compile-time -D rename cannot do this job. CMAKE_OBJCOPY is CMake's own
+# standard variable for whatever objcopy-equivalent the active toolchain
+# provides; confirmed locally (pulled the real pinned
+# ghcr.io/autc04/retro68 image .woodpecker/mac68k.yml uses and ran
+# platform/mac68k/ci-build.sh directly, since it turned out pullable
+# without needing Woodpecker's own role=retro68 backend) that
+# m68k-apple-macos-objcopy exists and is real GNU objcopy 2.46 supporting
+# both flags. The rename itself is applied as a single PRE_LINK step on
+# the CannedBSD target below, not POST_BUILD on each of these OBJECT
+# libraries -- also found by running the real build, not assumed: this
+# CMake rejects PRE_BUILD/PRE_LINK/POST_BUILD on OBJECT library targets
+# outright ("Target ... is an OBJECT library that may not have ..."),
+# so the rename has to happen on the target that actually links, right
+# before it does.
 add_library(cb_ls OBJECT ${ROOT}/upstream/netbsd/bin/ls/ls.c)
 target_include_directories(cb_ls PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
@@ -171,6 +189,7 @@ target_compile_definitions(cb_cp_utils PRIVATE SMALL)
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
     ${ROOT}/src/core.c ${ROOT}/src/terminal.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
+    ${ROOT}/src/static_reset.c
     ${ROOT}/src/ramfs.c ${ROOT}/src/shell.c ${ROOT}/src/vfs.c
     ${ROOT}/commands/dirname_module.c ${ROOT}/commands/basename_module.c
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
@@ -215,6 +234,43 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/libc_basename_probe_module.c
     ${ROOT}/tests/libc_strtoimax_probe_module.c
     ${ROOT}/tests/vfs_executable_probe.c)
+# STATICS-RESET-01: applied once, right before CannedBSD's own link step
+# consumes these OBJECT libraries' output below -- see cb_ls's own build
+# rule comment above for why this cannot be a POST_BUILD step on each
+# OBJECT library instead.
+add_custom_command(TARGET CannedBSD PRE_LINK
+    COMMAND ${CMAKE_OBJCOPY} --redefine-sym output=cb_ls_output
+        --globalize-symbol=cb_ls_output $<TARGET_OBJECTS:cb_ls>
+    COMMAND ${CMAKE_OBJCOPY}
+        --redefine-sym dflag=cb_rm_dflag --redefine-sym eval=cb_rm_eval
+        --redefine-sym fflag=cb_rm_fflag --redefine-sym iflag=cb_rm_iflag
+        --redefine-sym Pflag=cb_rm_Pflag --redefine-sym vflag=cb_rm_vflag
+        --redefine-sym Wflag=cb_rm_Wflag --redefine-sym xflag=cb_rm_xflag
+        --globalize-symbol=cb_rm_dflag --globalize-symbol=cb_rm_eval
+        --globalize-symbol=cb_rm_fflag --globalize-symbol=cb_rm_iflag
+        --globalize-symbol=cb_rm_Pflag --globalize-symbol=cb_rm_vflag
+        --globalize-symbol=cb_rm_Wflag --globalize-symbol=cb_rm_xflag
+        $<TARGET_OBJECTS:cb_rm>
+    COMMAND ${CMAKE_OBJCOPY}
+        --redefine-sym fflg=cb_mv_fflg --redefine-sym hflg=cb_mv_hflg
+        --redefine-sym iflg=cb_mv_iflg --redefine-sym vflg=cb_mv_vflg
+        --globalize-symbol=cb_mv_fflg --globalize-symbol=cb_mv_hflg
+        --globalize-symbol=cb_mv_iflg --globalize-symbol=cb_mv_vflg
+        $<TARGET_OBJECTS:cb_mv>
+    COMMAND ${CMAKE_OBJCOPY}
+        --redefine-sym bflag=cb_cat_bflag --redefine-sym eflag=cb_cat_eflag
+        --redefine-sym fflag=cb_cat_fflag --redefine-sym lflag=cb_cat_lflag
+        --redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag
+        --redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag
+        --redefine-sym rval=cb_cat_rval
+        --globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag
+        --globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag
+        --globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag
+        --globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag
+        --globalize-symbol=cb_cat_rval
+        $<TARGET_OBJECTS:cb_cat>
+    COMMAND ${CMAKE_OBJCOPY} --redefine-sym dnesp=cb_cp_dnesp
+        --globalize-symbol=cb_cp_dnesp $<TARGET_OBJECTS:cb_cp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE

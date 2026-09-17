@@ -4206,19 +4206,18 @@ static const struct cb_program_v1 ls_interleave_child_program = {
 static int ls_interleave_main(const struct cb_api_v1 *api, int argc,
                               char *const argv[], char *const envp[])
 {
-    /* -1: forces printscol (a plain linked-list walk), not the default
-       column mode's printcol() -- LS-02 wired in the real pinned ls.c,
+    /* STATICS-RESET-01: the default column mode's printcol() (print.c)
+       used to be unsafe here -- LS-02 wired in the real pinned ls.c,
        whose printcol() caches a file-scope `static FTSENT **array` across
        invocations by design (real BSD ls never runs a second `ls` in the
-       same process). Two of these tasks calling printcol() with the same
-       entry count in one host process is a real, separately-flagged
-       heap-use-after-free once the first task's own allocations are
-       reclaimed at its task exit (see notes/iterations/LS-02.md's "found,
-       not fixed" section) -- not something this interleaving test is
-       trying to exercise, so it uses the one column mode that never
-       touches that cache. */
-    char *argv_alpha[] = {(char *)"ls", (char *)"-1", (char *)"/tmp/lsdir-alpha", NULL};
-    char *argv_beta[] = {(char *)"ls", (char *)"-1", (char *)"/tmp/lsdir-beta", NULL};
+       same process), and two of these tasks calling it in one host
+       process was a real heap-use-after-free once the first task's own
+       allocations were reclaimed at its task exit. Fixed by
+       CB_EXECUTOR_PERSISTENT_HEAP (src/static_reset.c); this now
+       exercises the real default path (no -1 workaround) specifically
+       because it is the interleaved, not just sequential, case. */
+    char *argv_alpha[] = {(char *)"ls", (char *)"/tmp/lsdir-alpha", NULL};
+    char *argv_beta[] = {(char *)"ls", (char *)"/tmp/lsdir-beta", NULL};
     int fd, status;
     (void)argc;
     (void)argv;
@@ -4893,8 +4892,16 @@ static void run_case(const char *command, const char *expected_output,
         /* Scoped fixture, same reason as FIXTURE_DIRENT above: FIXTURE_FULL
            is already at CB_MAX_PROGRAMS's 64-slot ceiling. cb_ls_program
            itself still comes from cb_register_base_programs() above, shared
-           by every fixture. */
-        if (cb_kernel_register(kernel, &ls_interleave_child_program) < 0 ||
+           by every fixture. ls_interleave_child_program must be registered
+           under cb_ls_static_reset_executor(), not the plain native
+           executor: it runs the same pinned cb_ls_main whose printcol()
+           cache STATICS-RESET-01 exists to protect, and registering it
+           under the native executor bypasses that protection entirely --
+           found by running this fixture under the sanitizer after
+           reverting the -1 workaround and getting the exact
+           heap-use-after-free this ID was supposed to fix, not guessed. */
+        if (cb_kernel_register_executor(kernel, cb_ls_static_reset_executor(),
+                                        &ls_interleave_child_program) < 0 ||
             cb_kernel_register(kernel, &ls_interleave_program) < 0)
             fail("ls interleave test program registration");
     } else if (fixture == FIXTURE_FTS) {

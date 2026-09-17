@@ -60,12 +60,46 @@ struct cb_executor_ops {
 
 #define CB_EXECUTOR_V1_PREFIX_SIZE offsetof(struct cb_executor_ops, capabilities)
 #define CB_EXECUTOR_COOPERATIVE_INTERRUPT UINT32_C(1)
+/* STATICS-RESET-01: this executor's programs keep task allocations alive
+   across task exit instead of releasing them in task_release_allocations()
+   -- see that function's own comment for why (a pinned command's function-
+   local static cache this runtime cannot reach to reset directly, unlike
+   a plain scalar/pointer file-scope global). */
+/* UINT32_C(2) is deliberately NOT used here: tests/signal_probe.c's own
+   UNKNOWN_EXECUTOR scenario already uses capabilities=2 as a
+   deliberately-unrecognized bit to prove cb_executor_supports_interrupt()
+   does not mistake it for CB_EXECUTOR_COOPERATIVE_INTERRUPT -- reusing it
+   would make that pre-existing test's "unknown capability" executor look
+   like a real persistent-heap one to this new check (found by running
+   the actual test suite and reading its failure, not guessed). */
+#define CB_EXECUTOR_PERSISTENT_HEAP UINT32_C(4)
 #define CB_INTERRUPT_DEFAULT 0
 #define CB_INTERRUPT_IGNORE 1
 
 struct cb_program {
     const struct cb_executor_ops *executor;
     const char *name;
+    /* STATICS-RESET-01: only ever non-NULL for a program registered under
+       an executor with CB_EXECUTOR_PERSISTENT_HEAP set; NULL and unused
+       for every ordinary native-executed program. Owned by whichever
+       executor set the capability bit; released in that executor's own
+       program_destroy. */
+    struct cb_task_allocation *persistent_allocations;
+    /* STATICS-RESET-01: only ever non-NULL for a program registered under
+       cb_static_reset_ops (src/static_reset.c). Captured once, from each
+       managed slot's own live value the first time any task of this
+       program is created -- i.e. before any task has run and mutated
+       them, so this is still each slot's real compile-time initializer
+       (0 for a plain BSS static, but NOT always 0: ls.c's own `termwidth`
+       initializes to 80 and is only ever reassigned when a real terminal
+       is present, which this runtime's virtual console never reports, so
+       blindly resetting it to 0 instead of restoring its actual compiled
+       default would leave every ls invocation after the first computing
+       column widths against a zero-width terminal). Restoring from this
+       buffer, not a zeroed one, is what start_or_resume seeds a brand-new
+       task's own execution->saved with; released in the executor's own
+       program_destroy. */
+    unsigned char *static_defaults;
 };
 
 struct cb_execution {
@@ -325,7 +359,24 @@ int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous);
 /* Executor opt-in boundary: target stack only, with kernel current installed. */
 void cb_task_deliver_interrupt(struct cb_task *task);
 int cb_executor_supports_interrupt(const struct cb_executor_ops *executor);
+int cb_executor_supports_persistent_heap(const struct cb_executor_ops *executor);
+/* STATICS-RESET-01: frees a cb_task_allocation list the same way
+   task_release_allocations() always did -- exposed so a persistent-heap
+   executor's own program_destroy can release its accumulated arena at
+   real kernel teardown without needing struct cb_task_allocation's
+   (core.c-private) layout. */
+void cb_task_release_allocation_list(struct cb_kernel *kernel,
+                                     struct cb_task_allocation *allocation);
 const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
+
+/* STATICS-RESET-01 (src/static_reset.c): one generic executor-ops wrapper,
+   one accessor per command giving it its own slot table. See that file's
+   own top comment for the full design. */
+const struct cb_executor_ops *cb_ls_static_reset_executor(void);
+const struct cb_executor_ops *cb_cat_static_reset_executor(void);
+const struct cb_executor_ops *cb_mv_static_reset_executor(void);
+const struct cb_executor_ops *cb_rm_static_reset_executor(void);
+const struct cb_executor_ops *cb_cp_static_reset_executor(void);
 
 const struct cb_executor_ops *cb_native_executor(void);
 int cb_executor_prepare(struct cb_kernel *kernel,

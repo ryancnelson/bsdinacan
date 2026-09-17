@@ -580,16 +580,49 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
     cb_task_deliver_interrupt(task);
 }
 
+void cb_task_release_allocation_list(struct cb_kernel *kernel,
+                                     struct cb_task_allocation *allocation)
+{
+    while (allocation != NULL) {
+        struct cb_task_allocation *next = allocation->next;
+        cb_release(kernel, allocation->pointer);
+        cb_release(kernel, allocation);
+        allocation = next;
+    }
+}
+
 static void task_release_allocations(struct cb_task *task)
 {
     struct cb_task_allocation *allocation = task->allocations;
     /* Libc alone knows wrapper layout. Never retain a list into reclaimed heap. */
     task->input_state.input_streams = NULL;
-    while (allocation != NULL) {
-        struct cb_task_allocation *next = allocation->next;
-        cb_release(task->kernel, allocation->pointer);
-        cb_release(task->kernel, allocation);
-        allocation = next;
+    /* STATICS-RESET-01: a persistent-heap executor's tasks keep their
+       allocations alive across task exit, spliced onto the shared
+       program's own list rather than released here -- see cb_program's
+       persistent_allocations field and CB_EXECUTOR_PERSISTENT_HEAP's own
+       comment for why (print.c's printcol() column-mode cache, a
+       function-local static this runtime has no external name for, so
+       the only way to make a later ls task never read a stale pointer
+       into memory this function already freed is to never free it while
+       the program could still run again -- freed for real at genuine
+       kernel teardown in that executor's own program_destroy instead).
+       Reads task->program, not task->execution: still the OLD (pre-exec)
+       program at this call site even mid-exec-transition
+       (task_finish_exec reassigns task->program only after this call
+       returns), so the persistent-heap treatment still applies correctly
+       across an exec() -- task->execution, by contrast, is already NULL
+       there. */
+    if (task->program != NULL &&
+        cb_executor_supports_persistent_heap(task->program->executor) &&
+        allocation != NULL) {
+        struct cb_program *program = (struct cb_program *)task->program;
+        struct cb_task_allocation *tail = allocation;
+        while (tail->next != NULL)
+            tail = tail->next;
+        tail->next = program->persistent_allocations;
+        program->persistent_allocations = allocation;
+    } else {
+        cb_task_release_allocation_list(task->kernel, allocation);
     }
     task->allocations = NULL;
 }

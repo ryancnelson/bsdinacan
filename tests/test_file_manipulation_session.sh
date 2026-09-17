@@ -105,54 +105,50 @@ check_stdin_session() {
 #    - copy: cp (cp /tmp/alpha /tmp/alpha_bak, cp -r /home/user /tmp/user_copy)
 #    - move: mv (mv /tmp/alpha_bak /tmp/alpha_moved)
 #    - delete: rm (rm /tmp/beta, rm -r /tmp/user_copy, rm /tmp/alpha /tmp/alpha_moved)
-# LS-02: every `ls` call below passes -1 (forces printscol, a plain
-# linked-list walk) rather than the default column mode. print.c's
-# printcol() -- the default `printfcn` once a listing has more than one
-# entry -- caches a random-access array across calls in a file-scope
-# `static FTSENT **array`/`static int lastentries`, by design: real BSD
-# `ls` never runs a second time in the same process, so it never
-# reallocates once a later call's entry count does not exceed an earlier
-# one's. This runtime's task model makes that assumption false in a way
-# that is a genuine heap-use-after-free, not just cosmetically wrong: each
-# `ls` invocation is its own task, and `src/core.c`'s
-# `task_release_allocations()` frees every allocation a task ever made
-# when that task exits -- so a later `ls` call in this same session reuses
-# a dangling pointer into memory the previous `ls` task's own exit already
-# freed (caught by the `sanitize` build; see notes/iterations/LS-02.md's
-# "found, not fixed" section, which also covers the separate, cosmetic-
-# only `output` static that still leaks a stray header across these same
-# calls regardless of column mode).
+# STATICS-RESET-01: these `ls` calls used to pass -1 (forcing printscol, a
+# plain linked-list walk) to dodge two LS-02 hazards in the default,
+# multi-entry column path: print.c's printcol() column-mode cache (a
+# function-local `static FTSENT **array`/`static int lastentries`, a
+# genuine heap-use-after-free once an earlier ls task's allocations were
+# reclaimed at its own task exit) and ls.c's own `output` flag (a stray
+# "\ndirname:\n" header leaking into a later single-argument listing).
+# STATICS-RESET-01 fixed both -- the array via CB_EXECUTOR_PERSISTENT_HEAP
+# (src/static_reset.c), the flag via objcopy-based per-invocation reset --
+# so these now exercise the real default column path across multiple `ls`
+# invocations in one session, the scenario that used to crash under the
+# sanitizer. Expected output below was captured from the real binary, not
+# hand-computed: real BSD `ls` prints no header at all for a single
+# directory operand (the old "\n/tmp:\n" lines were the leak, not real
+# behavior) and packs multiple names per line once column mode applies.
 check_case \
-    'echo "first line of alpha" > /tmp/alpha; echo "second line of alpha" >> /tmp/alpha; echo "data content for beta" > /tmp/beta; ls -1 /tmp; cat /tmp/alpha; head -n 1 /tmp/alpha; wc -c /tmp/beta; cp /tmp/alpha /tmp/alpha_bak; cp -r /home/user /tmp/user_copy; ls -1 /tmp; cat /tmp/alpha_bak; mv /tmp/alpha_bak /tmp/alpha_moved; ls -1 /tmp; cat /tmp/alpha_moved; rm /tmp/beta; rm -r /tmp/user_copy; ls -1 /tmp; rm /tmp/alpha /tmp/alpha_moved; ls -1 /tmp' \
+    'echo "first line of alpha" > /tmp/alpha; echo "second line of alpha" >> /tmp/alpha; echo "data content for beta" > /tmp/beta; ls /tmp; cat /tmp/alpha; head -n 1 /tmp/alpha; wc -c /tmp/beta; cp /tmp/alpha /tmp/alpha_bak; cp -r /home/user /tmp/user_copy; ls /tmp; cat /tmp/alpha_bak; mv /tmp/alpha_bak /tmp/alpha_moved; ls /tmp; cat /tmp/alpha_moved; rm /tmp/beta; rm -r /tmp/user_copy; ls /tmp; rm /tmp/alpha /tmp/alpha_moved; ls /tmp' \
     0 \
-    "alpha\nbeta\nfirst line of alpha\nsecond line of alpha\nfirst line of alpha\n22\n\n/tmp:\nalpha\nalpha_bak\nbeta\nuser_copy\nfirst line of alpha\nsecond line of alpha\n\n/tmp:\nalpha\nalpha_moved\nbeta\nuser_copy\nfirst line of alpha\nsecond line of alpha\n\n/tmp:\nalpha\nalpha_moved\n\n/tmp:\n" \
+    "alpha beta\nfirst line of alpha\nsecond line of alpha\nfirst line of alpha\n22\nalpha     alpha_bak beta      user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved  beta         user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved\n" \
     "" \
     "full lifecycle session through all six file manipulation verbs"
 
 # 2. Pipeline composition joining file manipulation utilities and verifying exit status
-# LS-02: real ls sorts by name (item1, item2 -- not LS-01's raw creation
-# order). The trailing `ls -1 /tmp` (now empty) still carries the leaked
-# "\ndirname:\n" header from the earlier successful listing -- see case
-# 1's comment and notes/iterations/LS-02.md. (The piped `ls /tmp | tr`
-# already prints one name per line on its own -- stdout is a real pipe,
-# isatty() genuinely false for it unlike the virtual console -- so it
-# does not need -1 to avoid printcol(), but the pipe target itself never
-# reaches the multi-entry column path either way.)
+# STATICS-RESET-01: real ls sorts by name (item1, item2 -- not LS-01's raw
+# creation order). The trailing `ls /tmp` (now empty) produces no output
+# at all -- no header, no entries -- now that ls.c's own leaked `output`
+# flag is reset per invocation; see case 1's comment. (The piped
+# `ls /tmp | tr` already prints one name per line on its own -- stdout is
+# a real pipe, isatty() genuinely false for it unlike the virtual
+# console -- so it never reaches the multi-entry column path either way.)
 check_case \
-    'echo "entry1" > /tmp/item1; echo "entry2" > /tmp/item2; ls /tmp | tr a-z A-Z; cp /tmp/item1 /tmp/item_copy; cat /tmp/item_copy | tr a-z A-Z; rm /tmp/item1 /tmp/item2 /tmp/item_copy; ls -1 /tmp' \
+    'echo "entry1" > /tmp/item1; echo "entry2" > /tmp/item2; ls /tmp | tr a-z A-Z; cp /tmp/item1 /tmp/item_copy; cat /tmp/item_copy | tr a-z A-Z; rm /tmp/item1 /tmp/item2 /tmp/item_copy; ls /tmp' \
     0 \
-    "ITEM1\nITEM2\nENTRY1\n\n/tmp:\n" \
+    "ITEM1\nITEM2\nENTRY1\n" \
     "" \
     "pipeline composition connecting file manipulation verbs"
 
 # 3. Cross-directory hierarchy manipulation (create in subdir, copy to /tmp, inspect, move, delete)
-# LS-02: the two final `ls` calls (both now-empty directories) each still
-# carry the leaked "\ndirname:\n" header from the earlier successful
-# `ls -1 /tmp` listing -- see case 1's comment and notes/iterations/LS-02.md.
+# STATICS-RESET-01: the two final `ls` calls (both now-empty directories)
+# produce no output at all -- see case 1's comment.
 check_case \
-    'echo "user secret" > /home/user/secret.txt; cp /home/user/secret.txt /tmp/public.txt; cat /tmp/public.txt; head -n 1 /home/user/secret.txt; mv /tmp/public.txt /tmp/renamed.txt; ls -1 /tmp; rm /tmp/renamed.txt /home/user/secret.txt; ls -1 /tmp; ls -1 /home/user' \
+    'echo "user secret" > /home/user/secret.txt; cp /home/user/secret.txt /tmp/public.txt; cat /tmp/public.txt; head -n 1 /home/user/secret.txt; mv /tmp/public.txt /tmp/renamed.txt; ls /tmp; rm /tmp/renamed.txt /home/user/secret.txt; ls /tmp; ls /home/user' \
     0 \
-    "user secret\nuser secret\nrenamed.txt\n\n/tmp:\n\n/home/user:\n" \
+    "user secret\nuser secret\nrenamed.txt\n" \
     "" \
     "cross-directory hierarchy manipulation session"
 
@@ -167,13 +163,12 @@ check_case \
     "status code propagation and non-fatal error recovery within session"
 
 # 5. Interactive stdin session driving the full verb suite with prompt assertions
-# LS-02: -1 avoids print.c's printcol() use-after-free (see case 1's
-# comment); the trailing (now-empty) `ls -1 /tmp` still carries the
-# leaked "\ndirname:\n" header from the earlier successful listing.
+# STATICS-RESET-01: exercises the real default column path (see case 1's
+# comment); the trailing (now-empty) `ls /tmp` produces no output at all.
 check_stdin_session \
-    'echo "hello from stdin" > /tmp/session_file\ncat /tmp/session_file\nhead -n 1 /tmp/session_file\nwc -c /tmp/session_file\ncp /tmp/session_file /tmp/session_copy\nmv /tmp/session_copy /tmp/session_moved\nls -1 /tmp\nrm /tmp/session_file /tmp/session_moved\nls -1 /tmp\n' \
+    'echo "hello from stdin" > /tmp/session_file\ncat /tmp/session_file\nhead -n 1 /tmp/session_file\nwc -c /tmp/session_file\ncp /tmp/session_file /tmp/session_copy\nmv /tmp/session_copy /tmp/session_moved\nls /tmp\nrm /tmp/session_file /tmp/session_moved\nls /tmp\n' \
     0 \
-    "cannedBSD$ cannedBSD$ hello from stdin\ncannedBSD$ hello from stdin\ncannedBSD$ 17\ncannedBSD$ cannedBSD$ cannedBSD$ session_file\nsession_moved\ncannedBSD$ cannedBSD$ \n/tmp:\ncannedBSD$ " \
+    "cannedBSD$ cannedBSD$ hello from stdin\ncannedBSD$ hello from stdin\ncannedBSD$ 17\ncannedBSD$ cannedBSD$ cannedBSD$ session_file    session_moved\ncannedBSD$ cannedBSD$ cannedBSD$ " \
     "" \
     "interactive stdin session driving all six verbs"
 

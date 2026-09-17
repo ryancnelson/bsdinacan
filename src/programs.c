@@ -175,16 +175,27 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_dirname_program,
         &cb_basename_program,
         &cb_netbsdecho_program,
-        &cb_head_program,
-        &cb_ls_program,
-        &cb_rm_program,
-        &cb_mv_program,
-        &cb_cat_program,
-        &cb_cp_program
+        &cb_head_program
     };
     size_t index;
     for (index = 0; index < sizeof(programs) / sizeof(programs[0]); ++index) {
         if (cb_kernel_register(kernel, programs[index]) < 0)
             kernel->host->fatal("failed to register base program");
     }
+    /* STATICS-RESET-01: ls/cat/mv/rm/cp each need their pinned source's
+       own cross-invocation state isolated per invocation -- see
+       src/static_reset.c's own top comment. Registered individually, not
+       through the uniform loop above, since each needs its own executor
+       with its own slot table. */
+    if (cb_kernel_register_executor(kernel, cb_ls_static_reset_executor(),
+                                    &cb_ls_program) < 0 ||
+        cb_kernel_register_executor(kernel, cb_cat_static_reset_executor(),
+                                    &cb_cat_program) < 0 ||
+        cb_kernel_register_executor(kernel, cb_mv_static_reset_executor(),
+                                    &cb_mv_program) < 0 ||
+        cb_kernel_register_executor(kernel, cb_rm_static_reset_executor(),
+                                    &cb_rm_program) < 0 ||
+        cb_kernel_register_executor(kernel, cb_cp_static_reset_executor(),
+                                    &cb_cp_program) < 0)
+        kernel->host->fatal("failed to register base program");
 }

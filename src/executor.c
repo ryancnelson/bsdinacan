@@ -58,6 +58,14 @@ int cb_executor_supports_interrupt(const struct cb_executor_ops *executor)
            (executor->capabilities & CB_EXECUTOR_COOPERATIVE_INTERRUPT) != 0;
 }
 
+int cb_executor_supports_persistent_heap(const struct cb_executor_ops *executor)
+{
+    return executor != NULL && executor->abi_version == CB_ABI_VERSION_V1 &&
+           executor->struct_size >= offsetof(struct cb_executor_ops, capabilities) +
+                                    sizeof(executor->capabilities) &&
+           (executor->capabilities & CB_EXECUTOR_PERSISTENT_HEAP) != 0;
+}
+
 const struct cb_executor_ops *cb_native_executor(void)
 {
     return &native_ops;

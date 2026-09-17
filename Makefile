@@ -51,6 +51,7 @@ CORE_SOURCES := \
 	src/executor.c \
 	src/host_linux.c \
 	src/programs.c \
+	src/static_reset.c \
 	src/ramfs.c \
 	src/shell.c \
 	src/vfs.c
@@ -175,9 +176,35 @@ $(LS_COMMAND_OBJECT): upstream/netbsd/bin/ls/ls.c upstream/netbsd/bin/ls/ls.h \
 		libc/include/stdlib.h libc/include/string.h libc/include/unistd.h \
 		libc/include/termios.h libc/include/pwd.h libc/include/grp.h \
 		libc/include/util.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) \
+# STATICS-RESET-01: ls.c's own file-scope "have I already printed
+# something" static (`output`) needs per-invocation isolation -- see
+# src/static_reset.c's own top comment. -D can only rename an identifier,
+# never selectively strip internal linkage from ONE specific declaration
+# (a blanket -Dstatic= would also silently turn ls.c's actual
+# FUNCTION-LOCAL statics, like ls_main's own "static char dot[]"
+# fallback-argv array, into fresh-garbage-per-call automatic variables --
+# found by attempting exactly that on a sibling command, not guessed: see
+# mv.c's own build rule below). objcopy operates on the compiled symbol
+# table instead, precisely enough to touch only the one named symbol:
+# --globalize-symbol promotes it from local to global binding,
+# --redefine-sym renames it, and nothing else in the object file (any
+# actual function-local static, correctly still compiler-managed) is
+# affected. -O0 (overriding $(CFLAGS)'s own -O2, a real trailing-flag-wins
+# override, not a typo): at -O1/-O2 under clang's ASan instrumentation,
+# `output`'s address is never taken anywhere within ls.c itself, so the
+# compiler narrows its tracked "real size" to how many bytes ls.c's own
+# code actually observes (here, 1 -- the low byte of a 0/1 flag), even
+# though the C type is `int`; objcopy's later externally-visible rename
+# is invisible to that analysis, and static_reset.c's genuinely 4-byte
+# write then overflows ASan's narrowed redzone -- a real
+# global-buffer-overflow this project's own sanitizer gate caught, not
+# guessed. Performance is not a concern for a one-shot utility this
+# small, so -O0 (which does not exhibit the narrowing) is the correct
+# fix, not silencing the sanitizer.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
 		-DSMALL -Dls_main=cb_ls_main \
 		-c upstream/netbsd/bin/ls/ls.c -o $@
+	objcopy --redefine-sym output=cb_ls_output --globalize-symbol=cb_ls_output $@
 
 $(LS_PRINT_OBJECT): upstream/netbsd/bin/ls/print.c upstream/netbsd/bin/ls/ls.h \
 		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
@@ -224,8 +251,27 @@ $(RM_COMMAND_OBJECT): upstream/netbsd/bin/rm/rm.c include/cannedbsd/abi.h \
 		libc/include/locale.h libc/include/pwd.h libc/include/signal.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
 		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+# STATICS-RESET-01: rm.c's own getopt flags plus its own accumulated
+# exit-status variable (eval) need per-invocation isolation -- objcopy,
+# not -D, for the same reason ls.c's own build rule comment explains.
+# stdin_ok/pinfo (also file-scope statics here) are deliberately not
+# renamed/managed: stdin_ok is always recomputed via isatty() before use
+# (moot regardless, since isatty() always reports true in this runtime)
+# and pinfo is a SIGINFO progress counter with no correctness impact if
+# stale.
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains (rm.c's flags are also only ever observed as 0/1
+# within rm.c itself).
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -O0 \
 		-Dmain=cb_rm_main -c upstream/netbsd/bin/rm/rm.c -o $@
+	objcopy --redefine-sym dflag=cb_rm_dflag --redefine-sym eval=cb_rm_eval \
+		--redefine-sym fflag=cb_rm_fflag --redefine-sym iflag=cb_rm_iflag \
+		--redefine-sym Pflag=cb_rm_Pflag --redefine-sym vflag=cb_rm_vflag \
+		--redefine-sym Wflag=cb_rm_Wflag --redefine-sym xflag=cb_rm_xflag \
+		--globalize-symbol=cb_rm_dflag --globalize-symbol=cb_rm_eval \
+		--globalize-symbol=cb_rm_fflag --globalize-symbol=cb_rm_iflag \
+		--globalize-symbol=cb_rm_Pflag --globalize-symbol=cb_rm_vflag \
+		--globalize-symbol=cb_rm_Wflag --globalize-symbol=cb_rm_xflag $@
 
 $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnames.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -236,9 +282,25 @@ $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnam
 		libc/include/grp.h libc/include/locale.h libc/include/pwd.h \
 		libc/include/signal.h libc/include/stdio.h libc/include/stdlib.h \
 		libc/include/string.h libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/mv $(CFLAGS) \
-		-Dmain=cb_mv_main \
-		-c upstream/netbsd/bin/mv/mv.c -o $@
+# STATICS-RESET-01: mv.c's own getopt flags need per-invocation isolation
+# -- objcopy, not -D, for the same reason ls.c's own build rule comment
+# explains. stdin_ok/pinfo left unmanaged, same reasoning as rm.c's own.
+# fastcopy()'s own function-local `static char *bp`/`static blksize_t
+# blen` buffer cache is a SEPARATE hazard objcopy cannot reach at all (no
+# compiler-portable external name for a function-local static -- found by
+# attempting exactly this rename, which produced a real
+# -Wmaybe-uninitialized error once `static` was stripped, not guessed):
+# covered instead by giving this program CB_EXECUTOR_PERSISTENT_HEAP (see
+# src/static_reset.c), the same mechanism print.c's printcol() cache
+# needs under ls.
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/mv $(CFLAGS) -O0 \
+		-Dmain=cb_mv_main -c upstream/netbsd/bin/mv/mv.c -o $@
+	objcopy --redefine-sym fflg=cb_mv_fflg --redefine-sym hflg=cb_mv_hflg \
+		--redefine-sym iflg=cb_mv_iflg --redefine-sym vflg=cb_mv_vflg \
+		--globalize-symbol=cb_mv_fflg --globalize-symbol=cb_mv_hflg \
+		--globalize-symbol=cb_mv_iflg --globalize-symbol=cb_mv_vflg $@
 
 # CAT-01. Prerequisites: LIBC-CTYPE-01 (isascii/toascii/iscntrl),
 # LIBC-STDIO-02 (clearerr/setbuf/fileno/BUFSIZ/SEEK_*), LIBC-ERR-02
@@ -253,8 +315,31 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 		libc/include/errno.h libc/include/fcntl.h libc/include/locale.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
 		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+# STATICS-RESET-01: cat.c's own getopt flags and its accumulated
+# exit-status variable (rval) need per-invocation isolation -- objcopy,
+# not -D, for the same reason ls.c's own build rule comment explains.
+# filename is left unmanaged: always reassigned before every read/warn()
+# use within the same invocation, so no reset is needed. bsize is also
+# left unmanaged, deliberately NOT renamed/reset here: it gates
+# raw_cat()'s own function-local `static char *buf`, which objcopy cannot
+# safely reach in a mac68k-portable way, so the pair is left to
+# CB_EXECUTOR_PERSISTENT_HEAP instead of resetting one half and desyncing
+# it from the other -- see src/static_reset.c's own cat_slots comment for
+# the bug this caused when bsize alone was reset.
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -O0 \
 		-Dmain=cb_cat_main -c upstream/netbsd/bin/cat/cat.c -o $@
+	objcopy --redefine-sym bflag=cb_cat_bflag --redefine-sym eflag=cb_cat_eflag \
+		--redefine-sym fflag=cb_cat_fflag --redefine-sym lflag=cb_cat_lflag \
+		--redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag \
+		--redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag \
+		--redefine-sym rval=cb_cat_rval \
+		--globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag \
+		--globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag \
+		--globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag \
+		--globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag \
+		--globalize-symbol=cb_cat_rval $@
 
 $(CP_COMMAND_OBJECT): upstream/netbsd/bin/cp/cp.c upstream/netbsd/bin/cp/extern.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -264,9 +349,17 @@ $(CP_COMMAND_OBJECT): upstream/netbsd/bin/cp/cp.c upstream/netbsd/bin/cp/extern.
 		libc/include/fts.h libc/include/locale.h libc/include/signal.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
 		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/cp $(CFLAGS) \
+# STATICS-RESET-01: cp.c's own dnesp (pushdne()/popdne()'s recursion-depth
+# index into the file-scope `static int dnestack[MAXPATHLEN]` array,
+# itself needing no slot -- see src/static_reset.c's own cp_slots comment)
+# needs objcopy, not -D, for the same reason ls.c's own build rule comment
+# explains; cp.c's own eleven getopt flags are plain non-static globals
+# already and need no rename at all. -O0: same clang+ASan
+# global-size-narrowing reason as ls.c's own build rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/cp $(CFLAGS) -O0 \
 		-DSMALL -Dmain=cb_cp_main \
 		-c upstream/netbsd/bin/cp/cp.c -o $@
+	objcopy --redefine-sym dnesp=cb_cp_dnesp --globalize-symbol=cb_cp_dnesp $@
 
 $(CP_UTILS_OBJECT): upstream/netbsd/bin/cp/utils.c upstream/netbsd/bin/cp/extern.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -713,6 +806,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cat_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cp_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_file_manipulation_session.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_statics_repro.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
