@@ -19,11 +19,15 @@ struct cb_ramfs_node {
     size_t size;
     size_t capacity;
     unsigned references;
+    uint64_t atime_ms;
+    uint64_t mtime_ms;
+    uint64_t ctime_ms;
 };
 
 struct cb_ramfs_mount {
     struct cb_vfs_mount common;
     struct cb_ramfs_node *root;
+    uint32_t device;
 };
 
 static cb_ssize_t node_read(struct cb_open_file *file, struct cb_task *task,
@@ -132,6 +136,8 @@ static struct cb_ramfs_node *node_create(struct cb_ramfs_mount *mount,
     node->mode = mode;
     node->parent = parent;
     node->references = 1;
+    node->atime_ms = node->mtime_ms = node->ctime_ms =
+        kernel->host->wall_clock_millis();
     if (parent != NULL) {
         node->next_sibling = parent->children;
         parent->children = node;
@@ -299,6 +305,7 @@ static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length)
     if (needed > node->size)
         memset(node->data + node->size, 0, needed - node->size);
     node->size = needed;
+    node->mtime_ms = node->ctime_ms = common->mount->kernel->host->wall_clock_millis();
     return 0;
 }
 
@@ -396,13 +403,35 @@ static int ramfs_rename(struct cb_vfs_node *common,
     node->parent = new_parent;
     cb_release(kernel, node->name);
     node->name = new_name_owned;
+    node->ctime_ms = kernel->host->wall_clock_millis();
     return 0;
+}
+
+/* Real POSIX-computed link count: RAMFS has no hardlink primitive, so a
+   non-directory always has exactly one name pointing at it. A directory's
+   count is "." plus its entry in its parent plus each child directory's
+   own ".." pointing back here -- 2 plus the number of child directories,
+   the same convention real filesystems use. Not a stored, synchronizable
+   counter: computed fresh from the live children list every call. */
+static uint32_t ramfs_link_count(const struct cb_ramfs_node *node)
+{
+    uint32_t count;
+    struct cb_ramfs_node *child;
+    if (node->type != CB_NODE_DIRECTORY)
+        return 1;
+    count = 2;
+    for (child = node->children; child != NULL; child = child->next_sibling) {
+        if (child->type == CB_NODE_DIRECTORY)
+            ++count;
+    }
+    return count;
 }
 
 static int ramfs_stat(struct cb_vfs_node *common,
                       struct cb_stat_v1 *stat_buffer)
 {
     struct cb_ramfs_node *node = ramfs_node(common);
+    struct cb_ramfs_mount *mount = ramfs_mount(common->mount);
     if (stat_buffer == NULL)
         return -CB_EINVAL;
     memset(stat_buffer, 0, sizeof(*stat_buffer));
@@ -412,6 +441,14 @@ static int ramfs_stat(struct cb_vfs_node *common,
     stat_buffer->size = node->size;
     stat_buffer->mode = node->type == CB_NODE_EXECUTABLE ? 0555 : node->mode;
     stat_buffer->type = node->type;
+    stat_buffer->device = mount->device;
+    stat_buffer->nlink = ramfs_link_count(node);
+    /* uid/gid: fixed 0, see the struct's own doc comment in abi.h. */
+    stat_buffer->uid = 0;
+    stat_buffer->gid = 0;
+    stat_buffer->atime_ms = node->atime_ms;
+    stat_buffer->mtime_ms = node->mtime_ms;
+    stat_buffer->ctime_ms = node->ctime_ms;
     return 0;
 }
 
@@ -448,6 +485,7 @@ struct cb_vfs_mount *cb_ramfs_mount_create(struct cb_kernel *kernel)
         return NULL;
     mount->common.ops = &ramfs_mount_ops;
     mount->common.kernel = kernel;
+    mount->device = ++kernel->next_device;
     mount->root = node_create(mount, NULL, "", CB_NODE_DIRECTORY, 0755);
     if (mount->root == NULL)
         goto fail;
@@ -492,6 +530,7 @@ static cb_ssize_t node_read(struct cb_open_file *file, struct cb_task *task,
         count = available;
     memcpy(buffer, node->data + (size_t)file->offset, count);
     file->offset += (cb_off_t)count;
+    node->atime_ms = task->kernel->host->wall_clock_millis();
     cb_task_set_error(task, 0);
     return (cb_ssize_t)count;
 }
@@ -550,6 +589,7 @@ static cb_ssize_t node_write(struct cb_open_file *file, struct cb_task *task,
     file->offset += (cb_off_t)count;
     if (needed > node->size)
         node->size = needed;
+    node->mtime_ms = node->ctime_ms = task->kernel->host->wall_clock_millis();
     cb_task_set_error(task, 0);
     return (cb_ssize_t)count;
 }

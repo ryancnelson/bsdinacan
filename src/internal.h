@@ -302,6 +302,7 @@ struct cb_kernel {
     size_t mount_count;
     struct cb_vfs_node *vfs_root;
     uint64_t next_inode;
+    uint32_t next_device;
     struct cb_program *programs[CB_MAX_PROGRAMS];
     size_t program_count;
     struct cb_api_v1 api;
