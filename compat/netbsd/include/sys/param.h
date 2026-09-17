@@ -7,6 +7,7 @@
  * libc include path -- the real sys/param.h exposes page sizes, howmany(),
  * and other surface this project does not implement.
  */
+#include "cannedbsd/abi.h"
 #include "sys/types.h"
 #include "signal.h"
 
@@ -15,11 +16,11 @@
 #endif
 
 #ifndef MAXPATHLEN
-#define MAXPATHLEN 1024
+#define MAXPATHLEN CB_PATH_MAX
 #endif
 
 #ifndef PATH_MAX
-#define PATH_MAX 1024
+#define PATH_MAX CB_PATH_MAX
 #endif
 
 #ifndef MAXBSIZE
