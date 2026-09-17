@@ -50,13 +50,19 @@ run_repro_test "rm stale eval exit status leakage on successful second invocatio
     "rm /tmp/nonexistent; echo rm1_status=\$?; echo data > /tmp/valid; rm /tmp/valid; echo rm2_status=\$?" \
     "rm2_status=1"
 
-# 3. cp flag leakage (vflag persists when second cp has no -v)
+# 3. cp flag leakage (7 unreset flags: fflag, iflag, lflag, pflag, rflag, vflag, Nflag)
+# 3a. cp persistent lflag leakage: second cp (without -l) attempts hardlinking instead of data copy
+run_repro_test "cp persistent lflag leakage on second invocation without -l" \
+    "echo original > /tmp/cporig; echo target > /tmp/cptarget; cp -l /tmp/cporig /tmp/cplink; cp /tmp/cptarget /tmp/cpcpy; echo \$?" \
+    "cp: /tmp/cpcpy: function not implemented"
+
+# 3b. cp persistent vflag leakage: second cp (without -v) outputs verbose progress
 run_repro_test "cp persistent vflag leakage on second invocation without -v" \
     "echo 1 > /tmp/cpa; echo 2 > /tmp/cpb; cp -v /tmp/cpa /tmp/cpa_out; cp /tmp/cpb /tmp/cpb_out" \
     "/tmp/cpb -> /tmp/cpb_out"
 
-# 4. mv cross-mount fastcopy reachability check
-run_repro_test "mv cross-directory intra-mount rename (fastcopy reachability check)" \
+# 4. mv cross-mount fastcopy reachability check (verifying latent behavior)
+run_repro_test "mv cross-directory intra-mount rename (latent fastcopy reachability check)" \
     "echo test > /tmp/mva; mv /tmp/mva /home/user/mvb; mv /home/user/mvb /tmp/mvc; cat /tmp/mvc" \
     "test"
 
