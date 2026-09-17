@@ -1,7 +1,11 @@
 # CAT-01: NetBSD `cat(1)` import design and prerequisite decomposition
 
-- **Status:** Design note refined with full `fcntl` advisory locking resolution and source trace; awaiting coordinator review
-- **Base SHA:** `7e1fd6a` (`origin/main`)
+- **Status:** All six prerequisites landed; re-measured against current
+  origin/main and import attempted. **Blocked on a newly-found, universal
+  `fclose(stdout)` gap — see "Implementation findings" below. Not landing
+  until the coordinator decides how to resolve it.**
+- **Base SHA:** `7e1fd6a` (`origin/main`), re-merged to current `origin/main`
+  (`81e8f62`) before implementation.
 - **Branch:** `work/CAT-01`
 - **Scope discipline:** Documentation and design specification only. No code, headers,
   Makefiles, runtime files, or upstream sources were added or modified in the repository.
@@ -265,3 +269,101 @@ When the prerequisite chain is complete and `cat` is imported, the integration g
 7. **Resource hygiene:**
    - All opened file descriptors are closed before exit.
    - Allocated memory buffers (e.g. malloc buffer from `-B`) are reclaimed cleanly.
+
+---
+
+## 6. Implementation findings (re-measured against `origin/main` at `81e8f62`)
+
+Pinned `cat.c` was re-fetched and hash-reverified
+(`2cc2ced0fcc6c143e1406e64cdd64ea768101fcd19b6dad531b911a611697cbd`, matching
+section 1). Compiled clean with `-Wall -Wextra -Wpedantic -Werror` against the
+current header set on the first attempt — **all eleven originally-measured
+gaps are genuinely closed by the five landed prerequisites plus `STAT-02`**;
+no new missing symbol surfaced. `-Icompat/netbsd/include` is needed for
+`sys/param.h`'s `MIN()`/`MAX()` shim, same as `rm.c`/`mv.c`.
+
+### Finding 1 (fixed directly): a native `cat` placeholder already occupied `/bin/cat`
+
+`src/programs.c` already registered a cannedBSD-owned minimal `cat`
+(`cat_main`/`cat_descriptor`, plain concatenation plus `-` for stdin, no
+flags) under the name `"cat"` — the same bootstrap-era pattern as the
+`echo`/`tr`/`true`/`false` placeholders still present. Registering the real
+import under the same name via `cb_kernel_register` caused a second
+`/bin/cat` create attempt, which `cb_vfs_create_executable` correctly
+rejects as `-CB_EEXIST`, aborting kernel boot (`"failed to register base
+program"`). This is not a reasoned, documented design decision the way
+VFS-03's cursor was — it is leftover scaffolding, and retiring it for the
+utility it scaffolded is squarely CAT-01's own scope (matching `rm`/`mv`,
+which had no such placeholder to begin with). Fixed directly: removed
+`cat_main`/`cat_descriptor`/`PROGRAM_DESCRIPTOR(cat_program, "cat", ...)`
+from `src/programs.c` and its array entry, leaving `cb_cat_program` (the
+real import) as the sole owner of the name. Confirmed no test depends on
+the placeholder's specific (flag-less) behavior beyond plain concatenation
+and `-` for stdin, both of which the real import is a strict superset of.
+Note for the coordinator: `echo` has the identical scaffolding shape today
+(`echo_program` native at `"echo"`, `cb_netbsdecho_program` imported but
+registered under the distinct name `"netbsdecho"`, not colliding) — that
+one was presumably deliberately kept separate rather than wired to replace
+`echo` outright; not this ID's call to touch, flagging only for visibility.
+
+### Finding 2 (BLOCKING, not fixed — needs a coordinator decision): `fclose(stdout)` always fails here
+
+Real, pinned `cat.c`'s `main()` (line 137) calls `fclose(stdout)`
+**unconditionally**, on every successful code path, immediately before
+`return rval` — this is not corner-case-only surface. `cb_libc_fclose`
+(`libc/cb_libc.c:986`) explicitly rejects `stream == cb_libc_stdout_stream`
+(and `stderr`) with `EINVAL` unconditionally, per `STDIN-01-design.md`'s own
+explicit, coordinator-selected decision: *"This slice rejects
+fclose(stdout/stderr) with EINVAL and leaves those descriptors and
+indicators alone... The coordinator explicitly selected preservation of
+SPEC's descriptor policy."*
+
+Measured, not inferred: built the real import, ran
+`bsdinacan -c 'echo hello > /tmp/a; cat /tmp/a'` and got the correct output
+(`hello`) followed by `cat: stdout: invalid argument` and exit status 1 —
+`err(EXIT_FAILURE, "stdout")` firing on cat.c:138's `if (fclose(stdout))`
+check. This reproduces on **every single invocation of the imported `cat`,
+flagged or not** — not a deferred-scope corner case like `-l`/`-W`/`-P` in
+`rm`, and not scoped to a specific tree shape like VFS-03. Verified `rm.c`
+and `mv.c` never call `fclose` at all, which is why this exact landmine
+was never hit before now; it is new to `cat`, not a latent bug in already-
+accepted work.
+
+This is the same shape as VFS-03's cursor design and the isatty()-always-
+true caveat: an explicit, already-reasoned decision elsewhere in the
+project (`STDIN-01-design.md`) whose consequence for a new consumer
+(`cat`'s unconditional exit-time `fclose(stdout)`) was not visible at the
+time that decision was made, and is not this ID's call to reopen
+unilaterally. **`fclose(stdout)`/`fclose(stderr)` before process exit is a
+common, idiomatic pattern in real BSD userland** (final cleanup before
+`return`/`exit`), so this will very likely recur in future imports, not
+just `cat` — worth treating as a general caveat the same way isatty() was,
+regardless of how it's resolved for this ID specifically.
+
+Not fixed here: changing `cb_libc_fclose`'s stdout/stderr rejection would
+directly reverse an explicit, named coordinator decision recorded in
+another ID's design note, exactly the category of change RM-01 was
+explicitly told not to make unilaterally for VFS-03. Options for the
+coordinator to choose from, not yet acted on:
+1. Allow `fclose(stdout)`/`fclose(stderr)` to succeed as a real, harmless
+   no-op (or an actual `close()` of the underlying descriptor) specifically
+   when called as the last action before the calling task's own exit —
+   nothing reads/writes fd 1/2 afterward in that case, so this is likely
+   safe, but requires either detecting "is this the final call" (fragile)
+   or simply allowing it unconditionally and accepting that a program which
+   calls `fclose(stdout)` and then tries to write to `stdout` again already
+   has undefined behavior on real BSD too.
+2. Keep the current honest rejection, and treat `cat`'s `fclose(stdout)`
+   line as unreachable/deferred-scope the way `-P`/`-W`/`SIGINFO` were for
+   `rm` — but this is not a flag-gated line; it is the last line of `main()`
+   on every path, so "deferred scope" here means **no invocation of cat
+   ever exits 0**, which is not a viable accepted matrix.
+3. Something narrower: allow `fclose` to succeed specifically at a point
+   where the task is about to call `exit()`/return from its entry point,
+   if that is detectable from within `cb_libc_fclose` without broader
+   lifecycle changes.
+
+Given option 2 is not viable and option 3's detectability is unclear
+without deeper investigation, option 1 looks most likely, but this is the
+coordinator's decision to make, not mine, since it reverses someone else's
+named, explicit choice.

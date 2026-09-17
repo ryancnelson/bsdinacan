@@ -13,6 +13,7 @@ extern const struct cb_program_v1 cb_head_program;
 extern const struct cb_program_v1 cb_ls_program;
 extern const struct cb_program_v1 cb_rm_program;
 extern const struct cb_program_v1 cb_mv_program;
+extern const struct cb_program_v1 cb_cat_program;
 
 static int write_all(const struct cb_api_v1 *api, int descriptor,
                      const void *buffer, size_t count)
@@ -58,55 +59,6 @@ static int echo_main(const struct cb_api_v1 *api, int argc,
     if (newline && write_all(api, 1, "\n", 1) < 0)
         return 1;
     return 0;
-}
-
-static int cat_descriptor(const struct cb_api_v1 *api, int descriptor)
-{
-    unsigned char buffer[1024];
-    for (;;) {
-        cb_ssize_t count = api->read(descriptor, buffer, sizeof(buffer));
-        if (count < 0)
-            return -1;
-        if (count == 0)
-            return 0;
-        if (write_all(api, 1, buffer, (size_t)count) < 0)
-            return -1;
-    }
-}
-
-static int cat_main(const struct cb_api_v1 *api, int argc,
-                    char *const argv[], char *const envp[])
-{
-    int status = 0;
-    int index;
-    (void)envp;
-    if (argc == 1) {
-        if (cat_descriptor(api, 0) < 0) {
-            report_error(api, "cat", "standard input");
-            return 1;
-        }
-        return 0;
-    }
-    for (index = 1; index < argc; ++index) {
-        int descriptor;
-        if (strcmp(argv[index], "-") == 0) {
-            if (cat_descriptor(api, 0) < 0)
-                status = 1;
-            continue;
-        }
-        descriptor = api->open(argv[index], CB_O_RDONLY, 0);
-        if (descriptor < 0) {
-            report_error(api, "cat", argv[index]);
-            status = 1;
-            continue;
-        }
-        if (cat_descriptor(api, descriptor) < 0) {
-            report_error(api, "cat", argv[index]);
-            status = 1;
-        }
-        api->close(descriptor);
-    }
-    return status;
 }
 
 static int expand_set(const char *set, unsigned char values[256],
@@ -203,7 +155,6 @@ static int false_main(const struct cb_api_v1 *api, int argc,
     }
 
 PROGRAM_DESCRIPTOR(echo_program, "echo", echo_main);
-PROGRAM_DESCRIPTOR(cat_program, "cat", cat_main);
 PROGRAM_DESCRIPTOR(tr_program, "tr", tr_main);
 PROGRAM_DESCRIPTOR(true_program, "true", true_main);
 PROGRAM_DESCRIPTOR(false_program, "false", false_main);
@@ -214,7 +165,6 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_shell_program,
         &cb_shell_builtin_program,
         &echo_program,
-        &cat_program,
         &tr_program,
         &true_program,
         &false_program,
@@ -227,7 +177,8 @@ void cb_register_base_programs(struct cb_kernel *kernel)
         &cb_head_program,
         &cb_ls_program,
         &cb_rm_program,
-        &cb_mv_program
+        &cb_mv_program,
+        &cb_cat_program
     };
     size_t index;
     for (index = 0; index < sizeof(programs) / sizeof(programs[0]); ++index) {
