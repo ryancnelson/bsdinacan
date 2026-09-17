@@ -548,6 +548,15 @@ int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid)
     return -1;
 }
 
+int cb_libc_fcntl(int fd, int cmd, ...)
+{
+    (void)fd;
+    (void)cmd;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
 void cb_libc_strmode(uint32_t mode, char *p)
 {
     if (p == NULL)

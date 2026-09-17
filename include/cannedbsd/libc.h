@@ -194,6 +194,7 @@ cb_ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz);
 int cb_libc_mkfifo(const char *path, uint32_t mode);
 int cb_libc_mknod(const char *path, uint32_t mode, uint32_t dev);
 int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid);
+int cb_libc_fcntl(int fd, int cmd, ...);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
