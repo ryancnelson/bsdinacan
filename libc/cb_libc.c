@@ -150,6 +150,15 @@ int cb_libc_ftruncate(int descriptor, cb_off_t length)
     return bound_api->ftruncate(descriptor, length);
 }
 
+int cb_libc_stat(const char *path, struct cb_stat_v1 *stat_buffer)
+{
+    if (bound_api->stat == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->stat(path, stat_buffer);
+}
+
 void *cb_libc_malloc(size_t size)
 {
     return bound_api->allocate(size);

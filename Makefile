@@ -58,7 +58,13 @@ DIRENT_OLDTABLE_TEST_OBJECT := $(BUILD)/libc_dirent_oldtable_probe.o
 DIRENT_ALLOCFAIL_TEST_OBJECT := $(BUILD)/libc_dirent_allocfail_probe.o
 DIRENT_READDIR_UNAVAIL_TEST_OBJECT := $(BUILD)/libc_dirent_readdir_unavailable_probe.o
 DIRENT_CLOSEDIR_REBIND_TEST_OBJECT := $(BUILD)/libc_dirent_closedir_rebind_probe.o
+FTS_CORE_WALK_OBJECT := $(BUILD)/fts_core_walk.o
+FTS_SKIP_WALK_OBJECT := $(BUILD)/fts_skip_walk.o
+FTS_CLOSE_WALK_OBJECT := $(BUILD)/fts_close_walk.o
+FTS_CYCLE_WALK_OBJECT := $(BUILD)/fts_cycle_walk.o
+FTS_ALLOCFAIL_WALK_OBJECT := $(BUILD)/fts_allocfail_walk.o
 LIBC_OBJECT := $(BUILD)/cb_libc.o
+FTS_OBJECT := $(BUILD)/cb_fts.o
 NETBSD_STRLEN_OBJECT := $(BUILD)/netbsd_strlen.o
 NETBSD_STRCMP_OBJECT := $(BUILD)/netbsd_strcmp.o
 NETBSD_STRCPY_OBJECT := $(BUILD)/netbsd_strcpy.o
@@ -89,6 +95,7 @@ LIBC_OBJECTS += $(NETBSD_STRCPY_OBJECT)
 LIBC_OBJECTS += $(NETBSD_DIRNAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_BASENAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
+LIBC_OBJECTS += $(FTS_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
 .PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
@@ -265,6 +272,33 @@ $(LIBC_OBJECT): libc/cb_libc.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c libc/cb_libc.c -o $@
 
+# cannedBSD-owned; no upstream import. See FTS-CORE-01 and
+# notes/iterations/FTS-01-design.md. -Ilibc/include is required here
+# (unlike $(LIBC_OBJECT) above) because this file includes the
+# consumer-facing libc/include/fts.h and libc/include/errno.h, not just
+# the internal cannedbsd/libc.h.
+$(FTS_OBJECT): libc/cb_fts.c include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/fts.h libc/include/errno.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c libc/cb_fts.c -o $@
+
+$(FTS_CORE_WALK_OBJECT): tests/fts_core_walk.c libc/include/fts.h \
+		libc/include/string.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/fts_core_walk.c -o $@
+
+$(FTS_SKIP_WALK_OBJECT): tests/fts_skip_walk.c libc/include/fts.h \
+		libc/include/string.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/fts_skip_walk.c -o $@
+
+$(FTS_CLOSE_WALK_OBJECT): tests/fts_close_walk.c libc/include/fts.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/fts_close_walk.c -o $@
+
+$(FTS_CYCLE_WALK_OBJECT): tests/fts_cycle_walk.c libc/include/fts.h \
+		libc/include/string.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/fts_cycle_walk.c -o $@
+
+$(FTS_ALLOCFAIL_WALK_OBJECT): tests/fts_allocfail_walk.c libc/include/fts.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -c tests/fts_allocfail_walk.c -o $@
+
 $(NETBSD_STRLEN_OBJECT): upstream/netbsd/common/lib/libc/string/strlen.c \
 		compat/netbsd/include/assert.h include/cannedbsd/libc.h libc/include/string.h \
 		libc/include/sys/cdefs.h | $(BUILD)
@@ -383,10 +417,10 @@ $(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRIN
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 $(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) \
-		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(LIBC_ARCHIVE) \
+		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def platform/mac68k/acceptance_output.h src/internal.h src/terminal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 
@@ -578,6 +612,24 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_exec_errno_probe_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only tests/libc_exec_errno_probe.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only libc/cb_fts.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/fts_core_walk.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/fts_skip_walk.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/fts_close_walk.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/fts_cycle_walk.c
+	$(CC) $(CPPFLAGS) -Ilibc/include \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only tests/fts_allocfail_walk.c
 
 $(BUILD)/test_acceptance_output: tests/test_acceptance_output.c platform/mac68k/acceptance_output.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
