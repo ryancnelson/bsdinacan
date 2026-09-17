@@ -55,7 +55,13 @@ struct cb_executor_ops {
     void (*instance_destroy)(struct cb_execution *execution);
     void (*program_destroy)(struct cb_kernel *kernel,
                             struct cb_program *program);
+    uint32_t capabilities; /* optional; old executor prefix remains valid */
 };
+
+#define CB_EXECUTOR_V1_PREFIX_SIZE offsetof(struct cb_executor_ops, capabilities)
+#define CB_EXECUTOR_COOPERATIVE_INTERRUPT UINT32_C(1)
+#define CB_INTERRUPT_DEFAULT 0
+#define CB_INTERRUPT_IGNORE 1
 
 struct cb_program {
     const struct cb_executor_ops *executor;
@@ -120,6 +126,38 @@ struct cb_vfs_node_ops {
        call -- see notes/iterations/VFS-03-design.md for why. */
     int (*child_at)(struct cb_vfs_node *directory, size_t index,
                     struct cb_vfs_node **child_out);
+    /* Appended by VFS-04. Optional extension; callers must check
+       struct_size before reading. Removes an empty directory node from its
+       parent; must reject non-directory (-CB_ENOTDIR), non-empty
+       (-CB_ENOTEMPTY), and a node with no parent to detach from
+       (-CB_EPERM, the mount root). */
+    int (*rmdir)(struct cb_vfs_node *node);
+    /* Appended by VFS-04. Optional extension; callers must check
+       struct_size before reading. Moves node to become a child of
+       new_parent under new_name, preserving node identity (open files
+       referencing node stay valid). Takes ownership of new_name_owned (a
+       kernel-allocated string): every path through this function either
+       installs it as the node's new name or frees it -- the caller must
+       never touch or free new_name_owned itself after this call, on
+       success or failure. Does not check whether new_name already exists
+       at new_parent or whether new_parent is even a directory; the VFS
+       layer (cb_vfs_rename_paths) resolves and validates that before
+       calling in, and pre-allocates new_name_owned before touching any
+       state, so this call itself cannot fail for allocation reasons. */
+    int (*rename)(struct cb_vfs_node *node, struct cb_vfs_node *new_parent,
+                  char *new_name_owned);
+    /* Appended by VFS-05. Optional extension; callers must check
+       struct_size before reading. Returns 0 and *sibling_out = NULL if
+       node is the last child of its parent (not an error); a negative
+       -CB_E* value for a real error. Exists so a directory iterator can
+       advance by live node identity instead of child_at()'s ordinal
+       position -- see notes/iterations/VFS-05.md. Must be called on
+       node BEFORE node is unlinked (ramfs_unlink clears an unlinked
+       node's own sibling link, per VFS-03's own note); once looked up,
+       the result is unaffected by anything happening elsewhere in the
+       list, including removal of node itself afterward. */
+    int (*next_sibling)(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out);
 };
 
 struct cb_vfs_mount_entry {
@@ -192,8 +230,13 @@ struct cb_fd_entry {
 #define CB_MAX_DIRS 16
 
 struct cb_dir_handle {
-    struct cb_vfs_node *node;  /* retained while in_use */
-    size_t index;
+    struct cb_vfs_node *node;  /* the directory itself; retained while in_use */
+    /* VFS-05: the entry the NEXT readdir() call will return, identified
+       by live node pointer (retained while non-NULL) rather than
+       child_at()'s ordinal position -- see notes/iterations/VFS-05.md.
+       NULL means either "not primed yet" (never happens: opendir()
+       always primes this before returning) or "exhausted." */
+    struct cb_vfs_node *next;
     int in_use;
 };
 
@@ -204,6 +247,8 @@ struct cb_task {
     cb_pid_t pid;
     cb_pid_t ppid;
     enum cb_task_state state;
+    int interrupt_disposition;
+    int interrupt_pending;
     struct cb_execution *execution;
     const struct cb_program *program;
     char **argv;
@@ -235,7 +280,11 @@ struct cb_task {
     struct cb_task *next;
 };
 
-#define CB_MAX_PROGRAMS 64
+/* Raised from 64 by LS-01: cb_register_base_programs() plus the test
+   suite's own FIXTURE_FULL registrations already totaled 65 once `ls`
+   became a base program, exceeding the previous ceiling. A small margin
+   above that measured total, not a speculative allowance. */
+#define CB_MAX_PROGRAMS 72
 
 struct cb_kernel {
     struct cb_terminal_state console;
@@ -268,6 +317,13 @@ int cb_kernel_register_executor(struct cb_kernel *kernel,
                                 const void *source);
 int cb_kernel_boot(struct cb_kernel *kernel, const char *command);
 int cb_kernel_run(struct cb_kernel *kernel);
+/* Serialized internal operations; negative project errors, no host signals.
+   The setter preserves task errno; previous is required and written on success. */
+int cb_kernel_request_interrupt(struct cb_kernel *kernel, cb_pid_t pid);
+int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous);
+/* Executor opt-in boundary: target stack only, with kernel current installed. */
+void cb_task_deliver_interrupt(struct cb_task *task);
+int cb_executor_supports_interrupt(const struct cb_executor_ops *executor);
 const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
 
 const struct cb_executor_ops *cb_native_executor(void);
@@ -302,8 +358,13 @@ struct cb_vfs_node *cb_vfs_opendir_path(struct cb_task *task,
                                         const char *path);
 int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
                     struct cb_vfs_node **child_out);
+int cb_vfs_next_sibling(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out);
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode);
 int cb_vfs_unlink_path(struct cb_task *task, const char *path);
+int cb_vfs_rmdir_path(struct cb_task *task, const char *path);
+int cb_vfs_rename_paths(struct cb_task *task, const char *old_path,
+                        const char *new_path);
 int cb_vfs_chdir_path(struct cb_task *task, const char *path);
 char *cb_vfs_getcwd_path(struct cb_task *task, char *buffer, size_t size);
 void cb_vfs_node_retain(struct cb_vfs_node *node);

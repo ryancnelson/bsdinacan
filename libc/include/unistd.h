@@ -2,9 +2,7 @@
 #define CANNEDBSD_UNISTD_H
 
 #include "cannedbsd/libc.h"
-
-typedef cb_ssize_t ssize_t;
-typedef cb_off_t off_t;
+#include "sys/types.h"
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
@@ -17,6 +15,31 @@ typedef cb_off_t off_t;
 #define close cb_libc_close
 #define truncate cb_libc_truncate
 #define ftruncate cb_libc_ftruncate
+#define access cb_libc_access
+#define unlink cb_libc_unlink
+#define rmdir cb_libc_rmdir
+#define strmode cb_libc_strmode
+#define vfork cb_libc_vfork
+#define execl cb_libc_execl
+#define _exit cb_libc_exit
+#define getuid cb_libc_getuid
+#define link cb_libc_link
+#define symlink cb_libc_symlink
+#define readlink cb_libc_readlink
+#define lchown cb_libc_lchown
+
+#define SEEK_SET CB_SEEK_SET
+#define SEEK_CUR CB_SEEK_CUR
+#define SEEK_END CB_SEEK_END
+#define lseek cb_libc_lseek
+#define fsync cb_libc_fsync
+#define sync cb_libc_sync
+#define undelete cb_libc_undelete
+
+#define F_OK 0
+#define X_OK 1
+#define W_OK 2
+#define R_OK 4
 
 #define environ (*cb_libc_environ_location())
 
@@ -25,5 +48,17 @@ typedef cb_off_t off_t;
 #define optopt (cb_libc_getopt_state_location()->optopt)
 #define optarg (cb_libc_getopt_state_location()->optarg)
 #define getopt cb_libc_getopt
+
+int cb_libc_access(const char *path, int mode);
+int cb_libc_unlink(const char *path);
+int cb_libc_rmdir(const char *path);
+void cb_libc_strmode(mode_t mode, char *p);
+pid_t cb_libc_vfork(void);
+int cb_libc_execl(const char *path, const char *arg0, ...);
+uid_t cb_libc_getuid(void);
+int cb_libc_link(const char *name1, const char *name2);
+int cb_libc_symlink(const char *name1, const char *name2);
+ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz);
+int cb_libc_lchown(const char *path, uid_t uid, gid_t gid);
 
 #endif

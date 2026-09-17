@@ -48,7 +48,8 @@ Permissions remain deferred.
 section originally assumed:
 
 1. `LS-01` — no subsystem wait; proceeds as a cannedBSD-owned dirent command
-2. `VFS-04` — `rmdir` plus `strrchr`; `rename` demand still unmeasured
+2. `VFS-04` — `rmdir` and `rename` (Done at `0bc7d5f`; `strrchr` moved to `RM-01`,
+   `rename` justified from pinned `mv.c` source reading)
 3. `CAT-01` — widest small-interface surface; forces the `cb_stat_v1` field
    decision, since the runtime already has `stat`/`fstat` but the veneer header
    is a stub
@@ -121,23 +122,120 @@ exclusion: `CAT-01` forces an explicit decision on it.
   command descriptor, reject host symbol imports, add the `UPSTREAM.md` entry
   and hash.
 
+## CAT-01 prerequisites
+
+CAT-01's own entry requires splitting rather than claiming as one item. These
+six cover the eleven interfaces `FILEUTIL-01` measured, in dependency order.
+Design of record: `work/CAT-01` at `525b553`, which also established from the
+pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
+(`cat.c:78`, `cat.c:124-131`) and never for unflagged `cat` or any of
+`-b -e -f -n -s -t -u -v -B`.
+
+### LIBC-CTYPE-01 — `isascii`, `toascii`, `iscntrl`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** the three ctype predicates `cat` demands, C locale only. No wider
+  ctype surface, no locale machinery beyond what LOCALE-01 already established.
+
+### LIBC-STRTOL-01 — `strtol`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `strtol` alone. `CONV-01` already pinned `strtoimax` and its
+  C-locale prerequisites; reuse that groundwork rather than duplicating it.
+- **Accept:** base handling, `endptr` semantics, `ERANGE` clamping at both
+  bounds, and `errno` preservation on success.
+
+### LIBC-ERR-02 — `warnx`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done), ERR-01 (Done), ERR-02 (Done)
+- **Scope:** `warnx` only — the no-errno variant. `ERR-01` and `ERR-02` already
+  built the errno-bearing diagnostics; this is the remaining sibling.
+
+### LIBC-STDIO-02 — `clearerr`, `setbuf`, `fileno`, `BUFSIZ`, `SEEK_*`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done), STDOUT-01 (Done), STDIN-01 (Done),
+  FWRITE-01 (Done)
+- **Scope:** the remaining stdio surface `cat` demands on top of the existing
+  task-owned streams. `setbuf` must be honest about the unbuffered model rather
+  than pretending to install a buffer it does not use — if the only supportable
+  call is `setbuf(fp, NULL)`, say so and reject the rest.
+- **Accept:** `clearerr` clearing the sticky error `STDOUT-01` established;
+  `fileno` returning the real descriptor; `SEEK_SET`/`CUR`/`END` matching the
+  existing `lseek` whence values exactly.
+
+### STAT-02 — wire the `sys/stat.h` veneer
+
+- **Status:** Ready; unassigned. **This is the one that closes a real gap
+  rather than adding surface.**
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** the runtime ABI already provides `stat`, `fstat` and `cb_stat_v1`,
+  but `libc/include/sys/stat.h` is a two-line stub — the `struct stat` gap is
+  **unwired, not unimplemented**. Expose a real POSIX `struct stat` mapping onto
+  the existing four fields, with the veneer synthesizing POSIX type bits in
+  `st_mode` (`S_IFREG`, `S_IFDIR`, `S_IFCHR`, `S_IFIFO`) from `cb_node_type`.
+- **Deliberately does NOT grow `cb_stat_v1`:** `cat` needs only `S_ISREG`, size
+  and inode, and never reads timestamps, `nlink`, `uid` or `gid`. Those arrive
+  in one coalesced append under `FS-STAT-01` when an actual consumer needs them.
+- **Accept:** `S_ISREG` true for regular files and false for every other node
+  type; `stat` and `fstat` agreeing; old-`struct_size` behavior unchanged, since
+  this adds no ABI field.
+
+### FCNTL-01 — `fcntl.h` declarations with no locking implementation
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `fcntl.h`, `O_NONBLOCK`, and the `struct flock` declaration
+  `cat.c:78` needs to compile. **No locking implementation and no stub that
+  succeeds.**
+- **Why no stub:** `cat` uses `F_WRLCK` with `F_SETLKW` and calls
+  `err(EXIT_FAILURE, "stdout")` when `fcntl` returns `-1`. A stub returning
+  success would mean `cat` believes it holds an exclusive lock that does not
+  exist — a false claim about mutual exclusion, which is a stronger form of the
+  dishonesty `SIG-01-design` already rejected for signals. A real failure return
+  makes `cat -l` fail loudly and correctly while every other invocation works,
+  because the locking path is unreachable without `-l`.
+- **Accept:** lock operations return a real failure; `cat -l` is documented as
+  outside the accepted matrix with that reason; unflagged `cat` and all of
+  `-b -e -f -n -s -t -u -v -B` are unaffected. Genuine record locking, if ever
+  wanted, gets its own ID triggered by a consumer that actually needs `-l`.
+
 ### VFS-04 — `rmdir` and atomic `rename` node operations
 
-- **Status:** Ready after FILEUTIL-01
+- **Status:** Done on `work/VFS-04` at `0bc7d5f`; coordinator-reviewed. Appended
+  `rmdir`/`rename` to `cb_api_v1` and `cb_vfs_node_ops` (verified appended at the
+  struct end, not inserted), added `CB_EXDEV` (verified no errno value
+  collision), RAMFS implements both with `rmdir` separate from `unlink` so
+  `unlink` keeps refusing directories. Full `make ci` green.
 - **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), VFS-01 (Done), VFS-03 (Done)
 - **Scope:** append two versioned operations to the node/VFS contract. The
   portable core acquires no host filesystem call; RAMFS implements both.
-  Appended ABI entries only — no reordering or field changes. **Also budget
-  `strrchr`**: the audit measured pinned `rmdir` as gated on both the absent
-  `rmdir()` ABI operation and an absent `strrchr()` in the current
-  `string.h` — an independent small libc gap this item must cover or explicitly
-  hand to a separate ID.
-- **Note on `rename` demand:** `rename` is confirmed absent from `abi.h`, but
-  the audit could **not** confirm pinned `mv` requires it — `mv` fails
-  compilation at `sys/extattr.h` before reaching any `rename()` call, so that
-  demand is unmeasured rather than established. Justify `rename` on its own
-  merits or on a consumer whose diagnostics actually reach it.
+  Appended ABI entries only — no reordering or field changes.
+- **`strrchr` correction:** this item does **not** cover `strrchr`, and the
+  earlier instruction to budget it here was wrong. The gap is in `rmdir`'s
+  *pinned NetBSD source* — a translation unit `RM-01` imports — not in
+  runtime-level ABI work, and `VFS-04` touches `libc/string.h` not at all.
+  Moved to `RM-01`.
+- **`rename` demand — now justified:** the original justification (pinned `mv`)
+  was wrong, since `mv` fails compilation at `sys/extattr.h` before reaching any
+  `rename()` call. Justified instead by direct source reading: pinned `mv.c` was
+  re-fetched, hash-verified against `FILEUTIL-01`'s recorded SHA-256, and
+  `do_move()` calls `rename(from, to)` unconditionally as the first-attempted,
+  POSIX-mandated step for every same-filesystem move, before any prompt logic.
+  That is evidence from the exact pinned file, independent of the compiler never
+  having reached it.
+- **Deliberate boundary:** directory-onto-directory `rename` replacement is
+  intentionally unsupported (always `ENOTEMPTY`), as it is not in Accept. A later
+  item needing it should say so rather than treat it as a silent omission.
 - **Hypothesis:** directory removal and atomic replacement can be expressed over
   the existing node contract without exposing filesystem representation, and
   cross-mount `rename` can return `EXDEV` using the VFS-01 routing boundary.
@@ -152,27 +250,119 @@ exclusion: `CAT-01` forces an explicit decision on it.
   tables and absent-capability behavior. Prove no leak or dangling node under
   allocation failure injection.
 
-### FTS-01 — `fts(3)` traversal subsystem
+### FTS-01 — `fts(3)` traversal subsystem design
 
-- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Status:** Done. Design on `work/FTS-01` at `2bdf4dd`
+  (`notes/iterations/FTS-01-design.md`), independently reviewed clean at
+  `f14ab2e` (`notes/iterations/FTS-01-design-review.md`). Split into the three
+  items below; this entry is the design of record.
 - **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), VFS-03 (Done)
-- **Scope:** the traversal subsystem itself. The audit measured `fts.h` as the
-  blocking gate for pinned `rm` (sole blocker), `cp` (alongside `extattr`), and
-  all five `ls` translation units. Design before implementation; this is a
-  subsystem, not a veneer symbol, and must not be bolted on inside a utility
-  import.
-- **Red:** each of those utilities' recorded first-failure diagnostics in
-  `notes/iterations/FILEUTIL-01.md` is the evidence of demand. Add a behavioral
-  case over the existing dirent contract before implementing.
-- **Accept:** to be specified in a design note first. At minimum: traversal
-  order guarantees, cycle and depth handling, per-entry error reporting without
-  aborting the walk, allocation-failure behavior, and interaction with the
-  VFS-01 mount boundary.
+- **Method that produced the scope reduction:** every `fts_`/`FTS_`/`FTSENT`
+  reference was grepped in the exact pinned `b890038f` sources — `rm.c`,
+  `cp.c`, `cp/utils.c` and all five `ls` translation units — rather than derived
+  from what BSD `fts(3)` offers generally. Both the design and its independent
+  review ran that grep separately and agreed.
+- **Measured reductions:** no pinned source references `FTS_F`, `FTS_SL`,
+  `FTS_SLNONE`, `FTS_DEFAULT`, `FTS_DOT`, `FTS_INIT` or `FTS_NSOK` at all —
+  every consumer switch has a `default` or fallthrough for ordinary entries.
+  Only `FTS_D`/`DP`/`DNR`/`ERR`/`NS`/`DC`/`W` plus one generic value are needed.
+  `fts_children` is called exclusively by `ls` (`ls.c:429`, `ls.c:472`), never by
+  `rm` or `cp`. `fts_cycle` is never dereferenced by any consumer.
+- **Structural design calls, all confirmed by review:** `FTS_NOCHDIR` is the only
+  mode this architecture can have, since no host `chdir` concept exists and cwd
+  is a VFS node pointer — a consequence, not a compromise. `FTS_SEEDOT`
+  synthesizes `.` and `..` because the VFS-03 dirent contract has neither.
+  `FTS_WHITEOUT` must be *defined* because `rm.c:181` references it
+  unconditionally (unlike `ls.c`, which guards it) while producing no `FTS_W`
+  entries, since RAMFS has no whiteout concept. Cycle detection uses live
+  `cb_vfs_node` pointer identity against a `CB_PATH_MAX / 2`-bounded ancestor
+  array rather than device+inode — which is why no device field is needed.
+- **Why the depth bound is not arbitrary:** each path component costs at least
+  one character plus a separator, so any tree deeper than `CB_PATH_MAX / 2` has
+  a path the VFS cannot represent. The bound is a mathematical consequence of
+  `CB_PATH_MAX`, not a truncation.
+
+### FTS-CORE-01 — `fts_open`/`read`/`close`/`set` with no new ABI
+
+- **Status:** Claimed by libby. **Requires zero new ABI**: no `cb_api_v1`
+  operations, no `cb_stat_v1` changes. Builds entirely in libc over the existing
+  `opendir`/`readdir`/`closedir`/`stat`/`fstat`. This is what makes RM-01
+  reachable without waiting on any ABI work, and it was the claim the
+  independent review was told to be most skeptical of; it survived.
+- **Base:** main
+- **Depends on:** FTS-01 (Done), VFS-03 (Done)
+- **Scope:** `fts_open`, `fts_read`, `fts_close`, `fts_set(FTS_SKIP)` — the exact
+  surface `rm` and `cp` use. **No `fts_children`**; that is `ls`-only and belongs
+  to FTS-CHILDREN-01.
+- **Required invariants** (added by the independent review; these are acceptance
+  criteria, not advice):
+  1. Multi-root support in `path_argv` — `rm a b c` passes several roots.
+  2. `fts_accpath` identical to `fts_path` under `FTS_NOCHDIR`. Consumers read
+     both; divergence means `rm` acts on the wrong path.
+  3. `fts_set(FTS_SKIP)` must suppress **both** descent **and** the post-order
+     `FTS_DP` visit. Suppressing only descent leaves a spurious `FTS_DP` that
+     `rm` will act on.
+  4. Ancestor directory nodes retained and released across the stack's lifetime,
+     so pointer identity stays valid — this is what makes the cycle detection
+     correct by construction rather than accidentally correct.
+  5. Symmetrical cleanup on an early mid-walk `fts_close`, with no descriptor or
+     node leaks.
+- **Also required from the design:** per-entry errors never abort the walk;
+  `FTS_XDEV` defined so consumers compile but **rejected at runtime with an
+  error** rather than silently ignored until FS-STAT-01 lands.
+- **Accept:** the five invariants above, plus allocation-failure injection
+  proving no leaked `FTSENT` or ancestor entry — by construction, in the manner
+  VFS-04's rename proved it, not by recovery logic.
+
+### FTS-CHILDREN-01 — `fts_children` for `ls` only
+
+- **Status:** Blocked on FTS-CORE-01
+- **Base:** main
+- **Depends on:** FTS-CORE-01
+- **Scope:** `fts_children` alone, measured as called only from `ls.c:429` and
+  `ls.c:472`. Deliberately separate so RM-01 and CP-01 never wait on it.
+
+### FS-STAT-01 — one coalesced `cb_stat_v1` metadata append
+
+- **Status:** Ready; unassigned. **Supersedes the earlier `FTS-XDEV-01` idea** —
+  that would have been a second, separate append and is dissolved into this one.
+- **Base:** main
+- **Scope:** append the canonical POSIX stat metadata set to `cb_stat_v1` in a
+  **single** `struct_size` increment: device, `atime`/`mtime`/`ctime`, `nlink`,
+  `uid`, `gid`. Appended fields only, with old-`struct_size` tests.
+- **Why one append and not two:** splitting device (+4 bytes, for `FTS_XDEV`)
+  from timestamps and ownership (+24 bytes, for `ls -l`/`ls -t`) would force
+  every `stat`/`fstat` implementation across VFS, RAMFS and the test mocks to
+  implement and test **three** `struct_size` generations instead of two,
+  doubling the backward-compatibility burden for an arbitrary boundary. These
+  fields are one cohesive POSIX set; append them together and pay that cost once.
+- **Consumers waiting on it:** `ls`'s timestamp comparators (`modcmp`, `acccmp`,
+  `statcmp`) need the three timestamps; `FTS_XDEV` needs device; `ls -l` needs
+  `nlink`/`uid`/`gid`; `cp -p` will need timestamps.
+- **Explicitly NOT needed by:** FTS-CORE-01, RM-01, or default `cp -r`. This
+  item is triggered by an actual consumer arriving, not built speculatively —
+  which is why CAT-01 correctly froze `cb_stat_v1` at four fields rather than
+  growing it for fields nothing reads yet.
 
 ### EXTATTR-01 — decide the `sys/extattr.h` boundary
 
-- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Status:** Done. Design on `work/EXTATTR-01-design` at `6f0b7e7`, building on
+  earlier groundwork at `work/EXTATTR-01` (`9b908ed`). **It was never a
+  subsystem gate.** `sys/sys/extattr.h:119` declares exactly one function,
+  `int fcpxattr(int, int)`, and no other extattr function is referenced anywhere
+  in `mv` or `cp`. Both call sites are off the default path and treat failure as
+  non-fatal: `mv` reaches it only via the cross-device `EXDEV` fastcopy
+  fallback, `cp` only under `pflag` (`-p`/`-a`), and each emits a warning on
+  `-1`. Resolution: declare `fcpxattr` in a private `sys/extattr.h` and return
+  `-1` with `ENOSYS`. Honest *and* harmless, because the consumers' own error
+  handling absorbs it — established by reading the pinned source, not assumed.
+  Extended attributes and `cp -p` are documented as outside the accepted matrix.
+  Zero ABI change.
+- **Reachable here despite the default-path finding:** VFS-01 established two
+  mounts, so a cross-mount `mv` in cannedBSD *will* take the `EXDEV` fastcopy
+  path and hit `fcpxattr`. Accept criteria must include a cross-mount `mv`
+  emitting the warning and still completing the move.
 - **Base:** main
 - **Scope:** documentation/design only. The audit found `sys/extattr.h` is an
   unconditional compile gate in `mv` (first thing in the file) and in `cp`'s
@@ -189,46 +379,125 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### MV-01 — unchanged NetBSD `mv`
 
-- **Status:** Blocked on EXTATTR-01. **Not** blocked on VFS-04 as first written.
+- **Status:** Done; merged to main at `6694a22`.
 - **Base:** main
-- **Depends on:** EXTATTR-01, FILEUTIL-01 (Done)
-- **Scope:** import pinned `mv` byte-for-byte. Permissions enforcement remains
-  deferred, so any prompting semantics must be scoped to what exists.
-- **Correction from the audit:** `mv`'s evidenced blocker is `sys/extattr.h`,
-  not `rename`. Compilation is fatal at `extattr` before reaching any `rename()`
-  call, so whether `mv` additionally needs VFS-04's `rename` is **unmeasured**.
-  Re-measure after EXTATTR-01 rather than assuming either way.
-- **Red:** record `mv`'s actual first-failure diagnostic after EXTATTR-01, then
-  an observable failing behavioral case.
-- **Accept:** same-mount rename, replacement of an existing target, cross-mount
-  `EXDEV` behavior, missing source, and directory operands. Cleanup before
-  teardown, no host symbol imports, `UPSTREAM.md` entry and hash.
+- **Depends on:** STAT-02 (Done), EXTATTR-01 (Done), VFS-04 (Done), FILEUTIL-01 (Done)
+- **Scope:** imported pinned `mv.c` (SHA-256: `df5de897...`) and `pathnames.h`
+  (SHA-256: `82819eb6...`) byte-for-byte unmodified. Zero ABI changes.
+- **Implemented Behavior:**
+  - Same-mount file and directory renames execute unconditionally via VFS
+    `rename()`.
+  - Cross-mount regular file moves (`EXDEV`) execute via in-process `fastcopy()`,
+    unlinking the source, verifying byte-exact destination content, and emitting
+    honest `ENOSYS` metadata failure warnings for `fcpxattr`, `futimes`, and `fchown`.
+- **Architectural Boundary Note on Cross-Mount Directory Moves:**
+  - In NetBSD `mv.c`, cross-mount non-regular source moves route to `copy()`,
+    which uses the traditional `vfork()` + `execl(_PATH_CP, ...)` + `waitpid()`
+    pattern.
+  - In cannedBSD's single-host-process cooperative multitasking runtime, general
+    `fork()`/`vfork()` is absent (`capabilities->vfork == 0`), and `cb_libc_vfork()`
+    honestly returns `-1` with `ENOSYS`.
+  - Upstream `mv.c:383` checks only `if ((pid = vfork()) == 0)` without an error
+    branch, so a failed `vfork()` (`pid == -1`) falls straight through into
+    `waitpid(-1, &status, 0)` ("wait for any child"). `cb_libc_waitpid` detects no
+    child process exists and returns `-1` with `ECHILD`, causing `mv.c` to emit
+    `mv: /bin/cp: waitpid: no child processes`.
+  - **Conclusion:** Cross-mount directory moves are **architecturally unreachable
+    for unchanged upstream `mv`** in cannedBSD's one-host-process model. This is
+    an architectural limitation of `vfork()` in a single-process runtime, **not a
+    temporary blocker awaiting CP-01/RM-01** (registering `/bin/cp` will not change
+    the outcome because `vfork()` fails before `execl` is ever attempted).
+- **Upstream Characteristic:**
+  - Pinned `mv` does not check for `vfork` failure before calling `waitpid(-1)`.
+    Any future utility import using an unchecked `vfork()+exec()` pattern will
+    exhibit the same fallthrough behavior.
 
 ### RM-01 — unchanged NetBSD `rm`
 
-- **Status:** Blocked on FTS-01. Clean single-subsystem case per the audit.
+- **Status:** Blocked on FTS-CORE-01 only. **Zero extattr dependency** —
+  EXTATTR-01 established `mv`/`cp` are the only extattr consumers, not `rm`.
 - **Base:** main
-- **Depends on:** FTS-01, FILEUTIL-01 (Done)
+- **Depends on:** FTS-CORE-01, FILEUTIL-01 (Done)
 - **Scope:** import pinned `rm` byte-for-byte. Permissions enforcement remains
   deferred, so `-f` and `-i` semantics must be scoped to what exists.
 - **Correction from the audit:** `rm`'s sole measured blocker is `fts.h`, not
   `rmdir`. Re-measure after FTS-01 to establish whether VFS-04's `rmdir` is also
   required before import.
+- **Also budget `strrchr`** (moved here from VFS-04): the audit measured pinned
+  `rmdir` as gated on an absent `strrchr()` in the current `libc/include/string.h`,
+  in addition to the `rmdir()` ABI operation. That gap lives in the pinned NetBSD
+  source this item imports, not in runtime ABI work, so `VFS-04` correctly did not
+  cover it. Cover it here or give it its own ID — do not let it fall through.
 - **Red:** record `rm`'s actual first-failure diagnostic after FTS-01, then an
   observable failing behavioral case.
 - **Accept:** single and multiple operands, missing operand continuation, `-r`
   over a populated tree, exact status and diagnostics, cleanup before teardown,
   no host symbol imports, `UPSTREAM.md` entry and hash.
 
+## CP-01 prerequisites
+
+CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 precedent, it is decomposed into four bounded prerequisite items plus the utility import itself.
+
+### COMPAT-CDEFS-01 — `__BEGIN_DECLS`, `__END_DECLS`, and `assert`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `libc/include/sys/cdefs.h` (`__BEGIN_DECLS`, `__END_DECLS`) and `compat/netbsd/include/assert.h` (`assert(e) ((void)0)`).
+- **Hypothesis:** C++ linkage header guards and no-op assertions can be provided in libc/compat headers with zero runtime impact.
+- **Red:** Compilation of headers including `<sys/cdefs.h>` or `<assert.h>` fails on missing macros.
+- **Accept:** `__BEGIN_DECLS`/`__END_DECLS` defined under `#ifdef __cplusplus`; `assert` expands to `((void)0)`.
+
+### LIBC-MMAN-01 — `sys/mman.h` declarations and honest `mmap`/`munmap`/`madvise` veneer
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** COMPAT-CDEFS-01 (Done)
+- **Scope:** Header `libc/include/sys/mman.h` with standard declarations (`mmap`, `munmap`, `madvise`, `MADV_SEQUENTIAL`, `MAP_SHARED`, `MAP_FILE`, `MAP_FAILED`, `PROT_READ`) and veneer implementations:
+  - `cb_libc_mmap`: returns `MAP_FAILED` (`(void *)-1`) with `errno = ENOSYS`. NetBSD `cp` (`utils.c:198-256`) uses `mmap` as an un-guarded fastpath for non-empty regular files $\le 8\text{MB}$, but cleanly and silently falls back to chunked 64KB `read()`/`write()` loops when `mmap` returns `MAP_FAILED` (no diagnostic, no abort).
+  - `cb_libc_munmap`: returns `-1` with `errno = ENOSYS` (honest failure; returning 0 would be fabricated success).
+  - `cb_libc_madvise`: returns `0`. `madvise` is explicitly advisory by POSIX/BSD specification; accepting advice as a no-op is conforming behavior, not a claim about work performed.
+- **Hypothesis:** Providing honest `ENOSYS` for `mmap`/`munmap` and conforming no-op for `madvise` allows callers to fall back to standard I/O without needing an internal memory-mapping subsystem.
+- **Red:** `#include <sys/mman.h>` fails compilation on missing header; `mmap` call sites fail linking.
+- **Accept:** Clean compilation; `mmap` and `munmap` fail detectably with `ENOSYS`; `madvise` returns 0.
+
+### VFS-MKDIR-01 — restore `cb_libc_mkdir` on measured `cp` demand
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** Restore `cb_libc_mkdir` in `libc/cb_libc.c` and declare `mkdir` in `libc/include/sys/stat.h`.
+- **Justification:** Re-measured demand from `cp.c:482` (`mkdir(to.p_path, curr->fts_statp->st_mode | S_IRWXU)` during recursive directory tree replication).
+- **Zero ABI growth:** Routes directly to existing `bound_api->mkdir` / `cb_vfs_mkdir_path` already present in `cb_api_v1`. Zero changes to `include/cannedbsd/abi.h`.
+- **Hypothesis:** Recursive directory creation can be served entirely by wiring `mkdir` to the existing ABI entry point.
+- **Red:** `mkdir` probe fails to link.
+- **Accept:** `mkdir` creates directories in RAMFS, enforces `EEXIST`/`ENOENT`/`EFAULT`, and preserves existing `cb_api_v1` table compatibility.
+
+### LIBC-CP-STUB-01 — stat timestamp fields, node-type stubs, permissions and string helpers
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** STAT-02 (Done), FTS-CORE-01 (Done)
+- **Scope:** Explicitly enumerates four distinct prerequisite groups required for `cp` compilation and honest runtime behavior:
+  1. **Timestamp fields & setters:** `struct stat` timestamp accessors (`st_atimespec`, `st_mtimespec`, `st_ctimespec`) mapped to existing `st_mtime`/`st_atime`/`st_ctime` fields, and `cb_libc_lutimens` / `cb_libc_futimens` returning `-1` with `errno = ENOSYS` (timestamps deferred to `FS-STAT-01`).
+  2. **Unreachable RAMFS node-type branches:** `link`, `symlink`, `readlink`, `mkfifo`, `mknod` in `libc/include/unistd.h` and `libc/include/sys/stat.h`, with `cb_libc_*` returning `-1` with `ENOSYS` (`readlink` returns `EINVAL`). These correspond to `copy_link`, `copy_fifo`, and `copy_special` branches which are never executed in RAMFS (no symlinks, hardlinks, fifos, or device nodes).
+  3. **Identity, umask & permissions:**
+     - `cb_libc_getuid`: returns `0`. POSIX `getuid` has no error return by contract and cannot fail; `0` is the honest representation for cannedBSD's single implicit root identity.
+     - `cb_libc_umask`: tracks and returns the task's umask (default `022`).
+     - `cb_libc_chmod` / `cb_libc_lchmod`: return `-1` with `errno = ENOSYS`. Unlike `fchmod` in MV-01 (where `open(..., O_CREAT, mode)` set permissions at creation), NetBSD `cp` calls `chmod` on directories upon post-order ascent (`cp.c:521`) casting to `(void)chmod(...)` (which ignores the return), and in `setfile()` (`utils.c:386`) under `-p` (which detectably fails and warns). Returning `ENOSYS` is honest and keeps permissions deferred without breaking unflagged `cp`.
+     - `cb_libc_lchown` / `cb_libc_chflags`: return `-1` with `errno = ENOSYS`.
+  4. **Constants & string helpers:** `libc/include/string.h` declares `strncat` (`cb_libc_strncat`); `libc/include/fts.h` defines `FTS_ROOTLEVEL 0`; `compat/netbsd/include/sys/param.h` defines `PATH_MAX` and `MAXBSIZE` (65536).
+- **Hypothesis:** All four groups provide exact compile-time declarations and honest runtime failure returns without speculative feature implementations or ABI expansion.
+- **Accept:** Probes compile; `getuid` returns 0; `umask` updates state; unimplemented operations fail detectably with `ENOSYS`/`EINVAL`.
+
 ### CP-01 — unchanged NetBSD `cp`
 
-- **Status:** Blocked on FTS-01 and EXTATTR-01. New ID; the audit measured `cp`
-  as the only utility gated on two independent subsystems.
+- **Status:** Blocked on VFS-05
 - **Base:** main
-- **Depends on:** FTS-01, EXTATTR-01, FILEUTIL-01 (Done)
-- **Scope:** import pinned `cp` byte-for-byte once both subsystems are resolved.
-- **Red:** record `cp`'s actual first-failure diagnostic after both gates clear.
-- **Accept:** to be specified once the blocking subsystems are designed.
+- **Depends on:** COMPAT-CDEFS-01 (Done), LIBC-MMAN-01 (Done), VFS-MKDIR-01 (Done), LIBC-CP-STUB-01 (Done), FTS-CORE-01 (Done), EXTATTR-01 (Done), STAT-02 (Done), FILEUTIL-01 (Done), VFS-05
+- **Scope:** Import pinned NetBSD `cp.c` (SHA-256: `fef86b0f...`), `utils.c` (SHA-256: `d20b0711...`), and `extern.h` (SHA-256: `6299aea5...`) byte-for-byte unmodified. Compile with `-DSMALL -Dmain=cb_cp_main`, link into `bsdinacan`, register in `src/programs.c`, and add `UPSTREAM.md` entries.
+- **Process Model Note:** Unchanged `cp` executes entirely in-process using `fts(3)` directory traversal and VFS `mkdir`/`open`/`read`/`write`. It makes 0 calls to `vfork`, `fork`, `exec*`, `spawn`, `system`, or `popen`, avoiding the single-process `vfork` limitation seen in `mv`.
+- **Accepted Behavioral Matrix:** Default file copying, overwriting, multi-file copying to target directory, recursive copying (`-r` and `-R`), forced copy (`-f`), missing source error handling, empty file copy, and cross-mount file/recursive copies. `-p` and `-a` are explicitly excluded from the accepted matrix (metadata preservation deferred).
 
 ### LS-01 — single-column `ls` without terminal width or `-l`
 

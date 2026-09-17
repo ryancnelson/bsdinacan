@@ -182,7 +182,7 @@ static void program_destroy(struct cb_kernel *kernel, struct cb_program *program
 }
 static const struct cb_executor_ops wrapper = {
     CB_ABI_VERSION_V1, sizeof(wrapper), prepare, instance_create, start_or_resume,
-    suspend, request_termination, instance_destroy, program_destroy
+    suspend, request_termination, instance_destroy, program_destroy, 0
 };
 
 static int spawn_wait(const struct cb_api_v1 *api, const char *program,

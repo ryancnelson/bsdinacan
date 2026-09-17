@@ -8,6 +8,7 @@
 static struct cb_kernel *active_kernel;
 
 static void initialize_api(struct cb_kernel *kernel);
+static void api_exit(int status);
 
 struct cb_task_allocation {
     void *pointer;
@@ -520,6 +521,53 @@ static const struct cb_file_ops pipe_write_ops = {
     no_truncate
 };
 
+static int task_interrupt_supported(const struct cb_task *task)
+{
+    if (task->program == NULL ||
+        !cb_executor_supports_interrupt(task->program->executor)) return 0;
+    /* After program installation pending_program is NULL even though the state
+       stays EXEC_PENDING during instance creation. Validate the installed image. */
+    return task->state != CB_TASK_EXEC_PENDING || task->pending_program == NULL ||
+           cb_executor_supports_interrupt(task->pending_program->executor);
+}
+
+int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous)
+{
+    if (task == NULL || previous == NULL ||
+        (disposition != CB_INTERRUPT_DEFAULT && disposition != CB_INTERRUPT_IGNORE))
+        return -CB_EINVAL;
+    if (!task_interrupt_supported(task)) return -CB_ENOSYS;
+    *previous = task->interrupt_disposition;
+    task->interrupt_disposition = disposition;
+    if (disposition == CB_INTERRUPT_IGNORE) task->interrupt_pending = 0;
+    return 0;
+}
+
+int cb_kernel_request_interrupt(struct cb_kernel *kernel, cb_pid_t pid)
+{
+    struct cb_task *task;
+    if (kernel == NULL) return -CB_EINVAL;
+    for (task = kernel->tasks; task != NULL; task = task->next)
+        if (task->pid == pid) break;
+    if (task == NULL || task->state == CB_TASK_ZOMBIE || task->state == CB_TASK_DEAD)
+        return -CB_ENOENT;
+    if (!task_interrupt_supported(task)) return -CB_ENOSYS;
+    if (task->interrupt_disposition == CB_INTERRUPT_IGNORE) return 0;
+    task->interrupt_pending = 1;
+    if (task->state == CB_TASK_BLOCKED_PIPE || task->state == CB_TASK_BLOCKED_CONSOLE ||
+        task->state == CB_TASK_BLOCKED_WAIT || task->state == CB_TASK_BLOCKED_POLL)
+        task->state = CB_TASK_RUNNABLE;
+    return 0;
+}
+
+void cb_task_deliver_interrupt(struct cb_task *task)
+{
+    if (task->interrupt_pending && task->interrupt_disposition == CB_INTERRUPT_DEFAULT) {
+        task->interrupt_pending = 0;
+        api_exit(130);
+    }
+}
+
 void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
 {
     struct cb_kernel *kernel = task->kernel;
@@ -529,6 +577,7 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
     cb_executor_suspend(task->execution);
     kernel->current = task;
     task->state = CB_TASK_RUNNING;
+    cb_task_deliver_interrupt(task);
 }
 
 static void task_release_allocations(struct cb_task *task)
@@ -624,6 +673,8 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         goto fail;
     task->pid = ++kernel->next_pid;
     task->ppid = parent == NULL ? 0 : parent->pid;
+    task->interrupt_disposition = parent == NULL ? CB_INTERRUPT_DEFAULT :
+                                                       parent->interrupt_disposition;
     task->stdio_state.abi_version = CB_ABI_VERSION_V1;
     task->stdio_state.struct_size = sizeof(struct cb_stdio_state_v1);
     task->input_state.abi_version = CB_ABI_VERSION_V1;
@@ -918,6 +969,11 @@ static int api_exec(const char *program_name, char *const argv[],
         return -1;
     }
 
+    if ((task->interrupt_pending || task->interrupt_disposition == CB_INTERRUPT_IGNORE) &&
+        !cb_executor_supports_interrupt(node->executable->executor)) {
+        cb_task_set_error(task, CB_ENOSYS);
+        return -1;
+    }
     cb_vfs_node_retain(node);
 
     new_argv = argument_vector_copy(task->kernel, argv, &new_owned_argv);
@@ -931,6 +987,16 @@ static int api_exec(const char *program_name, char *const argv[],
         return -1;
     }
 
+    /* Allocation adapters may queue an interrupt on this serialized thread.
+       Recheck before publishing replacement ownership; rejection is atomic. */
+    if ((task->interrupt_pending || task->interrupt_disposition == CB_INTERRUPT_IGNORE) &&
+        !cb_executor_supports_interrupt(node->executable->executor)) {
+        argument_vector_destroy(task->kernel, new_argv, new_owned_argv);
+        string_vector_destroy(task->kernel, new_environment);
+        cb_vfs_node_release(node);
+        cb_task_set_error(task, CB_ENOSYS);
+        return -1;
+    }
     task->pending_executable_node = node;
     task->pending_program = node->executable;
     task->pending_argv = new_argv;
@@ -1388,6 +1454,16 @@ static int api_unlink(const char *path)
     return cb_vfs_unlink_path(active_kernel->current, path);
 }
 
+static int api_rmdir(const char *path)
+{
+    return cb_vfs_rmdir_path(active_kernel->current, path);
+}
+
+static int api_rename(const char *old_path, const char *new_path)
+{
+    return cb_vfs_rename_paths(active_kernel->current, old_path, new_path);
+}
+
 static int api_chdir(const char *path)
 {
     return cb_vfs_chdir_path(active_kernel->current, path);
@@ -1538,6 +1614,8 @@ static const char *api_strerror(int error)
     case CB_ENOTEMPTY: return "directory not empty";
     case CB_ERANGE: return "result too large";
     case CB_EOVERFLOW: return "value too large to be stored in data type";
+    case CB_EXDEV: return "cross-device link";
+    case CB_ETXTBSY: return "text file busy";
     default: return "unknown error";
     }
 }
@@ -1600,19 +1678,38 @@ static int api_opendir(const char *path)
 {
     struct cb_task *task = active_kernel->current;
     struct cb_vfs_node *node;
+    struct cb_vfs_node *first;
     int descriptor;
+    int result;
     node = cb_vfs_opendir_path(task, path);
     if (node == NULL)
         return -1;
+    /* VFS-05: prime the look-ahead cursor here, at open time, rather
+       than lazily on the first readdir() -- see notes/iterations/
+       VFS-05.md and struct cb_dir_handle's own comment. Failure here is
+       provably unreachable today (cb_vfs_opendir_path above already
+       guarantees node is a directory, and RAMFS always implements
+       child_at), but is handled honestly rather than assumed away, for
+       whatever future mount type might not implement it. */
+    result = cb_vfs_child_at(node, 0, &first);
+    if (result < 0) {
+        cb_vfs_node_release(node);
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (first != NULL)
+        cb_vfs_node_retain(first);
     for (descriptor = 0; descriptor < CB_MAX_DIRS; ++descriptor) {
         if (!task->directories[descriptor].in_use) {
             task->directories[descriptor].node = node;
-            task->directories[descriptor].index = 0;
+            task->directories[descriptor].next = first;
             task->directories[descriptor].in_use = 1;
             cb_task_set_error(task, 0);
             return descriptor;
         }
     }
+    if (first != NULL)
+        cb_vfs_node_release(first);
     cb_vfs_node_release(node);
     cb_task_set_error(task, CB_EMFILE);
     return -1;
@@ -1624,6 +1721,7 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
     struct cb_task *task = active_kernel->current;
     struct cb_dir_handle *handle;
     struct cb_vfs_node *child;
+    struct cb_vfs_node *lookahead;
     struct cb_stat_v1 status;
     const char *name;
     size_t length;
@@ -1638,11 +1736,7 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
         return -1;
     }
     handle = &task->directories[descriptor];
-    result = cb_vfs_child_at(handle->node, handle->index, &child);
-    if (result < 0) {
-        cb_task_set_error(task, -result);
-        return -1;
-    }
+    child = handle->next;
     if (child == NULL) {
         name_out[0] = '\0';
         /* Clean end of directory is not an error: errno is left exactly
@@ -1654,24 +1748,39 @@ static int api_readdir(int descriptor, char *name_out, size_t name_size,
     name = child->ops->name(child);
     length = strlen(name);
     if (length >= name_size) {
-        /* The entry is not consumed: the cursor does not advance, so a
+        /* The entry is not consumed: handle->next is untouched, so a
            caller with a larger buffer can still observe this exact entry
            rather than silently receiving a truncated, wrong name for it. */
         cb_task_set_error(task, CB_ENAMETOOLONG);
         return -1;
     }
-    memcpy(name_out, name, length);
-    name_out[length] = '\0';
     result = child->ops->stat(child, &status);
     if (result < 0) {
         cb_task_set_error(task, -result);
         return -1;
     }
+    /* Look ahead to child's own next sibling now, by live node identity,
+       BEFORE returning control to the caller -- who may unlink child
+       (VFS-05's whole reason for existing: rm -r does exactly this,
+       through this same open handle, before asking for the next entry).
+       ramfs_unlink clears an unlinked node's own next_sibling to NULL,
+       so this MUST happen before that can occur, never deferred to the
+       following call. */
+    result = cb_vfs_next_sibling(child, &lookahead);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    if (lookahead != NULL)
+        cb_vfs_node_retain(lookahead);
+    memcpy(name_out, name, length);
+    name_out[length] = '\0';
     if (inode_out != NULL)
         *inode_out = status.inode;
     if (type_out != NULL)
         *type_out = status.type;
-    ++handle->index;
+    cb_vfs_node_release(child);
+    handle->next = lookahead;
     cb_task_set_error(task, 0);
     return 0;
 }
@@ -1684,8 +1793,11 @@ static int api_closedir(int descriptor)
         cb_task_set_error(task, CB_EBADF);
         return -1;
     }
+    if (task->directories[descriptor].next != NULL)
+        cb_vfs_node_release(task->directories[descriptor].next);
     cb_vfs_node_release(task->directories[descriptor].node);
     task->directories[descriptor].node = NULL;
+    task->directories[descriptor].next = NULL;
     task->directories[descriptor].in_use = 0;
     cb_task_set_error(task, 0);
     return 0;
@@ -1835,6 +1947,8 @@ static void initialize_api(struct cb_kernel *kernel)
     api->basename_buffer_location = api_basename_buffer_location;
     api->stdio_state_location = api_stdio_state_location;
     api->input_state_location = api_input_state_location;
+    api->rmdir = api_rmdir;
+    api->rename = api_rename;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

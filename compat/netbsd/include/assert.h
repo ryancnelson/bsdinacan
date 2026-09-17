@@ -13,5 +13,6 @@
  * Deliberately a no-op here too -- not wired to any host assert().
  */
 #define _DIAGASSERT(e) ((void)0)
+#define assert(e) ((void)0)
 
 #endif
