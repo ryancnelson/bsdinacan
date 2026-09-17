@@ -111,9 +111,51 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 5. **`cp` and `mkdir` both fail honestly** with `sh: cp: no such file or
    directory` and status 127. The honest-failure rule holds at the shell layer.
 
+### Measured milestone status at `bae004b` (2026-09-17)
+
+Second end-to-end exploratory measurement of the milestone's acceptance sentence,
+taken by driving `build/bsdinacan` with scripted interactive sessions in the
+Alpine 3.22 gate environment following the landing of `CP-01` (`a9a936d`),
+`FS-STAT-01` (`e6dcb3d`), `FORMAT-01` (`a007331`), `MKDIR-CMD-01` (`5039fda`),
+`BUILD-SYNC-01` (`8791698`), `WC-02` (`bae004b`), and `MILESTONE-E2E-01` (`883f3f5`).
+
+Working, exit status 0, verified via scripted sessions:
+
+- create — `echo hello > /f1`, `echo append >> /f1`, `mkdir -p /a/b/c` (4-level directory hierarchies created cleanly)
+- list — `ls /dir` (single column plain listing)
+- copy — `cp /f1 /f2`, `cp -r /dir1 /dir2` (pinned NetBSD `cp` with recursive tree replication)
+- move — `mv /f2 /f3`, `mv /dir2 /dir3` (pinned NetBSD `mv` handling file renames and directory moves)
+- delete — `rm /f3`, `rm -r /dir3` (pinned NetBSD `rm` with multi-level recursive removal via `VFS-05` look-ahead cursor)
+- inspect — `cat /f1` (with `-n`, `-b`, `-s`, `-ns`), `head -n 2 /f1`, `wc /f1 /f2` (with `-l`, `-w`, `-c`, `-m`, `-L`, multi-file totals)
+- statics isolation — `wc /f1 /f2` executed repeatedly in a single continuous guest session produces identical counts without state accumulation across calls
+- pipelines and data flow — `cat /f1 | tr a-z A-Z`, `cat /f1 | wc -w` composable across guest processes
+
+Gaps and observations:
+
+1. **`list` (`ls`) remains the sole owned stand-in command.** `ls -l`, `ls -a`, `ls -F`
+   fail honestly with `usage: ls [file]` and exit status 1. All other milestone
+   verbs (`cat`, `wc`, `mkdir`, `head`, `rm`, `mv`, `cp`) run pinned NetBSD source.
+   `LS-02` remains held behind `STATICS-RESET-01`.
+2. **`echo` registration duality:** `/bin/echo` resolves to bootstrap `echo_main`
+   (`src/programs.c:44-64`), while pinned NetBSD `echo.c` is registered as
+   `netbsdecho` (`src/programs.c:178`). Standard arguments and `-n` flags produce
+   identical output, but this is the only verb where the pinned import was aliased
+   rather than directly replacing the bootstrap program.
+3. **Honest failure invariant holds across the entire surface:** non-existent paths,
+   unsupported options, and missing parents without `-p` produce diagnostics on
+   stderr and exit status 1 without crashes or silent passes.
+
+### MILESTONE-REMEASURE-01 — exploratory re-measurement of file manipulation milestone at `bae004b`
+
+- **Status:** Done; recorded in `BACKLOG.md` and `notes/iterations/MILESTONE-REMEASURE-01.md`.
+- **Base:** main (`bae004b`)
+- **Depends:** MILESTONE-E2E-01 (Done), WC-02 (Done), MKDIR-CMD-01 (Done)
+- **Scope:** Full exploratory session drive of `build/bsdinacan` across all six milestone verbs (`create`, `list`, `copy`, `move`, `delete`, `inspect`) and targeted test areas (`cat -n/-b`, `wc` multi-file/multi-invocation statics isolation, `mkdir -p` / `rm -r` look-ahead cursor, `echo` vs `netbsdecho` registration, `ls` option rejection, missing path diagnostics, and pipeline composition). Zero ABI, runtime, or utility source changes.
+- **Accept:** Full exploratory test suite pass, recorded exact outputs and exit statuses, scorecard updated, and zero regressions against `make ci`.
+
 ### MILESTONE-E2E-01 — commit the six-verb session acceptance test
 
-- Status: Ready
+- Status: Done (at 883f3f5)
 - Base: main
 - Depends: none
 - Hypothesis: the milestone's acceptance sentence has no automated test, so a
