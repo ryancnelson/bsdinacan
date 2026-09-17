@@ -40,9 +40,9 @@ run_session "WC-02: wc multi-file totals and multi-invocation statics isolation"
 run_session "MKDIR-CMD-01 & VFS-05: deep mkdir -p, populate, rm -r, ls verification" \
 'mkdir -p /tmp/nest/l1/l2/l3; echo "top level" > /tmp/nest/top.txt; echo "deep data" > /tmp/nest/l1/l2/l3/leaf.txt; ls /tmp/nest; ls /tmp/nest/l1/l2/l3; cat /tmp/nest/l1/l2/l3/leaf.txt; rm -r /tmp/nest; echo "=== ls /tmp after rm -r ==="; ls /tmp; echo "=== ls /tmp/nest (expect error) ==="; ls /tmp/nest; echo "status: $?"'
 
-# 4. echo vs netbsdecho registration divergence check
-run_session "ECHO: echo vs netbsdecho registration and behavior check" \
-'echo "=== echo ==="; echo hello world; echo -n hello; echo " post-n"; echo "=== netbsdecho ==="; netbsdecho hello world; netbsdecho -n hello; echo " post-n"; echo "=== multi -n flags ==="; echo -n -n foo; echo ""; netbsdecho -n -n foo; echo ""'
+# 4. echo behavior and netbsdecho retirement check
+run_session "ECHO-02: echo behavior and netbsdecho retirement check" \
+'echo "=== echo ==="; echo hello world; echo -n hello; echo " post-n"; echo "=== multi -n flags ==="; echo -n -n foo; echo ""; echo "=== netbsdecho retirement (expect command not found) ==="; netbsdecho hello world; echo "status: $?"'
 
 # 5. ls with options (LS-02 held check)
 run_session "LS-01 / LS-02: ls with options rejection check" \
