@@ -122,6 +122,88 @@ exclusion: `CAT-01` forces an explicit decision on it.
   command descriptor, reject host symbol imports, add the `UPSTREAM.md` entry
   and hash.
 
+## CAT-01 prerequisites
+
+CAT-01's own entry requires splitting rather than claiming as one item. These
+six cover the eleven interfaces `FILEUTIL-01` measured, in dependency order.
+Design of record: `work/CAT-01` at `525b553`, which also established from the
+pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
+(`cat.c:78`, `cat.c:124-131`) and never for unflagged `cat` or any of
+`-b -e -f -n -s -t -u -v -B`.
+
+### LIBC-CTYPE-01 — `isascii`, `toascii`, `iscntrl`
+
+- **Status:** Ready; unassigned
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** the three ctype predicates `cat` demands, C locale only. No wider
+  ctype surface, no locale machinery beyond what LOCALE-01 already established.
+
+### LIBC-STRTOL-01 — `strtol`
+
+- **Status:** Ready; unassigned
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `strtol` alone. `CONV-01` already pinned `strtoimax` and its
+  C-locale prerequisites; reuse that groundwork rather than duplicating it.
+- **Accept:** base handling, `endptr` semantics, `ERANGE` clamping at both
+  bounds, and `errno` preservation on success.
+
+### LIBC-ERR-02 — `warnx`
+
+- **Status:** Ready; unassigned
+- **Depends on:** FILEUTIL-01 (Done), ERR-01 (Done), ERR-02 (Done)
+- **Scope:** `warnx` only — the no-errno variant. `ERR-01` and `ERR-02` already
+  built the errno-bearing diagnostics; this is the remaining sibling.
+
+### LIBC-STDIO-02 — `clearerr`, `setbuf`, `fileno`, `BUFSIZ`, `SEEK_*`
+
+- **Status:** Ready; unassigned
+- **Depends on:** FILEUTIL-01 (Done), STDOUT-01 (Done), STDIN-01 (Done),
+  FWRITE-01 (Done)
+- **Scope:** the remaining stdio surface `cat` demands on top of the existing
+  task-owned streams. `setbuf` must be honest about the unbuffered model rather
+  than pretending to install a buffer it does not use — if the only supportable
+  call is `setbuf(fp, NULL)`, say so and reject the rest.
+- **Accept:** `clearerr` clearing the sticky error `STDOUT-01` established;
+  `fileno` returning the real descriptor; `SEEK_SET`/`CUR`/`END` matching the
+  existing `lseek` whence values exactly.
+
+### STAT-02 — wire the `sys/stat.h` veneer
+
+- **Status:** Ready; unassigned. **This is the one that closes a real gap
+  rather than adding surface.**
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** the runtime ABI already provides `stat`, `fstat` and `cb_stat_v1`,
+  but `libc/include/sys/stat.h` is a two-line stub — the `struct stat` gap is
+  **unwired, not unimplemented**. Expose a real POSIX `struct stat` mapping onto
+  the existing four fields, with the veneer synthesizing POSIX type bits in
+  `st_mode` (`S_IFREG`, `S_IFDIR`, `S_IFCHR`, `S_IFIFO`) from `cb_node_type`.
+- **Deliberately does NOT grow `cb_stat_v1`:** `cat` needs only `S_ISREG`, size
+  and inode, and never reads timestamps, `nlink`, `uid` or `gid`. Those arrive
+  in one coalesced append under `FS-STAT-01` when an actual consumer needs them.
+- **Accept:** `S_ISREG` true for regular files and false for every other node
+  type; `stat` and `fstat` agreeing; old-`struct_size` behavior unchanged, since
+  this adds no ABI field.
+
+### FCNTL-01 — `fcntl.h` declarations with no locking implementation
+
+- **Status:** Ready; unassigned. **Scope set by director decision** — an earlier
+  draft proposed an advisory-locking stub and that is rejected.
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `fcntl.h`, `O_NONBLOCK`, and the `struct flock` declaration
+  `cat.c:78` needs to compile. **No locking implementation and no stub that
+  succeeds.**
+- **Why no stub:** `cat` uses `F_WRLCK` with `F_SETLKW` and calls
+  `err(EXIT_FAILURE, "stdout")` when `fcntl` returns `-1`. A stub returning
+  success would mean `cat` believes it holds an exclusive lock that does not
+  exist — a false claim about mutual exclusion, which is a stronger form of the
+  dishonesty `SIG-01-design` already rejected for signals. A real failure return
+  makes `cat -l` fail loudly and correctly while every other invocation works,
+  because the locking path is unreachable without `-l`.
+- **Accept:** lock operations return a real failure; `cat -l` is documented as
+  outside the accepted matrix with that reason; unflagged `cat` and all of
+  `-b -e -f -n -s -t -u -v -B` are unaffected. Genuine record locking, if ever
+  wanted, gets its own ID triggered by a consumer that actually needs `-l`.
+
 ### VFS-04 — `rmdir` and atomic `rename` node operations
 
 - **Status:** Done on `work/VFS-04` at `0bc7d5f`; coordinator-reviewed. Appended
@@ -261,7 +343,22 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### EXTATTR-01 — decide the `sys/extattr.h` boundary
 
-- **Status:** Ready after FILEUTIL-01; unassigned. New ID created from the audit.
+- **Status:** Done. Design on `work/EXTATTR-01-design` at `6f0b7e7`, building on
+  earlier groundwork at `work/EXTATTR-01` (`9b908ed`). **It was never a
+  subsystem gate.** `sys/sys/extattr.h:119` declares exactly one function,
+  `int fcpxattr(int, int)`, and no other extattr function is referenced anywhere
+  in `mv` or `cp`. Both call sites are off the default path and treat failure as
+  non-fatal: `mv` reaches it only via the cross-device `EXDEV` fastcopy
+  fallback, `cp` only under `pflag` (`-p`/`-a`), and each emits a warning on
+  `-1`. Resolution: declare `fcpxattr` in a private `sys/extattr.h` and return
+  `-1` with `ENOSYS`. Honest *and* harmless, because the consumers' own error
+  handling absorbs it — established by reading the pinned source, not assumed.
+  Extended attributes and `cp -p` are documented as outside the accepted matrix.
+  Zero ABI change.
+- **Reachable here despite the default-path finding:** VFS-01 established two
+  mounts, so a cross-mount `mv` in cannedBSD *will* take the `EXDEV` fastcopy
+  path and hit `fcpxattr`. Accept criteria must include a cross-mount `mv`
+  emitting the warning and still completing the move.
 - **Base:** main
 - **Scope:** documentation/design only. The audit found `sys/extattr.h` is an
   unconditional compile gate in `mv` (first thing in the file) and in `cp`'s
@@ -278,9 +375,10 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### MV-01 — unchanged NetBSD `mv`
 
-- **Status:** Blocked on EXTATTR-01. **Not** blocked on VFS-04 as first written.
+- **Status:** Blocked on STAT-02. The extattr header gate is CLEARED by
+  EXTATTR-01 (Done); `rename` is present from VFS-04 (Done).
 - **Base:** main
-- **Depends on:** EXTATTR-01, FILEUTIL-01 (Done)
+- **Depends on:** STAT-02, EXTATTR-01 (Done), VFS-04 (Done), FILEUTIL-01 (Done)
 - **Scope:** import pinned `mv` byte-for-byte. Permissions enforcement remains
   deferred, so any prompting semantics must be scoped to what exists.
 - **Correction from the audit:** `mv`'s evidenced blocker is `sys/extattr.h`,
@@ -295,9 +393,10 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### RM-01 — unchanged NetBSD `rm`
 
-- **Status:** Blocked on FTS-01. Clean single-subsystem case per the audit.
+- **Status:** Blocked on FTS-CORE-01 only. **Zero extattr dependency** —
+  EXTATTR-01 established `mv`/`cp` are the only extattr consumers, not `rm`.
 - **Base:** main
-- **Depends on:** FTS-01, FILEUTIL-01 (Done)
+- **Depends on:** FTS-CORE-01, FILEUTIL-01 (Done)
 - **Scope:** import pinned `rm` byte-for-byte. Permissions enforcement remains
   deferred, so `-f` and `-i` semantics must be scoped to what exists.
 - **Correction from the audit:** `rm`'s sole measured blocker is `fts.h`, not
@@ -316,10 +415,11 @@ exclusion: `CAT-01` forces an explicit decision on it.
 
 ### CP-01 — unchanged NetBSD `cp`
 
-- **Status:** Blocked on FTS-01 and EXTATTR-01. New ID; the audit measured `cp`
+- **Status:** Blocked on FTS-CORE-01 and STAT-02. The extattr header gate is
+  CLEARED by EXTATTR-01 (Done). New ID; the audit measured `cp`
   as the only utility gated on two independent subsystems.
 - **Base:** main
-- **Depends on:** FTS-01, EXTATTR-01, FILEUTIL-01 (Done)
+- **Depends on:** FTS-CORE-01, STAT-02, EXTATTR-01 (Done), FILEUTIL-01 (Done)
 - **Scope:** import pinned `cp` byte-for-byte once both subsystems are resolved.
 - **Red:** record `cp`'s actual first-failure diagnostic after both gates clear.
 - **Accept:** to be specified once the blocking subsystems are designed.
