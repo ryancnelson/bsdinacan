@@ -141,7 +141,8 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### LIBC-STRTOL-01 — `strtol`
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
+- **Base:** main
 - **Depends on:** FILEUTIL-01 (Done)
 - **Scope:** `strtol` alone. `CONV-01` already pinned `strtoimax` and its
   C-locale prerequisites; reuse that groundwork rather than duplicating it.
@@ -150,14 +151,16 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### LIBC-ERR-02 — `warnx`
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
+- **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), ERR-01 (Done), ERR-02 (Done)
 - **Scope:** `warnx` only — the no-errno variant. `ERR-01` and `ERR-02` already
   built the errno-bearing diagnostics; this is the remaining sibling.
 
 ### LIBC-STDIO-02 — `clearerr`, `setbuf`, `fileno`, `BUFSIZ`, `SEEK_*`
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
+- **Base:** main
 - **Depends on:** FILEUTIL-01 (Done), STDOUT-01 (Done), STDIN-01 (Done),
   FWRITE-01 (Done)
 - **Scope:** the remaining stdio surface `cat` demands on top of the existing
