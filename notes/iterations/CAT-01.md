@@ -131,82 +131,41 @@ Critical source trace observations:
 3. **Unflagged and standard execution path:** For all other invocations (unflagged, `-b`, `-e`, `-f`, `-n`, `-s`, `-t`, `-u`, `-v`, `-B`), `lflag == 0` and `fcntl()` is **never invoked**.
 4. **Flag `-f` uses `open()`, not `fcntl()`:** Line 249 executes `open(*argv, O_RDONLY|O_NONBLOCK, 0)`. The `O_NONBLOCK` flag is an `open()` mode argument and does not route through `fcntl()`.
 
-### Rejection of dishonest locking stubs
+### Rejection of dishonest locking stubs and complex subsystem creep
 Under `AGENTS.md`, interfaces must establish genuine, falsifiable behavior rather than pretending to succeed. An advisory locking stub that unconditionally returns `0` for `F_SETLK`/`F_SETLKW` without enforcing mutual exclusion is a **dishonest surface**:
-- It would cause two cooperative tasks concurrently executing `cat -l` directed to the same file/terminal to falsely believe they hold exclusive write locks, silently interleaving and corrupting their output without mutual exclusion.
-- Per the precedent in `SIG-01-design.md` (which rejected signal stubs because returning fake success fails to enforce real task semantics), a no-op locking stub is strictly rejected.
+- It would cause two cooperative tasks executing `cat -l` directed to the same file/terminal to falsely believe they hold exclusive write locks, silently interleaving and corrupting output without mutual exclusion.
+- Conversely, building a full multi-task kernel advisory record locking subsystem with range conflict matrices and descriptor/task lifecycle purges would represent massive subsystem scope creep for a single flag (`-l`) in a milestone where record locking is not a requirement.
 
-### Decision: Implement genuine per-node advisory record locking in `FCNTL-01`
+### Decision: Minimal honest `fcntl` failure return in `FCNTL-01`; `-l` outside accepted matrix
 
-**We decide that `FCNTL-01` must implement genuine per-node advisory record locking across `cb_vfs_node` structures in cannedBSD's cooperative multi-task kernel, with real mutual exclusion, conflict detection, and automatic lifecycle cleanup on descriptor close and task exit.**
+**We decide that `FCNTL-01` provides the minimal honest compilation declarations in `fcntl.h` and implements a libc veneer `fcntl()` that explicitly returns `-1` with `errno = ENOTSUP` (or `ENOSYS`) on record locking commands (`F_GETLK`, `F_SETLK`, `F_SETLKW`), with `-l` documented as outside the accepted feature matrix for this milestone.**
 
 ### Architecture and semantics for `FCNTL-01`:
 
-1. **ABI Definition (`include/cannedbsd/abi.h`):**
-   ```c
-   enum cb_flock_type {
-       CB_F_RDLCK = 1,
-       CB_F_WRLCK = 2,
-       CB_F_UNLCK = 3
-   };
-
-   enum cb_fcntl_cmd {
-       CB_F_DUPFD  = 0,
-       CB_F_GETFD  = 1,
-       CB_F_SETFD  = 2,
-       CB_F_GETFL  = 3,
-       CB_F_SETFL  = 4,
-       CB_F_GETLK  = 7,
-       CB_F_SETLK  = 8,
-       CB_F_SETLKW = 9
-   };
-
-   struct cb_flock_v1 {
-       uint32_t abi_version;
-       uint32_t struct_size;
-       int16_t l_type;   /* CB_F_RDLCK, CB_F_WRLCK, CB_F_UNLCK */
-       int16_t l_whence; /* CB_SEEK_SET, CB_SEEK_CUR, CB_SEEK_END */
-       cb_off_t l_start; /* Starting offset */
-       cb_off_t l_len;   /* Number of bytes; 0 means to EOF */
-       cb_pid_t l_pid;   /* Blocking PID (populated by GETLK) */
-   };
-   ```
-   Add `int (*fcntl)(int fd, int cmd, void *arg);` to `struct cb_api_v1`.
-
-2. **Per-node lock tracking in the VFS layer (`src/vfs.c`, `src/internal.h`):**
-   - Each `cb_vfs_node` owns a linked list or tracked array of active record locks:
+1. **Header surface (`libc/include/fcntl.h`):**
+   - Provide `O_NONBLOCK` (needed by `cat -f` for `open()`).
+   - Define POSIX `struct flock`:
      ```c
-     struct cb_record_lock {
-         cb_pid_t pid;
-         int type;        /* CB_F_RDLCK or CB_F_WRLCK */
-         cb_off_t start;  /* absolute start offset */
-         cb_off_t end;    /* absolute end offset, 0 = EOF/infinity */
-         struct cb_record_lock *next;
+     struct flock {
+         off_t l_start;
+         off_t l_len;
+         pid_t l_pid;
+         short l_type;   /* F_RDLCK, F_WRLCK, F_UNLCK */
+         short l_whence; /* SEEK_SET, SEEK_CUR, SEEK_END */
      };
      ```
-   - Range conversion evaluates `l_whence`:
-     - `CB_SEEK_SET`: `start = l_start`.
-     - `CB_SEEK_CUR`: `start = file->offset + l_start`.
-     - `CB_SEEK_END`: `start = node_size + l_start`.
-     - If `start < 0`, returns `-CB_EINVAL`.
-     - `l_len == 0` designates locking from `start` through infinity (`end = 0`).
+   - Define command constants: `F_DUPFD`, `F_GETFD`, `F_SETFD`, `F_GETFL`, `F_SETFL`, `F_GETLK`, `F_SETLK`, `F_SETLKW`, and lock types `F_RDLCK`, `F_WRLCK`, `F_UNLCK`.
+   - Declare `int fcntl(int fd, int cmd, ...);` (mapped to `cb_libc_fcntl`).
 
-3. **Conflict detection and POSIX semantics:**
-   - Two locks overlap if `start1 < end2` and `start2 < end1` (with `0` treated as $\infty$).
-   - A lock request conflicts with an existing active lock if:
-     1. The active lock is held by a *different* PID (`lock->pid != current_task->pid`), AND
-     2. At least one lock is `CB_F_WRLCK` (write locks conflict with both read and write locks; read locks conflict only with write locks).
-   - Locks from the *same* PID never conflict with each other; an `F_SETLK` from the owning PID replaces, extends, or splits existing locks held by that PID.
+2. **Libc veneer implementation (`libc/cb_libc.c`):**
+   - `cb_libc_fcntl(int fd, int cmd, ...)`:
+     - For lock operations (`F_GETLK`, `F_SETLK`, `F_SETLKW`), sets task-local `errno = ENOTSUP` and returns `-1`.
+     - Zero new ABI fields or kernel locking tables required.
 
-4. **Operation handling:**
-   - **`F_GETLK`:** Inspects locks on the node. If a conflicting lock held by another PID exists, overwrites `struct flock` with that lock's parameters (`l_type`, `l_whence = SEEK_SET`, `l_start`, `l_len`, `l_pid`). If no conflict, sets `l_type = F_UNLCK`.
-   - **`F_SETLK` (Non-blocking):** If a conflict exists, returns `-1` with `errno = EAGAIN` (or `EACCES`). If uncontested, inserts/updates the lock record (or removes for `F_UNLCK`) and returns `0`.
-   - **`F_SETLKW` (Blocking):** If a conflict exists, yields/blocks the cooperative task (`CB_TASK_BLOCKED_LOCK`) until the conflicting task releases the lock or terminates. If uncontested, grants the lock immediately and returns `0`.
-
-5. **Lifecycle and cleanup invariants:**
-   - **Close Invariant (POSIX requirement):** When a task closes *any* file descriptor referring to a node (via `api->close` or kernel cleanup), all record locks held by `task->pid` on that specific node are immediately purged.
-   - **Exit Invariant:** When a task terminates (`api->exit` or kernel task destruction), all record locks held by `task->pid` across all nodes in the VFS are automatically purged.
-   - **Allocation Hygiene:** All lock record memory is allocated via `cb_allocate` and freed via `cb_release` without leaks.
+3. **Behavioral consequence for `cat`:**
+   - Standard execution (unflagged, `-b`, `-e`, `-f`, `-n`, `-s`, `-t`, `-u`, `-v`, `-B`) never invokes `fcntl()` and operates 100% bit-for-bit correctly.
+   - When invoked with `-l`, `cat` executes `fcntl(STDOUT_FILENO, F_SETLKW, &stdout_lock)`. Because `fcntl` returns `-1` with `ENOTSUP`, `cat` immediately reports `err(EXIT_FAILURE, "stdout")` and exits with status 1.
+   - `-l` is explicitly documented as outside the accepted milestone matrix, matching the honest failure model.
 
 ---
 
@@ -260,19 +219,15 @@ To comply with AGENTS.md single-behavior increment rules, the 11 gaps are partit
 - **Red:** Probe fails to compile against `sys/stat.h`; then runtime check fails to distinguish regular files from directories/terminals/pipes.
 - **Accept:** `fstat` and `stat` return 0 and populate `st_mode`/`st_size`/`st_ino` accurately on regular files (`S_ISREG` true), directories (`S_ISDIR` true), terminal devices (`S_ISCHR` true), and pipes (`S_ISFIFO` true); returns `-1` with `EBADF` on invalid descriptors and `ENOENT` on non-existent paths.
 
-### 6. `FCNTL-01` — File control flags and genuine per-node advisory record locking (`O_NONBLOCK`, `fcntl`)
+### 6. `FCNTL-01` — Minimal honest `fcntl` declarations and lock failure return (`O_NONBLOCK`, `fcntl`)
 - **Scope:**
-  - `include/cannedbsd/abi.h`: `struct cb_flock_v1`, `enum cb_flock_type`, `enum cb_fcntl_cmd`, `api->fcntl`.
-  - `src/internal.h`, `src/vfs.c`, `src/core.c`: per-node lock tracking in `cb_vfs_node`, conflict detection, lock acquisition, unlock, blocking on contested `F_SETLKW`, and automatic lock purge on descriptor `close()` and task `exit()`.
-  - `libc/include/fcntl.h`: `O_NONBLOCK`, `struct flock` (`l_start`, `l_len`, `l_pid`, `l_type`, `l_whence`), `F_RDLCK`, `F_WRLCK`, `F_UNLCK`, `F_GETLK`, `F_SETLK`, `F_SETLKW`.
-  - `libc/cb_libc.c`: implement `int cb_libc_fcntl(int fd, int cmd, ...)`.
-- **Red:** Focused multi-task cooperative locking probe fails while `fcntl` and locking structures are absent.
+  - `libc/include/fcntl.h`: `O_NONBLOCK`, `struct flock` (`l_start`, `l_len`, `l_pid`, `l_type`, `l_whence`), `F_RDLCK`, `F_WRLCK`, `F_UNLCK`, `F_GETLK`, `F_SETLK`, `F_SETLKW`, and declaration `int fcntl(int fd, int cmd, ...)`.
+  - `libc/cb_libc.c`: implement `int cb_libc_fcntl(int fd, int cmd, ...)`. For lock commands (`F_GETLK`, `F_SETLK`, `F_SETLKW`), set `errno = ENOTSUP` and return `-1`.
+- **Red:** Focused probe fails to compile without declarations; runtime probe fails if `fcntl(fd, F_SETLKW, ...)` returns `0` (dishonest success) or fails to set `errno = ENOTSUP`.
 - **Accept:**
-  1. *Acquisition & inspection:* Single task acquires `F_WRLCK` via `F_SETLK`; `F_GETLK` reports no conflict from self; `F_UNLCK` clears lock.
-  2. *Cooperative mutual exclusion:* When Task 1 holds `F_WRLCK` on a file, Task 2 calling `F_SETLK` with `F_WRLCK` fails with `EAGAIN`/`EACCES`, and `F_GETLK` reports Task 1's PID.
-  3. *Automatic release on close:* Closing a file descriptor referencing the locked node purges that task's locks on the node; Task 2 can subsequently acquire the lock.
-  4. *Automatic release on task exit:* When Task 1 exits, all its held locks are purged by the kernel; Task 2 can acquire the lock.
-  5. *Error handling:* `EBADF` on invalid descriptors; `EINVAL` on invalid `whence` or negative start offsets.
+  1. *Compilation surface:* `fcntl.h` provides all required flock declarations and constants.
+  2. *Honest failure return:* `fcntl(fd, F_SETLKW, ...)` and `fcntl(fd, F_SETLK, ...)` return `-1` and set `errno = ENOTSUP`.
+  3. *Utility behavior:* Standard `cat` invocations succeed without calling `fcntl`; `cat -l` fails with diagnostic and exit code 1 (`-l` documented as outside accepted matrix).
 
 ### 7. `CAT-01` — NetBSD `cat(1)` import and full integration
 - **Scope:**
@@ -302,7 +257,7 @@ When the prerequisite chain is complete and `cat` is imported, the integration g
    - Unflagged execution runs via `raw_cat`, verifying `read`/`write` fast loop.
    - `-B bsize`: Custom buffer size parsing via `strtol`.
    - `-u`: Unbuffered execution (`setbuf(stdout, NULL)`).
-   - `-l`: Advisory locking on stdout (`fcntl(F_SETLKW)`): succeeds cleanly when uncontested; enforces mutual exclusion when contested.
+   - `-l`: Documented as outside accepted feature matrix; exits with code 1 and diagnostic (`stdout: Operation not supported`).
    - `-f`: Regular file gate (`S_ISREG` check; non-regular files skipped with `warnx`).
 6. **Error handling and continuation:**
    - Missing input file produces `warn("%s", path)`, sets exit status 1, and continues processing subsequent files.
