@@ -29,6 +29,12 @@
 
 #include <errno.h>
 
+/*
+ * Depth bound for cycle detection and stack allocation. Any tree deeper than
+ * CB_PATH_MAX / 2 would have a full path exceeding CB_PATH_MAX (assuming >= 1
+ * char name plus '/'). This bound couples to utility-visible PATH_MAX being
+ * strictly equal to VFS CB_PATH_MAX (enforced in limits.h and sys/param.h).
+ */
 #define CB_FTS_MAX_DEPTH (CB_PATH_MAX / 2)
 
 struct cb_fts_frame {

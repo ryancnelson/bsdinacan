@@ -51,7 +51,7 @@
 4. `libc/include/unistd.h`: Declared `getuid`, `link`, `symlink`, `readlink`, `lchown`.
 5. `libc/include/string.h`: Declared `strncat` / `cb_libc_strncat`.
 6. `libc/include/fts.h`: Defined `FTS_ROOTLEVEL 0`.
-7. `compat/netbsd/include/sys/param.h`: Defined `PATH_MAX 1024` and `MAXBSIZE 65536`.
+7. `compat/netbsd/include/sys/param.h`: Defined `PATH_MAX` and `MAXPATHLEN` derived from `CB_PATH_MAX`, and `MAXBSIZE 65536`.
 8. `libc/include/sys/types.h` and `compat/netbsd/include/sys/types.h`: Synchronized type guards across all POSIX type aliases.
 9. `libc/cb_libc.c`: Implemented `cb_libc_chmod`, `cb_libc_lchmod`, `cb_libc_chflags`, `cb_libc_lutimens`, `cb_libc_lchown`, `cb_libc_link`, `cb_libc_symlink`, `cb_libc_mkfifo`, `cb_libc_mknod` (`ENOSYS`), `cb_libc_readlink` (`EINVAL`), `cb_libc_getuid` (`0`), `cb_libc_umask` (state tracking), and `cb_libc_strncat`. Updated `convert_stat` to initialize timespec fields.
 10. `tests/libc_file_probe.c` and `tests/libc_file_probe_module.c`: Added `cp-stub-probe` validating identity, umask state transitions, honest `ENOSYS`/`EINVAL` errors, `strncat` buffer manipulation, and `stat` timestamp field conversions.
