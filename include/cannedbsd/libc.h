@@ -52,6 +52,14 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
+/* Thin pass-through to bound_api->stat, in the same spirit as every other
+   cb_libc_* wrapper in this header. stat/fstat sit before the api_is_usable
+   struct_size checkpoint (offsetof(..., poll)) but are not in its NULL-check
+   list, so unlike truncate/ftruncate this one still guards against a bound
+   table that leaves stat unset. Exists so libc/cb_fts.c (a separate
+   translation unit with no access to cb_libc.c's private bound_api) can
+   populate an FTSENT's fts_statp without any new ABI surface. */
+int cb_libc_stat(const char *path, struct cb_stat_v1 *stat_buffer);
 int cb_libc_isatty(int descriptor);
 int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes);
 int cb_libc_tcsetattr(int descriptor, int action,
