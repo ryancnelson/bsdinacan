@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(cannedBSDMac C CXX ASM)
 set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+include(CheckCCompilerFlag)
+check_c_compiler_flag("-fno-tree-loop-distribute-patterns" HAVE_NO_TREE_LOOP_DISTRIBUTE_PATTERNS)
 add_compile_options(-Os -ffunction-sections -fdata-sections -Wall -Wextra)
 include_directories(${ROOT}/include ${ROOT}/src)
 
@@ -22,6 +24,13 @@ foreach(probe fwrite fread file stdin memory getopt truncate err warn strcpy ter
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
 target_compile_definitions(cb_fread_probe PRIVATE main=cb_fread_probe_main)
+# libc_file_probe.c reads MAXBSIZE from compat/netbsd/include/sys/param.h, so it
+# needs the same include set the Linux build gives it in Makefile's
+# $(BUILD)/libc_file_probe.o rule (-Icompat/netbsd/include -Ilibc/include).
+# The two builds list include paths independently, so a probe that gains a
+# compat-header dependency compiles on Linux and fails only here. See
+# notes/iterations/MAC68K-INC-01.md.
+target_include_directories(cb_file_probe PRIVATE ${ROOT}/compat/netbsd/include)
 target_compile_definitions(cb_file_probe PRIVATE main=cb_file_probe_main)
 target_compile_definitions(cb_stdin_probe PRIVATE main=cb_stdin_probe_main)
 target_compile_definitions(cb_progname_probe PRIVATE main=cb_progname_probe_main)
@@ -90,6 +99,54 @@ target_include_directories(cb_strtoimax PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_strtoimax PRIVATE
     HAVE_NBTOOL_CONFIG_H=1 strtoimax=cb_libc_strtoimax)
+add_library(cb_strrchr OBJECT
+    ${ROOT}/upstream/netbsd/common/lib/libc/string/strrchr.c)
+target_include_directories(cb_strrchr PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+# GCC's loop-idiom recognition rewrites memset.c's fill loops into
+# calls back to memset, resolving to cb_libc_memset via the link-name binding,
+# causing unbounded self-recursion at runtime.
+# -fno-tree-loop-distribute-patterns is the fix; added conditionally if supported.
+add_library(cb_memset OBJECT
+    ${ROOT}/upstream/netbsd/common/lib/libc/string/memset.c)
+target_include_directories(cb_memset PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_memset PRIVATE CANNEDBSD_BUILDING_LIBC_MEMSET)
+target_compile_options(cb_memset PRIVATE -fno-builtin-memset)
+if(HAVE_NO_TREE_LOOP_DISTRIBUTE_PATTERNS)
+    target_compile_options(cb_memset PRIVATE -fno-tree-loop-distribute-patterns)
+endif()
+add_library(cb_fts OBJECT ${ROOT}/libc/cb_fts.c)
+target_include_directories(cb_fts PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+
+add_library(cb_ls OBJECT ${ROOT}/commands/ls.c)
+target_include_directories(cb_ls PRIVATE ${ROOT}/libc/include)
+
+add_library(cb_rm OBJECT ${ROOT}/upstream/netbsd/bin/rm/rm.c)
+target_include_directories(cb_rm PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_rm PRIVATE main=cb_rm_main)
+
+add_library(cb_mv OBJECT ${ROOT}/upstream/netbsd/bin/mv/mv.c)
+target_include_directories(cb_mv PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/mv)
+target_compile_definitions(cb_mv PRIVATE main=cb_mv_main)
+
+add_library(cb_cat OBJECT ${ROOT}/upstream/netbsd/bin/cat/cat.c)
+target_include_directories(cb_cat PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_cat PRIVATE main=cb_cat_main)
+
+add_library(cb_cp OBJECT ${ROOT}/upstream/netbsd/bin/cp/cp.c)
+target_include_directories(cb_cp PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/cp)
+target_compile_definitions(cb_cp PRIVATE SMALL main=cb_cp_main)
+
+add_library(cb_cp_utils OBJECT ${ROOT}/upstream/netbsd/bin/cp/utils.c)
+target_include_directories(cb_cp_utils PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/cp)
+target_compile_definitions(cb_cp_utils PRIVATE SMALL)
 
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
@@ -99,6 +156,11 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
+    ${ROOT}/commands/ls_module.c
+    ${ROOT}/commands/rm_module.c
+    ${ROOT}/commands/mv_module.c
+    ${ROOT}/commands/cat_module.c
+    ${ROOT}/commands/cp_module.c
     ${ROOT}/tests/terminal_engine_probe.c
     ${ROOT}/tests/signal_probe.c
     ${ROOT}/tests/tee_state_probe.c
@@ -137,6 +199,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OB
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
+    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
@@ -144,6 +207,9 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_dirname>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_basename>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strtoimax>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strrchr>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memset>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_fts>)
 # Lazy LoadSeg performs Toolbox work and must never run on a task stack.
 # A single resident CODE segment keeps all runtime calls free of that trap.
 target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug

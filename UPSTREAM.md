@@ -36,6 +36,16 @@ surface unsupported by a measured diagnostic applies here too: adding
 `-fno-builtin-*` to functions with no measured self-recursion would be
 exactly the kind of unearned, speculative change this project avoids.
 
+**Same empirical measurement performed for Retro68 m68k at `-Os`** (under
+`MAC68K-CMD-01`): `cb_memset` was given `-fno-builtin-memset` and
+`-fno-tree-loop-distribute-patterns` (guarded via CMake `check_c_compiler_flag`).
+All six m68k objects (`memset`, `memcmp`, `memcpy`, `memmove`, `strcpy`, `strcmp`)
+were disassembled with `m68k-apple-macos-objdump -d` and inspected for subroutine
+calls (`bsr`/`jsr` or recursive symbol references). All six compile to pure
+straight-line and local branch loops (`bras`, `bnes`, `beqs`, `blss`, `bcss`, `rts`)
+with zero external calls or self-calls. None of `memcmp`, `memcpy`, `memmove`,
+`strcpy`, `strcmp` required extra flags on m68k.
+
 **Recipe for any future import binding a new function to a compiler-
 recognized standard name via this `__asm__` trick:** disassemble the
 compiled object and grep for a call/branch-and-link instruction targeting
