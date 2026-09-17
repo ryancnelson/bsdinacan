@@ -69,6 +69,15 @@ environment. Every prior item was accepted against its own tests; none of them
 exercised the six verbs in one session, so this is the first evidence about the
 milestone as stated rather than about its parts.
 
+**This is a measurement at `89ef526`, not a statement of current state.** `main`
+has since moved to `a007331` through `CP-01` (`a9a936d`) and `FORMAT-01`
+(`a007331`), so two of the findings below are already stale by design: `cp` now
+exists, and `cat -n`/`-b` now work. The measurement is left as recorded rather
+than edited, because the point of it is what was true when the six verbs were
+first driven in one session; `MILESTONE-E2E-01` is what converts it into a
+standing test that cannot go stale. Re-take it after `MILESTONE-E2E-01` and
+`MAC68K-CMD-01` land, and record the new SHA rather than revising this entry.
+
 Working, exit status 0, each result confirmed by a subsequent listing:
 
 - create — `echo hello-cannedbsd > /f1`
