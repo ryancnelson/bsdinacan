@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/time.h>
+#include <sys/param.h>
+#include <fts.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -14,6 +17,56 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "cp-stub-probe") == 0) {
+        char buf[64];
+        struct timespec ts[2] = {{0, 0}, {0, 0}};
+        struct stat sb;
+
+        /* Identity and umask */
+        if (getuid() != 0) return 101;
+        if (umask(077) != 022) return 102;
+        if (umask(022) != 077) return 103;
+
+        /* Honest ENOSYS / EINVAL failures */
+        errno = 0;
+        if (chmod("/tmp/foo", 0644) != -1 || errno != ENOSYS) return 104;
+        errno = 0;
+        if (lchmod("/tmp/foo", 0644) != -1 || errno != ENOSYS) return 105;
+        errno = 0;
+        if (chflags("/tmp/foo", 0) != -1 || errno != ENOSYS) return 106;
+        errno = 0;
+        if (lchown("/tmp/foo", 0, 0) != -1 || errno != ENOSYS) return 107;
+        errno = 0;
+        if (lutimens("/tmp/foo", ts) != -1 || errno != ENOSYS) return 108;
+        errno = 0;
+        if (link("/tmp/a", "/tmp/b") != -1 || errno != ENOSYS) return 109;
+        errno = 0;
+        if (symlink("/tmp/a", "/tmp/b") != -1 || errno != ENOSYS) return 110;
+        errno = 0;
+        if (readlink("/tmp/a", buf, sizeof(buf)) != -1 || errno != EINVAL) return 111;
+        errno = 0;
+        if (mkfifo("/tmp/fifo", 0644) != -1 || errno != ENOSYS) return 112;
+        errno = 0;
+        if (mknod("/tmp/nod", 0644, 0) != -1 || errno != ENOSYS) return 113;
+
+        /* strncat helper */
+        strcpy(buf, "hello");
+        if (strncat(buf, " world!", 3) != buf || strcmp(buf, "hello wo") != 0) return 114;
+        if (strncat(buf, "rld", 10) != buf || strcmp(buf, "hello world") != 0) return 115;
+
+        /* Constants and stat timestamp macros */
+        if (FTS_ROOTLEVEL != 0) return 116;
+        if (PATH_MAX != 1024) return 117;
+        if (MAXBSIZE != 65536) return 118;
+
+        if (stat("/", &sb) != 0) return 119;
+        if (sb.st_atimespec.tv_sec != 0 || sb.st_atimespec.tv_nsec != 0) return 120;
+        if (sb.st_mtimespec.tv_sec != 0 || sb.st_mtimespec.tv_nsec != 0) return 121;
+        if (sb.st_ctimespec.tv_sec != 0 || sb.st_ctimespec.tv_nsec != 0) return 122;
+        if (sb.st_atime != 0 || sb.st_mtime != 0 || sb.st_ctime != 0) return 123;
+
+        return 0;
+    }
     if (strcmp(mode, "mman-probe") == 0) {
         void *p;
         errno = 0;
