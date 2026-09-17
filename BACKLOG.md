@@ -430,20 +430,70 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
   over a populated tree, exact status and diagnostics, cleanup before teardown,
   no host symbol imports, `UPSTREAM.md` entry and hash.
 
+## CP-01 prerequisites
+
+CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 precedent, it is decomposed into four bounded prerequisite items plus the utility import itself.
+
+### COMPAT-CDEFS-01 — `__BEGIN_DECLS`, `__END_DECLS`, and `assert`
+
+- **Status:** Done; merged to main.
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** `libc/include/sys/cdefs.h` (`__BEGIN_DECLS`, `__END_DECLS`) and `compat/netbsd/include/assert.h` (`assert(e) ((void)0)`).
+- **Hypothesis:** C++ linkage header guards and no-op assertions can be provided in libc/compat headers with zero runtime impact.
+- **Red:** Compilation of headers including `<sys/cdefs.h>` or `<assert.h>` fails on missing macros.
+- **Accept:** `__BEGIN_DECLS`/`__END_DECLS` defined under `#ifdef __cplusplus`; `assert` expands to `((void)0)`.
+
+### LIBC-MMAN-01 — `sys/mman.h` declarations and honest `mmap`/`munmap`/`madvise` veneer
+
+- **Status:** Ready; unassigned
+- **Base:** main
+- **Depends on:** COMPAT-CDEFS-01 (Done)
+- **Scope:** Header `libc/include/sys/mman.h` with standard declarations (`mmap`, `munmap`, `madvise`, `MADV_SEQUENTIAL`, `MAP_SHARED`, `MAP_FILE`, `MAP_FAILED`, `PROT_READ`) and veneer implementations:
+  - `cb_libc_mmap`: returns `MAP_FAILED` (`(void *)-1`) with `errno = ENOSYS`. NetBSD `cp` (`utils.c:198-256`) uses `mmap` as an un-guarded fastpath for non-empty regular files $\le 8\text{MB}$, but cleanly and silently falls back to chunked 64KB `read()`/`write()` loops when `mmap` returns `MAP_FAILED` (no diagnostic, no abort).
+  - `cb_libc_munmap`: returns `-1` with `errno = ENOSYS` (honest failure; returning 0 would be fabricated success).
+  - `cb_libc_madvise`: returns `0`. `madvise` is explicitly advisory by POSIX/BSD specification; accepting advice as a no-op is conforming behavior, not a claim about work performed.
+- **Hypothesis:** Providing honest `ENOSYS` for `mmap`/`munmap` and conforming no-op for `madvise` allows callers to fall back to standard I/O without needing an internal memory-mapping subsystem.
+- **Red:** `#include <sys/mman.h>` fails compilation on missing header; `mmap` call sites fail linking.
+- **Accept:** Clean compilation; `mmap` and `munmap` fail detectably with `ENOSYS`; `madvise` returns 0.
+
+### VFS-MKDIR-01 — restore `cb_libc_mkdir` on measured `cp` demand
+
+- **Status:** Ready; unassigned
+- **Base:** main
+- **Depends on:** FILEUTIL-01 (Done)
+- **Scope:** Restore `cb_libc_mkdir` in `libc/cb_libc.c` and declare `mkdir` in `libc/include/sys/stat.h`.
+- **Justification:** Re-measured demand from `cp.c:482` (`mkdir(to.p_path, curr->fts_statp->st_mode | S_IRWXU)` during recursive directory tree replication).
+- **Zero ABI growth:** Routes directly to existing `bound_api->mkdir` / `cb_vfs_mkdir_path` already present in `cb_api_v1`. Zero changes to `include/cannedbsd/abi.h`.
+- **Hypothesis:** Recursive directory creation can be served entirely by wiring `mkdir` to the existing ABI entry point.
+- **Red:** `mkdir` probe fails to link.
+- **Accept:** `mkdir` creates directories in RAMFS, enforces `EEXIST`/`ENOENT`/`EFAULT`, and preserves existing `cb_api_v1` table compatibility.
+
+### LIBC-CP-STUB-01 — stat timestamp fields, node-type stubs, permissions and string helpers
+
+- **Status:** Ready; unassigned
+- **Base:** main
+- **Depends on:** STAT-02 (Done), FTS-CORE-01 (Done)
+- **Scope:** Explicitly enumerates four distinct prerequisite groups required for `cp` compilation and honest runtime behavior:
+  1. **Timestamp fields & setters:** `struct stat` timestamp accessors (`st_atimespec`, `st_mtimespec`, `st_ctimespec`) mapped to existing `st_mtime`/`st_atime`/`st_ctime` fields, and `cb_libc_lutimens` / `cb_libc_futimens` returning `-1` with `errno = ENOSYS` (timestamps deferred to `FS-STAT-01`).
+  2. **Unreachable RAMFS node-type branches:** `link`, `symlink`, `readlink`, `mkfifo`, `mknod` in `libc/include/unistd.h` and `libc/include/sys/stat.h`, with `cb_libc_*` returning `-1` with `ENOSYS` (`readlink` returns `EINVAL`). These correspond to `copy_link`, `copy_fifo`, and `copy_special` branches which are never executed in RAMFS (no symlinks, hardlinks, fifos, or device nodes).
+  3. **Identity, umask & permissions:**
+     - `cb_libc_getuid`: returns `0`. POSIX `getuid` has no error return by contract and cannot fail; `0` is the honest representation for cannedBSD's single implicit root identity.
+     - `cb_libc_umask`: tracks and returns the task's umask (default `022`).
+     - `cb_libc_chmod` / `cb_libc_lchmod`: return `-1` with `errno = ENOSYS`. Unlike `fchmod` in MV-01 (where `open(..., O_CREAT, mode)` set permissions at creation), NetBSD `cp` calls `chmod` on directories upon post-order ascent (`cp.c:521`) casting to `(void)chmod(...)` (which ignores the return), and in `setfile()` (`utils.c:386`) under `-p` (which detectably fails and warns). Returning `ENOSYS` is honest and keeps permissions deferred without breaking unflagged `cp`.
+     - `cb_libc_lchown` / `cb_libc_chflags`: return `-1` with `errno = ENOSYS`.
+  4. **Constants & string helpers:** `libc/include/string.h` declares `strncat` (`cb_libc_strncat`); `libc/include/fts.h` defines `FTS_ROOTLEVEL 0`; `compat/netbsd/include/sys/param.h` defines `PATH_MAX` and `MAXBSIZE` (65536).
+- **Hypothesis:** All four groups provide exact compile-time declarations and honest runtime failure returns without speculative feature implementations or ABI expansion.
+- **Accept:** Probes compile; `getuid` returns 0; `umask` updates state; unimplemented operations fail detectably with `ENOSYS`/`EINVAL`.
+
 ### CP-01 — unchanged NetBSD `cp`
 
-- **Status:** **Ready — claimable now.** Both prerequisite subsystem gates are
-  CLEARED: FTS-CORE-01 (Done), STAT-02 (Done), EXTATTR-01 (Done).
+- **Status:** Ready; unassigned
 - **Base:** main
-- **Depends on:** FTS-CORE-01 (Done), STAT-02 (Done), EXTATTR-01 (Done), FILEUTIL-01 (Done)
-- **Scope:** import pinned `cp` byte-for-byte.
-- **Process Model Note:** Unlike `mv.c`, NetBSD `cp` performs recursive tree
-  copying (`-r`/`-R`) purely in-process via `fts(3)` directory traversal and
-  standard VFS operations (`mkdir`, `open`, `read`, `write`). `cp` **does not
-  use `vfork()` or external program execution**, and is completely reachable
-  within cannedBSD's one-host-process model.
-- **Red:** record `cp`'s actual first-failure diagnostic after both gates clear.
-- **Accept:** to be specified once the blocking subsystems are designed.
+- **Depends on:** COMPAT-CDEFS-01 (Done), LIBC-MMAN-01, VFS-MKDIR-01, LIBC-CP-STUB-01, FTS-CORE-01 (Done), EXTATTR-01 (Done), STAT-02 (Done), FILEUTIL-01 (Done), VFS-05
+- **Scope:** Import pinned NetBSD `cp.c` (SHA-256: `fef86b0f...`), `utils.c` (SHA-256: `d20b0711...`), and `extern.h` (SHA-256: `6299aea5...`) byte-for-byte unmodified. Compile with `-DSMALL -Dmain=cb_cp_main`, link into `bsdinacan`, register in `src/programs.c`, and add `UPSTREAM.md` entries.
+- **Process Model Note:** Unchanged `cp` executes entirely in-process using `fts(3)` directory traversal and VFS `mkdir`/`open`/`read`/`write`. It makes 0 calls to `vfork`, `fork`, `exec*`, `spawn`, `system`, or `popen`, avoiding the single-process `vfork` limitation seen in `mv`.
+- **Accepted Behavioral Matrix:** Default file copying, overwriting, multi-file copying to target directory, recursive copying (`-r` and `-R`), forced copy (`-f`), missing source error handling, empty file copy, and cross-mount file/recursive copies. `-p` and `-a` are explicitly excluded from the accepted matrix (metadata preservation deferred).
 
 ### LS-01 — single-column `ls` without terminal width or `-l`
 
