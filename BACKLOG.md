@@ -375,21 +375,38 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### MV-01 — unchanged NetBSD `mv`
 
-- **Status:** Blocked on STAT-02. The extattr header gate is CLEARED by
-  EXTATTR-01 (Done); `rename` is present from VFS-04 (Done).
+- **Status:** Done; merged to main at `6694a22`.
 - **Base:** main
-- **Depends on:** STAT-02, EXTATTR-01 (Done), VFS-04 (Done), FILEUTIL-01 (Done)
-- **Scope:** import pinned `mv` byte-for-byte. Permissions enforcement remains
-  deferred, so any prompting semantics must be scoped to what exists.
-- **Correction from the audit:** `mv`'s evidenced blocker is `sys/extattr.h`,
-  not `rename`. Compilation is fatal at `extattr` before reaching any `rename()`
-  call, so whether `mv` additionally needs VFS-04's `rename` is **unmeasured**.
-  Re-measure after EXTATTR-01 rather than assuming either way.
-- **Red:** record `mv`'s actual first-failure diagnostic after EXTATTR-01, then
-  an observable failing behavioral case.
-- **Accept:** same-mount rename, replacement of an existing target, cross-mount
-  `EXDEV` behavior, missing source, and directory operands. Cleanup before
-  teardown, no host symbol imports, `UPSTREAM.md` entry and hash.
+- **Depends on:** STAT-02 (Done), EXTATTR-01 (Done), VFS-04 (Done), FILEUTIL-01 (Done)
+- **Scope:** imported pinned `mv.c` (SHA-256: `df5de897...`) and `pathnames.h`
+  (SHA-256: `82819eb6...`) byte-for-byte unmodified. Zero ABI changes.
+- **Implemented Behavior:**
+  - Same-mount file and directory renames execute unconditionally via VFS
+    `rename()`.
+  - Cross-mount regular file moves (`EXDEV`) execute via in-process `fastcopy()`,
+    unlinking the source, verifying byte-exact destination content, and emitting
+    honest `ENOSYS` metadata failure warnings for `fcpxattr`, `futimes`, and `fchown`.
+- **Architectural Boundary Note on Cross-Mount Directory Moves:**
+  - In NetBSD `mv.c`, cross-mount non-regular source moves route to `copy()`,
+    which uses the traditional `vfork()` + `execl(_PATH_CP, ...)` + `waitpid()`
+    pattern.
+  - In cannedBSD's single-host-process cooperative multitasking runtime, general
+    `fork()`/`vfork()` is absent (`capabilities->vfork == 0`), and `cb_libc_vfork()`
+    honestly returns `-1` with `ENOSYS`.
+  - Upstream `mv.c:383` checks only `if ((pid = vfork()) == 0)` without an error
+    branch, so a failed `vfork()` (`pid == -1`) falls straight through into
+    `waitpid(-1, &status, 0)` ("wait for any child"). `cb_libc_waitpid` detects no
+    child process exists and returns `-1` with `ECHILD`, causing `mv.c` to emit
+    `mv: /bin/cp: waitpid: no child processes`.
+  - **Conclusion:** Cross-mount directory moves are **architecturally unreachable
+    for unchanged upstream `mv`** in cannedBSD's one-host-process model. This is
+    an architectural limitation of `vfork()` in a single-process runtime, **not a
+    temporary blocker awaiting CP-01/RM-01** (registering `/bin/cp` will not change
+    the outcome because `vfork()` fails before `execl` is ever attempted).
+- **Upstream Characteristic:**
+  - Pinned `mv` does not check for `vfork` failure before calling `waitpid(-1)`.
+    Any future utility import using an unchecked `vfork()+exec()` pattern will
+    exhibit the same fallthrough behavior.
 
 ### RM-01 — unchanged NetBSD `rm`
 
@@ -415,12 +432,16 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### CP-01 — unchanged NetBSD `cp`
 
-- **Status:** Blocked on FTS-CORE-01 and STAT-02. The extattr header gate is
-  CLEARED by EXTATTR-01 (Done). New ID; the audit measured `cp`
-  as the only utility gated on two independent subsystems.
+- **Status:** **Ready — claimable now.** Both prerequisite subsystem gates are
+  CLEARED: FTS-CORE-01 (Done), STAT-02 (Done), EXTATTR-01 (Done).
 - **Base:** main
-- **Depends on:** FTS-CORE-01, STAT-02, EXTATTR-01 (Done), FILEUTIL-01 (Done)
-- **Scope:** import pinned `cp` byte-for-byte once both subsystems are resolved.
+- **Depends on:** FTS-CORE-01 (Done), STAT-02 (Done), EXTATTR-01 (Done), FILEUTIL-01 (Done)
+- **Scope:** import pinned `cp` byte-for-byte.
+- **Process Model Note:** Unlike `mv.c`, NetBSD `cp` performs recursive tree
+  copying (`-r`/`-R`) purely in-process via `fts(3)` directory traversal and
+  standard VFS operations (`mkdir`, `open`, `read`, `write`). `cp` **does not
+  use `vfork()` or external program execution**, and is completely reachable
+  within cannedBSD's one-host-process model.
 - **Red:** record `cp`'s actual first-failure diagnostic after both gates clear.
 - **Accept:** to be specified once the blocking subsystems are designed.
 
