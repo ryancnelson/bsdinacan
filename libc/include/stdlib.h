@@ -22,4 +22,7 @@ void cb_libc_setprogname(const char *name);
 
 #define arc4random cb_libc_arc4random
 
+long cb_libc_strtol(const char *nptr, char **endptr, int base);
+#define strtol cb_libc_strtol
+
 #endif

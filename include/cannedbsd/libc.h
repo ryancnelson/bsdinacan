@@ -93,6 +93,8 @@ char ***cb_libc_environ_location(void);
 struct cb_getopt_state_v1 *cb_libc_getopt_state_location(void);
 int cb_libc_getopt(int argc, char *const argv[], const char *optstring);
 char *cb_libc_strerror(int error);
+intmax_t cb_libc_strtoimax(const char *nptr, char **endptr, int base);
+long cb_libc_strtol(const char *nptr, char **endptr, int base);
 int cb_libc_isdigit(int character);
 int cb_libc_isspace(int character);
 int cb_libc_isascii(int character);

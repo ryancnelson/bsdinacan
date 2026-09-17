@@ -462,7 +462,7 @@ if rg -n 'cannedbsd|internal\.h|\bcb_[A-Za-z0-9_]+' "$strtoimax_probe_source"; t
     echo 'FAIL: strtoimax probe source uses private names' >&2
     exit 1
 fi
-for symbol in strtoimax isdigit isspace errno_location strcmp strerror; do
+for symbol in strtoimax strtol isdigit isspace errno_location strcmp strerror; do
     if nm -u "$strtoimax_probe_object" | matches "[[:space:]]U[[:space:]]+${symbol}$" ||
        ! nm -u "$strtoimax_probe_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
         echo "FAIL: strtoimax probe lacks private $symbol boundary" >&2
