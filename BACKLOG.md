@@ -133,7 +133,8 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### LIBC-CTYPE-01 — `isascii`, `toascii`, `iscntrl`
 
-- **Status:** Ready; unassigned
+- **Status:** Done; merged to main.
+- **Base:** main
 - **Depends on:** FILEUTIL-01 (Done)
 - **Scope:** the three ctype predicates `cat` demands, C locale only. No wider
   ctype surface, no locale machinery beyond what LOCALE-01 already established.

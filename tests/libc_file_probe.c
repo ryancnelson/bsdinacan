@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 
 static FILE *first, *second;
 void *stream_probe_handle(unsigned index) { return index == 0 ? first : second; }
@@ -78,6 +79,12 @@ int main(int argc, char **argv)
             errno = 0;
             if (fcntl(1, F_GETFL, 0) != -1 || errno != ENOSYS) return 125;
         }
+
+        /* ctype helpers */
+        if (!isascii('A') || !isascii(0) || !isascii(127) || isascii(128) || isascii(255)) return 126;
+        if (toascii(0xff) != 0x7f || toascii('A') != 'A' || toascii(0x141) != 0x41) return 127;
+        if (!iscntrl('\0') || !iscntrl('\n') || !iscntrl('\r') || !iscntrl(31) || !iscntrl(127)) return 128;
+        if (iscntrl(' ') || iscntrl('A') || iscntrl('z') || iscntrl(128)) return 129;
 
         return 0;
     }

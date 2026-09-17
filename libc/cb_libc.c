@@ -1017,6 +1017,21 @@ int cb_libc_isspace(int character)
            character == '\v' || character == '\f' || character == '\r';
 }
 
+int cb_libc_isascii(int character)
+{
+    return (character >= 0 && character <= 0x7f);
+}
+
+int cb_libc_toascii(int character)
+{
+    return character & 0x7f;
+}
+
+int cb_libc_iscntrl(int character)
+{
+    return (character >= 0 && character <= 0x1f) || character == 0x7f;
+}
+
 static struct cb_stdio_state_v1 *stdio_state(void)
 {
     struct cb_stdio_state_v1 *state = NULL;
