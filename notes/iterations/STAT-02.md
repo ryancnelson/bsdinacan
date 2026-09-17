@@ -48,7 +48,7 @@
 3. **`include/cannedbsd/libc.h`**:
    - Defined POSIX file type constants: `S_IFMT` (`0170000`), `S_IFIFO` (`0010000`), `S_IFCHR` (`0020000`), `S_IFDIR` (`0040000`), `S_IFBLK` (`0060000`), `S_IFREG` (`0100000`), `S_IFLNK` (`0120000`), `S_IFSOCK` (`0140000`).
    - Defined `struct stat` with fields: `st_ino`, `st_mode`, `st_size`, `st_blksize`, `st_blocks`.
-   - Declared `cb_libc_stat`, `cb_libc_fstat`, `cb_libc_lstat`, `cb_libc_mkdir`.
+   - Declared `cb_libc_stat`, `cb_libc_fstat`, `cb_libc_lstat`.
 4. **`libc/include/sys/stat.h`**:
    - Exposed POSIX test macros: `S_ISFIFO`, `S_ISCHR`, `S_ISDIR`, `S_ISBLK`, `S_ISREG`, `S_ISLNK`, `S_ISSOCK`.
    - Exposed permission constants: `S_IRWXU`, `S_IRUSR`, `S_IWUSR`, `S_IXUSR`, `S_IRWXG`, `S_IRGRP`, `S_IWGRP`, `S_IXGRP`, `S_IRWXO`, `S_IROTH`, `S_IWOTH`, `S_IXOTH`, `DEFFILEMODE`, `ACCESSPERMS`, `ALLPERMS`.
@@ -61,9 +61,12 @@
   - `CB_NODE_TERMINAL` $\rightarrow$ `S_IFCHR`
   - `CB_NODE_PIPE` $\rightarrow$ `S_IFIFO`
 - Synthesizes `st_mode = type_bits | (raw_stat->mode & 07777)`.
-- Populates `st_ino`, `st_size`, `st_blksize = 1024`, `st_blocks = (size + 511) / 512`.
+- Populates `st_ino`, `st_size`.
+- Sets `st_blksize = 1024` as an arbitrary I/O buffer sizing hint (read by client stdio and `cat.c` buffer calculations).
+- Sets `st_blocks = 0` truthfully reflecting that RAMFS allocates in-memory byte buffers with zero underlying disk block allocation.
 - `cb_libc_stat()`, `cb_libc_fstat()`, `cb_libc_lstat()` invoke `bound_api->stat()` / `bound_api->fstat()`, handle `EFAULT` on NULL pointers, and return 0 / -1 with task error.
-- `cb_libc_mkdir()` invokes `bound_api->mkdir()`.
+- `lstat` justification: directly demanded by pinned NetBSD utilities (`rm.c` lines 292, 398; `mv.c` lines 248, 259; `cp` `utils.c` line 150). With no symlink nodes in CannedBSD, `lstat` is identical to `stat`.
+- `mkdir`: deliberately omitted from `STAT-02` (undemanded by `cat.c` and deferred until `cp -r` / `mkdir` command import).
 
 ### C. ABI & Zero-Growth Invariant
 - **`include/cannedbsd/abi.h`**: **Zero changes.** `struct cb_stat_v1` remains strictly frozen at its four existing fields (`inode`, `size`, `mode`, `type`).

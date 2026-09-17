@@ -114,7 +114,6 @@ struct stat {
 int cb_libc_stat(const char *path, struct stat *stat_buf);
 int cb_libc_fstat(int descriptor, struct stat *stat_buf);
 int cb_libc_lstat(const char *path, struct stat *stat_buf);
-int cb_libc_mkdir(const char *path, uint32_t mode);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

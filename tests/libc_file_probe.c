@@ -27,7 +27,7 @@ int main(int argc, char **argv)
         if (!S_ISREG(sb.st_mode) || S_ISDIR(sb.st_mode) ||
             S_ISCHR(sb.st_mode) || S_ISFIFO(sb.st_mode)) return 61;
         if ((sb.st_mode & 0777) != 0600 || sb.st_size != 3) return 62;
-        if (sb.st_blksize != 1024 || sb.st_blocks != 1) return 63;
+        if (sb.st_blksize != 1024 || sb.st_blocks != 0) return 63;
         if (sb.st_ino == 0) return 64;
 
         /* lstat on regular file */

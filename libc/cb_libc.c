@@ -175,8 +175,8 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
     stat_buf->st_ino = raw_stat->inode;
     stat_buf->st_mode = type_bits | (raw_stat->mode & 07777);
     stat_buf->st_size = (int64_t)raw_stat->size;
-    stat_buf->st_blksize = 1024;
-    stat_buf->st_blocks = (int64_t)((raw_stat->size + 511) / 512);
+    stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
+    stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
 }
 
 int cb_libc_stat(const char *path, struct stat *stat_buf)
@@ -226,15 +226,6 @@ int cb_libc_fstat(int descriptor, struct stat *stat_buf)
 int cb_libc_lstat(const char *path, struct stat *stat_buf)
 {
     return cb_libc_stat(path, stat_buf);
-}
-
-int cb_libc_mkdir(const char *path, uint32_t mode)
-{
-    if (path == NULL) {
-        bound_api->set_errno(CB_EFAULT);
-        return -1;
-    }
-    return bound_api->mkdir(path, mode);
 }
 
 void *cb_libc_malloc(size_t size)
