@@ -97,6 +97,47 @@ target_include_directories(cb_strtoimax PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_strtoimax PRIVATE
     HAVE_NBTOOL_CONFIG_H=1 strtoimax=cb_libc_strtoimax)
+add_library(cb_strrchr OBJECT
+    ${ROOT}/upstream/netbsd/common/lib/libc/string/strrchr.c)
+target_include_directories(cb_strrchr PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+add_library(cb_memset OBJECT
+    ${ROOT}/upstream/netbsd/common/lib/libc/string/memset.c)
+target_include_directories(cb_memset PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_memset PRIVATE CANNEDBSD_BUILDING_LIBC_MEMSET)
+target_compile_options(cb_memset PRIVATE -fno-builtin-memset)
+add_library(cb_fts OBJECT ${ROOT}/libc/cb_fts.c)
+target_include_directories(cb_fts PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+
+add_library(cb_ls OBJECT ${ROOT}/commands/ls.c)
+target_include_directories(cb_ls PRIVATE ${ROOT}/libc/include)
+
+add_library(cb_rm OBJECT ${ROOT}/upstream/netbsd/bin/rm/rm.c)
+target_include_directories(cb_rm PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_rm PRIVATE main=cb_rm_main)
+
+add_library(cb_mv OBJECT ${ROOT}/upstream/netbsd/bin/mv/mv.c)
+target_include_directories(cb_mv PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/mv)
+target_compile_definitions(cb_mv PRIVATE main=cb_mv_main)
+
+add_library(cb_cat OBJECT ${ROOT}/upstream/netbsd/bin/cat/cat.c)
+target_include_directories(cb_cat PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_cat PRIVATE main=cb_cat_main)
+
+add_library(cb_cp OBJECT ${ROOT}/upstream/netbsd/bin/cp/cp.c)
+target_include_directories(cb_cp PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/cp)
+target_compile_definitions(cb_cp PRIVATE SMALL main=cb_cp_main)
+
+add_library(cb_cp_utils OBJECT ${ROOT}/upstream/netbsd/bin/cp/utils.c)
+target_include_directories(cb_cp_utils PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/cp)
+target_compile_definitions(cb_cp_utils PRIVATE SMALL)
 
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
@@ -106,6 +147,11 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
+    ${ROOT}/commands/ls_module.c
+    ${ROOT}/commands/rm_module.c
+    ${ROOT}/commands/mv_module.c
+    ${ROOT}/commands/cat_module.c
+    ${ROOT}/commands/cp_module.c
     ${ROOT}/tests/terminal_engine_probe.c
     ${ROOT}/tests/signal_probe.c
     ${ROOT}/tests/tee_state_probe.c
@@ -144,6 +190,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OB
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
+    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
@@ -151,6 +198,9 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_dirname>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_basename>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strtoimax>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strrchr>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memset>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_fts>)
 # Lazy LoadSeg performs Toolbox work and must never run on a task stack.
 # A single resident CODE segment keeps all runtime calls free of that trap.
 target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug
