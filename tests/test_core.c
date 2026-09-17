@@ -5317,6 +5317,156 @@ static void test_vfs_rmdir_rename(void)
     cb_vfs_destroy(&kernel);
 }
 
+/* MV-01: cross-mount EXDEV move semantics and honest failure warnings. */
+static void test_mv_cross_mount(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    struct cb_task dummy_task;
+    struct cb_vfs_mount *mount2;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    int status;
+    static const char payload[] = "cross-mount test payload data\n";
+    char read_buffer[64];
+    cb_ssize_t nread;
+    static const char expected_file_stderr[] =
+        "mv: /mnt2/xdst: error copying extended attributes: function not implemented\n"
+        "mv: /mnt2/xdst: set times: function not implemented\n"
+        "mv: /mnt2/xdst: set owner/group: function not implemented\n";
+    static const char expected_dir_stderr[] =
+        "mv: /bin/cp: waitpid: no child processes\n";
+
+    base_allocate = host.allocate;
+    base_resize = host.resize;
+    host.allocate = controlled_allocate;
+    host.resize = controlled_resize;
+    allocation_failure_countdown = -1;
+    resize_failure_countdown = -1;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+
+    /* --- Case 1: Regular file cross-mount move (fastcopy fallback) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (file)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount file test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount file test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount file test");
+
+    file = cb_vfs_open(&dummy_task, "/xsrc", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xsrc for mv cross-mount file test");
+    if (file->ops->write(file, &dummy_task, payload, sizeof(payload) - 1) != (cb_ssize_t)(sizeof(payload) - 1))
+        fail("write payload to /xsrc");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xsrc /mnt2/xdst") < 0)
+        fail("boot mv cross-mount file test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 0) {
+        fprintf(stderr, "mv cross-mount file exit status: %d (expected 0)\n", status);
+        fail("mv cross-mount file exit status");
+    }
+    if (captured_streams[1][0] != '\0') {
+        fprintf(stderr, "unexpected stdout: <%s>\n", captured_streams[1]);
+        fail("mv cross-mount file stdout non-empty");
+    }
+    if (strcmp(captured_streams[2], expected_file_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_file_stderr, captured_streams[2]);
+        fail("mv cross-mount file stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xsrc", &st) == 0 || *dummy_task.error_cell != CB_ENOENT)
+        fail("mv cross-mount source /xsrc was not unlinked");
+
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/xdst", &st) != 0 || st.type != CB_NODE_REGULAR)
+        fail("mv cross-mount destination /mnt2/xdst stat failed");
+    if (st.size != sizeof(payload) - 1)
+        fail("mv cross-mount destination /mnt2/xdst size mismatch");
+
+    file = cb_vfs_open(&dummy_task, "/mnt2/xdst", CB_O_RDONLY, 0);
+    if (file == NULL)
+        fail("open /mnt2/xdst after mv cross-mount");
+    memset(read_buffer, 0, sizeof(read_buffer));
+    nread = file->ops->read(file, &dummy_task, read_buffer, sizeof(read_buffer));
+    if (nread != (cb_ssize_t)(sizeof(payload) - 1) ||
+        memcmp(read_buffer, payload, sizeof(payload) - 1) != 0)
+        fail("mv cross-mount destination payload content mismatch");
+    cb_open_file_release(file);
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
+
+    /* --- Case 2: Directory cross-mount move (copy fallback attempting /bin/cp) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (dir)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount dir test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount dir test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount dir test");
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/xdir", 0777) < 0)
+        fail("mkdir /xdir for mv cross-mount dir test");
+    file = cb_vfs_open(&dummy_task, "/xdir/child", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xdir/child for mv cross-mount dir test");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xdir /mnt2/ydir") < 0)
+        fail("boot mv cross-mount dir test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 1) {
+        fprintf(stderr, "mv cross-mount dir exit status: %d (expected 1)\n", status);
+        fail("mv cross-mount dir exit status");
+    }
+    if (strcmp(captured_streams[2], expected_dir_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_dir_stderr, captured_streams[2]);
+        fail("mv cross-mount dir stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xdir", &st) != 0 || st.type != CB_NODE_DIRECTORY)
+        fail("mv cross-mount dir source /xdir was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/xdir/child", &st) != 0)
+        fail("mv cross-mount dir source child was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/ydir", &st) == 0)
+        fail("mv cross-mount dir destination /mnt2/ydir must not exist");
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
+}
+
 /* VFS-04: proves the rename() allocation-failure path (cb_string_duplicate
    for the new name) leaves no dangling node and both names fully intact --
    the injected fail_at=0 targets the one allocation cb_vfs_rename_paths
@@ -5947,6 +6097,7 @@ int main(int argc, char **argv)
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
     test_vfs_rmdir_rename();
+    test_mv_cross_mount();
     test_fts();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
