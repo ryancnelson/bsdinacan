@@ -1,6 +1,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* A value none of this project's real CB_E* codes equal, seeded before
@@ -112,6 +114,92 @@ static int check_strerror(void)
     return 1;
 }
 
+static int check_case_strtol(const char *input, int base, long expected_value,
+                             int endptr_offset, int expected_errno)
+{
+    char *endptr = NULL;
+    long result;
+    errno = SENTINEL;
+    result = strtol(input, &endptr, base);
+    if (result != expected_value)
+        return 0;
+    if (endptr_offset < 0) {
+        if (endptr != input)
+            return 0;
+    } else {
+        if (endptr != input + endptr_offset)
+            return 0;
+    }
+    if (expected_errno == 0) {
+        if (errno != SENTINEL)
+            return 0;
+    } else {
+        if (errno != expected_errno)
+            return 0;
+    }
+    return 1;
+}
+
+static int check_null_endptr_strtol(void)
+{
+    long result;
+    errno = SENTINEL;
+    result = strtol("42", NULL, 10);
+    if (result != 42)
+        return 0;
+    if (errno != SENTINEL)
+        return 0;
+    return 1;
+}
+
+static int check_overflow_continuation_strtol(void)
+{
+    char buffer[40];
+    char *endptr;
+    long result;
+    size_t nines = 30;
+    size_t index;
+    for (index = 0; index < nines; ++index)
+        buffer[index] = '9';
+    buffer[nines] = 'a';
+    buffer[nines + 1] = 'b';
+    buffer[nines + 2] = 'c';
+    buffer[nines + 3] = '\0';
+    errno = SENTINEL;
+    result = strtol(buffer, &endptr, 10);
+    if (result != LONG_MAX)
+        return 0;
+    if (endptr != buffer + nines)
+        return 0;
+    if (errno != ERANGE)
+        return 0;
+    return 1;
+}
+
+static int check_bounds_strtol(void)
+{
+    if (sizeof(long) == 8) {
+        if (!check_case_strtol("9223372036854775807", 10, LONG_MAX, 19, 0))
+            return 0;
+        if (!check_case_strtol("9223372036854775808", 10, LONG_MAX, 19, ERANGE))
+            return 0;
+        if (!check_case_strtol("-9223372036854775808", 10, LONG_MIN, 20, 0))
+            return 0;
+        if (!check_case_strtol("-9223372036854775809", 10, LONG_MIN, 20, ERANGE))
+            return 0;
+    } else if (sizeof(long) == 4) {
+        if (!check_case_strtol("2147483647", 10, LONG_MAX, 10, 0))
+            return 0;
+        if (!check_case_strtol("2147483648", 10, LONG_MAX, 10, ERANGE))
+            return 0;
+        if (!check_case_strtol("-2147483648", 10, LONG_MIN, 11, 0))
+            return 0;
+        if (!check_case_strtol("-2147483649", 10, LONG_MIN, 11, ERANGE))
+            return 0;
+    }
+    return 1;
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -173,5 +261,54 @@ int main(int argc, char *argv[])
         return 27;
     if (!check_strerror())
         return 28;
+
+    /* strtol tests */
+    if (!check_case_strtol("10", 10, 10, 2, 0))
+        return 29;
+    if (!check_case_strtol("-10", 10, -10, 3, 0))
+        return 30;
+    if (!check_case_strtol("  42", 10, 42, 4, 0))
+        return 31;
+    if (!check_case_strtol("+5", 10, 5, 2, 0))
+        return 32;
+    if (!check_case_strtol("12abc", 10, 12, 2, 0))
+        return 33;
+    if (!check_case_strtol("abc", 10, 0, -1, 0))
+        return 34;
+    if (!check_case_strtol("", 10, 0, -1, 0))
+        return 35;
+    if (!check_case_strtol("0", 10, 0, 1, 0))
+        return 36;
+    if (!check_case_strtol("018", 10, 18, 3, 0))
+        return 37;
+    if (!check_case_strtol("-", 10, 0, -1, 0))
+        return 38;
+    if (!check_case_strtol("017", 0, 15, 3, 0))
+        return 39;
+    if (!check_case_strtol("0x1F", 0, 31, 4, 0))
+        return 40;
+    if (!check_case_strtol("42", 0, 42, 2, 0))
+        return 41;
+    if (!check_case_strtol("1010", 2, 10, 4, 0))
+        return 42;
+    if (!check_case_strtol("1f", 16, 31, 2, 0))
+        return 43;
+    if (!check_case_strtol("1F", 16, 31, 2, 0))
+        return 44;
+    if (!check_case_strtol("z", 36, 35, 1, 0))
+        return 45;
+    if (!check_case_strtol("Z", 36, 35, 1, 0))
+        return 46;
+    if (!check_case_strtol("5", 1, 0, -1, EINVAL))
+        return 47;
+    if (!check_case_strtol("5", 37, 0, -1, EINVAL))
+        return 48;
+    if (!check_null_endptr_strtol())
+        return 49;
+    if (!check_overflow_continuation_strtol())
+        return 50;
+    if (!check_bounds_strtol())
+        return 51;
+
     return 0;
 }

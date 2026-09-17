@@ -16,6 +16,19 @@ char *strcpy(char *dest, const char *src) __asm__("cb_libc_strcpy");
 #define strcpy cb_libc_strcpy
 #endif
 #define strchr cb_libc_strchr
+#define strrchr cb_libc_strrchr
+#define strmode cb_libc_strmode
+
+#if defined(CANNEDBSD_BUILDING_LIBC_MEMSET)
+#if defined(__GNUC__) || defined(__clang__)
+void *memset(void *destination, int character, size_t count)
+    __asm__("cb_libc_memset");
+#else
+#error "NetBSD memset import needs a compiler-specific link-name adapter"
+#endif
+#else
+#define memset cb_libc_memset
+#endif
 
 #if defined(CANNEDBSD_BUILDING_LIBC_MEMCMP)
 #if defined(__GNUC__) || defined(__clang__)
@@ -59,5 +72,13 @@ int strcmp(const char *left, const char *right) __asm__("cb_libc_strcmp");
 #else
 #define strcmp cb_libc_strcmp
 #endif
+
+#define strlcpy cb_libc_strlcpy
+#define strrchr cb_libc_strrchr
+#define strncat cb_libc_strncat
+
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
+char *cb_libc_strrchr(const char *text, int character);
+char *cb_libc_strncat(char *s1, const char *s2, size_t n);
 
 #endif

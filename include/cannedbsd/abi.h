@@ -37,7 +37,9 @@ enum cb_error {
     CB_ENOSYS = 78,
     CB_ENOTEMPTY = 66,
     CB_EFAULT = 14,
-    CB_EOVERFLOW = 84
+    CB_EOVERFLOW = 84,
+    CB_EXDEV = 18,
+    CB_ETXTBSY = 26
 };
 
 enum cb_open_flag {
@@ -148,7 +150,23 @@ struct cb_stdio_state_v1 {
     uint32_t struct_size;
     int stdout_error;
     int stderr_error;
+    /* CAT-01: STDIN-01-design.md's original fclose(stdout/stderr) ==
+       EINVAL rejection was selected with no consumer in existence yet.
+       cat(1) demonstrated it wrong for the common BSD idiom of an
+       unconditional fclose(stdout) before returning from main(). These
+       fields let fclose mark a stream closed from the task's own
+       perspective (so every subsequent write genuinely fails, keeping
+       the success return truthful) without reclaiming the underlying
+       descriptor immediately -- that happens at normal task teardown,
+       same as any other resource the task no longer references. Callers
+       must check struct_size before reading, exactly like every other
+       optional extension in this header. */
+    int stdout_closed;
+    int stderr_closed;
 };
+#define CB_STDIO_STATE_V1_CLOSED_MIN_SIZE \
+    (offsetof(struct cb_stdio_state_v1, stderr_closed) + \
+     sizeof(((struct cb_stdio_state_v1 *)0)->stderr_closed))
 
 /* Stage 1 prefix: future input fields append after stdin_error. */
 struct cb_input_state_v1 {
@@ -228,6 +246,11 @@ struct cb_api_v1 {
     char *(*basename_buffer_location)(void);
     struct cb_stdio_state_v1 *(*stdio_state_location)(void);
     struct cb_input_state_v1 *(*input_state_location)(void);
+
+    /* Appended by VFS-04. Callers must check struct_size before reading,
+       exactly like every other optional extension above. */
+    int (*rmdir)(const char *path);
+    int (*rename)(const char *old_path, const char *new_path);
 };
 
 struct cb_program_v1 {

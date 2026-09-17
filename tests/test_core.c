@@ -23,6 +23,8 @@ extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_warn_probe_program;
+extern const struct cb_program_v1 cb_warnx_probe_program;
+extern const struct cb_program_v1 cb_fclose_stdout_probe_program;
 extern const struct cb_program_v1 cb_strcpy_probe_program;
 extern const struct cb_program_v1 cb_head_probe_program, cb_head_pipe_program;
 extern int cb_strcpy_probe_main(int argc, char **argv);
@@ -765,7 +767,7 @@ static void test_executor_contract(void)
         lifecycle_suspend,
         lifecycle_request_termination,
         lifecycle_instance_destroy,
-        lifecycle_program_destroy
+        lifecycle_program_destroy, 0
     };
     char source_name[] = "sh";
     struct cb_program_v1 source = {
@@ -789,7 +791,7 @@ static void test_executor_contract(void)
     executor.abi_version = 0;
     expect_invalid_executor(kernel, &executor, &source, "version");
     executor.abi_version = CB_ABI_VERSION_V1;
-    executor.struct_size = sizeof(executor) - 1;
+    executor.struct_size = CB_EXECUTOR_V1_PREFIX_SIZE - 1;
     expect_invalid_executor(kernel, &executor, &source, "size");
 #define EXPECT_NULL_EXECUTOR_CALLBACK(member) do { \
     executor = (struct cb_executor_ops){ \
@@ -797,7 +799,7 @@ static void test_executor_contract(void)
         lifecycle_prepare, lifecycle_instance_create, \
         lifecycle_start_or_resume, lifecycle_suspend, \
         lifecycle_request_termination, lifecycle_instance_destroy, \
-        lifecycle_program_destroy \
+        lifecycle_program_destroy, 0 \
     }; \
     executor.member = NULL; \
     expect_invalid_executor(kernel, &executor, &source, #member); \
@@ -816,7 +818,7 @@ static void test_executor_contract(void)
         lifecycle_prepare, lifecycle_instance_create,
         lifecycle_start_or_resume, lifecycle_suspend,
         lifecycle_request_termination, lifecycle_instance_destroy,
-        lifecycle_program_destroy
+        lifecycle_program_destroy, 0
     };
     executor_delegate = native;
     executor_prepare_count = 0;
@@ -1927,12 +1929,26 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     (void)argv;
     (void)envp;
 
-    /* 4a, skip on removal: create C, B, A in that order so the resulting
-       list (newest-first) is [A, B, C]. Read A, unlink the ALREADY-
-       RETURNED A (not the next one), and confirm the following read
-       skips B entirely and returns C -- unlinking the next not-yet-
-       returned entry would only reflect ordinary shrinkage, not prove a
-       skip. */
+    /* VFS-05 changed this test's own expectations, not just the code
+       under test: readdir()'s cursor advances by live node identity
+       (looked ahead before returning the current entry), not child_at()'s
+       ordinal position re-walked from the live list -- see
+       notes/iterations/VFS-05.md. VFS-03's own design note explicitly
+       accepted a skip-on-removal and a duplicate-on-insertion as
+       within-POSIX-spec for a generic racing mutator; this same test
+       previously asserted exactly those two outcomes as correct. VFS-05
+       does not reopen that reasoning for a genuine external race -- it
+       fixes the specific case a generic race cannot cover: the SAME task,
+       through the SAME open handle, removing the entry it just visited
+       before asking for the next one (rm -r's own pattern). Neither a
+       skip nor a duplicate is within spec for that pattern.
+
+       4a, no skip despite removing the just-returned entry: create C, B,
+       A in that order so the resulting list (newest-first) is [A, B, C].
+       Read A, unlink the ALREADY-RETURNED A (not the next one), and
+       confirm the following read now correctly returns B, not C --
+       unlinking the next not-yet-returned entry would only reflect
+       ordinary shrinkage, not prove anything about this specific case. */
     if (api->mkdir("/tmp/skipdir", 0755) < 0)
         return 380;
     if ((fd = api->open("/tmp/skipdir/C", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1953,14 +1969,19 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->unlink("/tmp/skipdir/A") < 0)
         return 386;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "C") != 0)
+        strcmp(name, "B") != 0)
         return 387;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "C") != 0)
+        return 397;
     if (api->closedir(handle) < 0)
         return 388;
 
-    /* 4b, duplicate on insertion: create B, A in that order, so the list
-       is [A, B]. Read A, then create X (prepended, giving [X, A, B]),
-       and confirm the following read re-returns A rather than B or X. */
+    /* 4b, no duplicate despite an unrelated concurrent insertion: create
+       B, A in that order, so the list is [A, B]. Read A, then create X
+       (prepended, giving [X, A, B]), and confirm the following read
+       returns B -- neither a re-returned A nor the newly-inserted X,
+       which the look-ahead captured before X ever existed. */
     if (api->mkdir("/tmp/dupdir", 0755) < 0)
         return 389;
     if ((fd = api->open("/tmp/dupdir/B", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1979,10 +2000,87 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
         api->close(fd) < 0)
         return 394;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "A") != 0)
+        strcmp(name, "B") != 0)
         return 395;
     if (api->closedir(handle) < 0)
         return 396;
+    return 0;
+}
+
+/* VFS-05's actual motivating case: rm -r's own access pattern is not
+   "unlink one entry, read one more" (direntmutationprobe above) but
+   "visit and remove every entry in the directory through one open
+   handle, in a single pass." Builds a 5-entry directory, drains it by
+   unlinking each entry immediately after readdir() returns it, and
+   confirms every single one was visited exactly once -- no skip, no
+   duplicate, regardless of RAMFS's own newest-first ordering. */
+static int direntdrainprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    static const char *const files[] = {"a", "b", "c", "d", "e"};
+    int handle;
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    int fd;
+    int seen[5];
+    size_t index;
+    size_t visits;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/draindir", 0755) < 0)
+        return 500;
+    for (index = 0; index < 5; ++index) {
+        char path[CB_PATH_MAX];
+        strcpy(path, "/tmp/draindir/");
+        strcpy(path + strlen(path), files[index]);
+        if ((fd = api->open(path, CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+            api->close(fd) < 0)
+            return 501;
+        seen[index] = 0;
+    }
+
+    handle = api->opendir("/tmp/draindir");
+    if (handle < 0)
+        return 502;
+    visits = 0;
+    for (;;) {
+        result = api->readdir(handle, name, sizeof(name), &inode, &type);
+        if (result != 0)
+            return 503;
+        if (name[0] == '\0')
+            break;
+        for (index = 0; index < 5; ++index) {
+            if (strcmp(name, files[index]) == 0) {
+                if (seen[index] != 0)
+                    return 504; /* duplicate */
+                seen[index] = 1;
+                break;
+            }
+        }
+        if (index == 5)
+            return 505; /* unrecognized entry */
+        ++visits;
+        {
+            char path[CB_PATH_MAX];
+            strcpy(path, "/tmp/draindir/");
+            strcpy(path + strlen(path), name);
+            if (api->unlink(path) < 0)
+                return 506;
+        }
+        if (visits > 5)
+            return 507; /* would indicate an infinite loop */
+    }
+    if (visits != 5)
+        return 508; /* skip: not everything was visited */
+    for (index = 0; index < 5; ++index)
+        if (!seen[index])
+            return 509;
+    if (api->closedir(handle) < 0)
+        return 510;
     return 0;
 }
 
@@ -3456,6 +3554,11 @@ static const struct cb_program_v1 direntmutationprobe_program = {
     64 * 1024, direntmutationprobe_main
 };
 
+static const struct cb_program_v1 direntdrainprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntdrainprobe", 0,
+    64 * 1024, direntdrainprobe_main
+};
+
 static const struct cb_program_v1 direntisolationchild_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntisolationchild", 0,
     64 * 1024, direntisolationchild_main
@@ -3958,6 +4061,116 @@ static const struct cb_program_v1 truncateinterleave_program = {
     64 * 1024, truncateinterleave_main
 };
 
+/* LS-01: prove opendir/readdir/closedir cursors stay independent when two
+   `ls` tasks are forced to interleave, not just proven correct when run
+   back to back. A per-task-overridden api.readdir yields after every call,
+   the same forced-interleave technique err_interleave/truncateinterleave
+   already use elsewhere in this file. */
+extern int cb_ls_main(int argc, char *argv[]);
+
+static struct cb_api_v1 ls_test_api;
+static const struct cb_api_v1 *ls_delegate;
+static cb_pid_t ls_children[2];
+static int ls_last_task;
+static unsigned ls_switches;
+
+static int ls_yielding_readdir(int descriptor, char *name_out, size_t name_size,
+                               uint64_t *inode_out, uint32_t *type_out)
+{
+    cb_pid_t pid = ls_delegate->getpid();
+    int index = pid == ls_children[0] ? 0 : 1;
+    int result = ls_delegate->readdir(descriptor, name_out, name_size,
+                                      inode_out, type_out);
+    if (ls_last_task != -1 && ls_last_task != index)
+        ++ls_switches;
+    ls_last_task = index;
+    ls_delegate->yield();
+    return result;
+}
+
+static int ls_interleave_child_start(const struct cb_api_v1 *api, int argc,
+                                     char *const argv[], char *const envp[])
+{
+    (void)api;
+    (void)envp;
+    return cb_libc_start(&ls_test_api, argc, argv, cb_ls_main);
+}
+
+static const struct cb_program_v1 ls_interleave_child_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "lsinterleavechild", 0,
+    64 * 1024, ls_interleave_child_start
+};
+
+static int ls_interleave_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    char *argv_alpha[] = {(char *)"ls", (char *)"/tmp/lsdir-alpha", NULL};
+    char *argv_beta[] = {(char *)"ls", (char *)"/tmp/lsdir-beta", NULL};
+    int fd, status;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/lsdir-alpha", 0755) < 0 ||
+        api->mkdir("/tmp/lsdir-beta", 0755) < 0)
+        return 900;
+    if ((fd = api->open("/tmp/lsdir-alpha/alpha-one",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 901;
+    if ((fd = api->open("/tmp/lsdir-alpha/alpha-two",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 902;
+    if ((fd = api->open("/tmp/lsdir-beta/beta-one",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 903;
+    if ((fd = api->open("/tmp/lsdir-beta/beta-two",
+                        CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 || api->close(fd) < 0)
+        return 904;
+
+    ls_delegate = api;
+    ls_test_api = *api;
+    ls_test_api.readdir = ls_yielding_readdir;
+    ls_last_task = -1;
+    ls_switches = 0;
+
+    if (api->spawn("lsinterleavechild", argv_alpha, envp, NULL, 0,
+                   &ls_children[0]) < 0 ||
+        api->spawn("lsinterleavechild", argv_beta, envp, NULL, 0,
+                   &ls_children[1]) < 0)
+        return 905;
+
+    if (api->waitpid(ls_children[0], &status) != ls_children[0] || status != 0)
+        return 906;
+    if (api->waitpid(ls_children[1], &status) != ls_children[1] || status != 0)
+        return 907;
+
+    /* Proves the two tasks actually interleaved rather than one running
+       to completion before the other started. */
+    if (ls_switches < 2)
+        return 908;
+
+    /* Each task's own listing is complete and correct: no entry lost,
+       duplicated, or swapped into the other task's output despite the
+       forced interleave. Order-independent, like err_interleave's own
+       merged-stream check. */
+    if (strstr(captured_streams[1], "alpha-one") == NULL ||
+        strstr(captured_streams[1], "alpha-two") == NULL ||
+        strstr(captured_streams[1], "beta-one") == NULL ||
+        strstr(captured_streams[1], "beta-two") == NULL)
+        return 909;
+
+    captured_size = 0;
+    captured[0] = '\0';
+    captured_stream_sizes[1] = 0;
+    captured_streams[1][0] = '\0';
+    return 0;
+}
+
+static const struct cb_program_v1 ls_interleave_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "lsinterleave", 0,
+    64 * 1024, ls_interleave_main
+};
+
 static int dirname_noop_main(int argc, char *argv[])
 {
     (void)argc;
@@ -4209,8 +4422,16 @@ enum test_fixture {
     FIXTURE_BASENAME = 5,
     FIXTURE_YES = 6,
     FIXTURE_ERR = 7,
-    FIXTURE_CONV = 8
+    FIXTURE_CONV = 8,
+    FIXTURE_VFS04 = 9,
+    FIXTURE_LS = 10,
+    FIXTURE_FTS = 11,
+    FIXTURE_RM01 = 12
 };
+
+static int register_vfs04_probes(struct cb_kernel *kernel);
+static int register_fts_probes(struct cb_kernel *kernel);
+static int register_rm01_probes(struct cb_kernel *kernel);
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
  * Every new shared probe must be explicitly registered here and in Mac main. */
@@ -4515,6 +4736,7 @@ static void run_case(const char *command, const char *expected_output,
         if (cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntdrainprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
@@ -4532,6 +4754,10 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_ERR) {
         if (cb_kernel_register(kernel, &cb_warn_probe_program) < 0)
             fail("warnprobe registration");
+        if (cb_kernel_register(kernel, &cb_warnx_probe_program) < 0)
+            fail("warnxprobe registration");
+        if (cb_kernel_register(kernel, &cb_fclose_stdout_probe_program) < 0)
+            fail("fclosestdoutprobe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -4541,6 +4767,23 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_CONV) {
         if (register_conv_probes(kernel) != 0)
             fail("strtoimax probe registration");
+    } else if (fixture == FIXTURE_VFS04) {
+        if (register_vfs04_probes(kernel) != 0)
+            fail("VFS-04 probe registration");
+    } else if (fixture == FIXTURE_LS) {
+        /* Scoped fixture, same reason as FIXTURE_DIRENT above: FIXTURE_FULL
+           is already at CB_MAX_PROGRAMS's 64-slot ceiling. cb_ls_program
+           itself still comes from cb_register_base_programs() above, shared
+           by every fixture. */
+        if (cb_kernel_register(kernel, &ls_interleave_child_program) < 0 ||
+            cb_kernel_register(kernel, &ls_interleave_program) < 0)
+            fail("ls interleave test program registration");
+    } else if (fixture == FIXTURE_FTS) {
+        if (register_fts_probes(kernel) != 0)
+            fail("FTS-CORE-01 probe registration");
+    } else if (fixture == FIXTURE_RM01) {
+        if (register_rm01_probes(kernel) != 0)
+            fail("RM-01 probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -4921,6 +5164,845 @@ static void test_vfs_mount_routing(void)
     cb_vfs_destroy(&kernel);
 }
 
+/* VFS-04: rmdir and rename over the node/VFS contract. */
+static void test_vfs_rmdir_rename(void)
+{
+    struct cb_kernel kernel;
+    struct cb_task task;
+    struct cb_vfs_mount *other;
+    struct cb_vfs_node *node;
+    struct cb_vfs_node *node2;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    struct cb_vfs_node_ops truncated;
+    const struct cb_vfs_node_ops *real_ops;
+
+    memset(&kernel, 0, sizeof(kernel));
+    memset(&task, 0, sizeof(task));
+    kernel.host = cb_linux_host_ops();
+    if (cb_vfs_initialize(&kernel) < 0)
+        fail("VFS initialization (rmdir/rename)");
+    task.kernel = &kernel;
+    task.root = kernel.vfs_root;
+    task.cwd = kernel.vfs_root;
+    cb_vfs_node_retain(task.root);
+    cb_vfs_node_retain(task.cwd);
+    task.error_cell = cb_allocate(&kernel, sizeof(int));
+
+    /* --- rmdir --- */
+
+    if (cb_vfs_rmdir_path(&task, "/nosuchdir") >= 0 || *task.error_cell != CB_ENOENT)
+        fail("rmdir missing did not return ENOENT");
+
+    file = cb_vfs_open(&task, "/afile", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /afile");
+    cb_open_file_release(file);
+    if (cb_vfs_rmdir_path(&task, "/afile") >= 0 || *task.error_cell != CB_ENOTDIR)
+        fail("rmdir on a regular file did not return ENOTDIR");
+    if (cb_vfs_stat_path(&task, "/afile", &st) < 0)
+        fail("rmdir on a file must leave it intact");
+
+    if (cb_vfs_mkdir_path(&task, "/adir", 0777) < 0)
+        fail("mkdir /adir");
+    file = cb_vfs_open(&task, "/adir/child", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /adir/child");
+    cb_open_file_release(file);
+    if (cb_vfs_rmdir_path(&task, "/adir") >= 0 || *task.error_cell != CB_ENOTEMPTY)
+        fail("rmdir on a non-empty directory did not return ENOTEMPTY");
+    if (cb_vfs_stat_path(&task, "/adir/child", &st) < 0)
+        fail("rmdir on a non-empty directory must leave its contents intact");
+
+    other = cb_ramfs_mount_create(&kernel);
+    if (other == NULL || cb_vfs_mkdir_path(&task, "/mnt2", 0777) < 0 ||
+        cb_vfs_mount_path(&task, "/mnt2", other) < 0)
+        fail("mount /mnt2 for rmdir/rename tests");
+    if (cb_vfs_rmdir_path(&task, "/mnt2") >= 0 || *task.error_cell != CB_EPERM)
+        fail("rmdir on a mount point did not return EPERM");
+
+    if (cb_vfs_mkdir_path(&task, "/emptydir", 0777) < 0)
+        fail("mkdir /emptydir");
+    if (cb_vfs_rmdir_path(&task, "/emptydir") < 0)
+        fail("rmdir on an empty directory should succeed");
+    if (cb_vfs_stat_path(&task, "/emptydir", &st) == 0)
+        fail("rmdir must actually remove the directory");
+
+    /* Old struct_size table: truncate before the rmdir/rename fields and
+       confirm ENOSYS rather than a crash or silent success, then restore
+       and confirm the real table still works normally. */
+    if (cb_vfs_mkdir_path(&task, "/oldtable", 0777) < 0)
+        fail("mkdir /oldtable");
+    if (cb_vfs_lookup_node(&task, "/oldtable", &node) < 0)
+        fail("lookup /oldtable");
+    real_ops = node->ops;
+    truncated = *real_ops;
+    truncated.struct_size = offsetof(struct cb_vfs_node_ops, rmdir);
+    truncated.rmdir = NULL;
+    truncated.rename = NULL;
+    node->ops = &truncated;
+    if (cb_vfs_rmdir_path(&task, "/oldtable") >= 0 || *task.error_cell != CB_ENOSYS)
+        fail("rmdir through an old struct_size table did not return ENOSYS");
+    node->ops = real_ops;
+    if (cb_vfs_rmdir_path(&task, "/oldtable") < 0)
+        fail("rmdir through the restored real table should succeed");
+
+    /* --- rename --- */
+
+    /* EXDEV: cross-mount rename must fail, leaving both names intact. */
+    file = cb_vfs_open(&task, "/xsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /xsrc");
+    cb_open_file_release(file);
+    if (cb_vfs_rename_paths(&task, "/xsrc", "/mnt2/xdst") >= 0 ||
+        *task.error_cell != CB_EXDEV)
+        fail("cross-mount rename did not return EXDEV");
+    if (cb_vfs_stat_path(&task, "/xsrc", &st) < 0)
+        fail("failed cross-mount rename must leave the source intact");
+    if (cb_vfs_stat_path(&task, "/mnt2/xdst", &st) == 0)
+        fail("failed cross-mount rename must not create the destination");
+
+    /* ENOTDIR / EISDIR type mismatch, both leaving names intact. */
+    if (cb_vfs_mkdir_path(&task, "/adir2", 0777) < 0)
+        fail("mkdir /adir2");
+    file = cb_vfs_open(&task, "/afile2", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /afile2");
+    cb_open_file_release(file);
+
+    if (cb_vfs_rename_paths(&task, "/adir2", "/afile2") >= 0 ||
+        *task.error_cell != CB_ENOTDIR)
+        fail("renaming a directory onto an existing file did not return ENOTDIR");
+    if (cb_vfs_stat_path(&task, "/adir2", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("failed directory-onto-file rename must leave the directory intact");
+    if (cb_vfs_stat_path(&task, "/afile2", &st) < 0 || st.type != CB_NODE_REGULAR)
+        fail("failed directory-onto-file rename must leave the file intact");
+
+    if (cb_vfs_rename_paths(&task, "/afile2", "/adir2") >= 0 ||
+        *task.error_cell != CB_EISDIR)
+        fail("renaming a file onto an existing directory did not return EISDIR");
+    if (cb_vfs_stat_path(&task, "/afile2", &st) < 0 || st.type != CB_NODE_REGULAR)
+        fail("failed file-onto-directory rename must leave the file intact");
+    if (cb_vfs_stat_path(&task, "/adir2", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("failed file-onto-directory rename must leave the directory intact");
+
+    /* Ordinary move: no existing target, same mount. */
+    if (cb_vfs_mkdir_path(&task, "/movesrc", 0777) < 0)
+        fail("mkdir /movesrc");
+    if (cb_vfs_rename_paths(&task, "/movesrc", "/movedst") < 0)
+        fail("ordinary rename should succeed");
+    if (cb_vfs_stat_path(&task, "/movesrc", &st) == 0)
+        fail("renamed source name must no longer resolve");
+    if (cb_vfs_stat_path(&task, "/movedst", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("renamed destination name must resolve to the moved directory");
+
+    /* Preserves open-file identity: a file descriptor opened before the
+       rename must still refer to the exact same node afterward. */
+    file = cb_vfs_open(&task, "/idsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /idsrc");
+    if (cb_vfs_rename_paths(&task, "/idsrc", "/iddst") < 0)
+        fail("rename of an open file should succeed");
+    if (cb_vfs_lookup_node(&task, "/iddst", &node) < 0)
+        fail("lookup /iddst after rename");
+    if (node != file->object.node)
+        fail("rename must preserve the renamed file's node identity");
+    cb_open_file_release(file);
+
+    /* Atomic replace of an existing regular-file target. */
+    file = cb_vfs_open(&task, "/repltarget", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /repltarget");
+    cb_open_file_release(file);
+    file = cb_vfs_open(&task, "/replsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /replsrc");
+    if (cb_vfs_lookup_node(&task, "/replsrc", &node) < 0)
+        fail("lookup /replsrc before replace");
+    if (cb_vfs_rename_paths(&task, "/replsrc", "/repltarget") < 0)
+        fail("rename replacing an existing regular-file target should succeed");
+    if (cb_vfs_stat_path(&task, "/replsrc", &st) == 0)
+        fail("replacing rename must remove the source name");
+    if (cb_vfs_lookup_node(&task, "/repltarget", &node2) < 0)
+        fail("lookup /repltarget after replace");
+    if (node2 != node)
+        fail("replacing rename must install the source's own node at the target name, not a copy");
+    cb_open_file_release(file);
+
+    /* rename() onto itself is a no-op success (POSIX convention). */
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/repltarget") < 0)
+        fail("renaming a path onto itself should succeed as a no-op");
+
+    /* Old struct_size table for rename, mirroring the rmdir case above. */
+    if (cb_vfs_lookup_node(&task, "/repltarget", &node) < 0)
+        fail("lookup /repltarget for old-table rename test");
+    real_ops = node->ops;
+    truncated = *real_ops;
+    truncated.struct_size = offsetof(struct cb_vfs_node_ops, rmdir);
+    truncated.rmdir = NULL;
+    truncated.rename = NULL;
+    node->ops = &truncated;
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/renamedelsewhere") >= 0 ||
+        *task.error_cell != CB_ENOSYS)
+        fail("rename through an old struct_size table did not return ENOSYS");
+    node->ops = real_ops;
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/renamedelsewhere") < 0)
+        fail("rename through the restored real table should succeed");
+
+    /* POSIX EINVAL: reject making a directory a subdirectory of itself.
+       This is the exact cycle libby's cycle-detection review surfaced:
+       rename('/cycleA', '/cycleA/cycleB/cycleA') would otherwise resolve
+       new_parent=cycleB by walking straight through cycleA (no infinite
+       loop in getting there), pass every other check, and relink cycleA
+       under cycleB -- leaving cycleB's own parent pointer still pointing
+       at cycleA, a two-node cycle disconnected from root entirely. Assert
+       topology after the rejection, not just the error code: the whole
+       danger was corrupted structure, not a missing return value. */
+    if (cb_vfs_mkdir_path(&task, "/cycleA", 0777) < 0)
+        fail("mkdir /cycleA");
+    if (cb_vfs_mkdir_path(&task, "/cycleA/cycleB", 0777) < 0)
+        fail("mkdir /cycleA/cycleB");
+    if (cb_vfs_lookup_node(&task, "/cycleA", &node) < 0)
+        fail("lookup /cycleA before rejected cycle rename");
+    if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+        fail("lookup /cycleA/cycleB before rejected cycle rename");
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/cycleB/cycleA") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory into its own descendant did not return EINVAL");
+    /* Topology assertions: A is still reachable from root as the same
+       node, and B's parent is still A -- neither pointer was touched by
+       the rejected attempt. */
+    {
+        struct cb_vfs_node *reresolved_a, *b_parent;
+        if (cb_vfs_lookup_node(&task, "/cycleA", &reresolved_a) < 0 ||
+            reresolved_a != node)
+            fail("cycleA must still be reachable from root as the same node after rejection");
+        if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+            fail("cycleA/cycleB must still resolve after rejection");
+        b_parent = node2->ops->parent(node2);
+        if (b_parent != node)
+            fail("cycleB's parent must still be cycleA after the rejected rename");
+    }
+    /* One-level case: new_parent is old_node itself, not just a descendant
+       of it (rename('/cycleA', '/cycleA/x')). Same EINVAL, same walk --
+       old_node is reached on the very first hop. */
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/x") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory directly into itself did not return EINVAL");
+
+    /* Audit, per the director's request, of the rest of POSIX rename's
+       EINVAL set: '.'/'..' as an operand, and renaming the true root.
+       Neither needed a new check -- both are already correctly rejected
+       by existing machinery, verified here rather than assumed. */
+
+    /* '.' and '..' are never literal path components by the time they
+       reach resolution: cb_test_path_normalize collapses them during
+       normalization. rename("/cycleA/.", "/elsewhere") normalizes old_path
+       to plain "/cycleA" -- an ordinary, harmless rename, not a special
+       case. rename("/cycleA", "/cycleA/..") normalizes new_path to "/",
+       and resolve_parent already rejects a bare "/" (no name component
+       after the final slash) with EINVAL -- confirmed directly below,
+       not assumed from reading the code. */
+    if (cb_vfs_mkdir_path(&task, "/dotcheck", 0777) < 0)
+        fail("mkdir /dotcheck");
+    if (cb_vfs_rename_paths(&task, "/dotcheck/.", "/dotcheck2") < 0)
+        fail("rename with a trailing '.' on the source should behave as an ordinary rename");
+    if (cb_vfs_rename_paths(&task, "/dotcheck2", "/dotcheck2/..") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming onto a path that normalizes to '/' did not return EINVAL");
+
+    /* True root: any same-mount new_parent is necessarily root itself or a
+       descendant of it (root has no sibling; everything in this mount
+       chains back to it via parent()), so the new descendant-of-self walk
+       above catches old_node == root unconditionally and returns EINVAL
+       before ever reaching old_node->ops->rename(). ramfs_rename's own
+       node->parent == NULL check (the original, lower-level protection)
+       is genuine defense in depth here, not the layer actually reached --
+       confirmed directly by checking the observed errno, not assumed from
+       reading the code. */
+    if (cb_vfs_rename_paths(&task, "/", "/newroot") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming the true filesystem root did not return EINVAL");
+
+    cb_release(&kernel, task.error_cell);
+    cb_vfs_node_release(task.cwd);
+    cb_vfs_node_release(task.root);
+    cb_vfs_destroy(&kernel);
+}
+
+/* MV-01: cross-mount EXDEV move semantics and honest failure warnings. */
+static void test_mv_cross_mount(void)
+{
+    struct cb_host_ops_v1 host = *cb_linux_host_ops();
+    struct cb_kernel *kernel;
+    struct cb_task dummy_task;
+    struct cb_vfs_mount *mount2;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    int status;
+    static const char payload[] = "cross-mount test payload data\n";
+    char read_buffer[64];
+    cb_ssize_t nread;
+    static const char expected_file_stderr[] =
+        "mv: /mnt2/xdst: error copying extended attributes: function not implemented\n"
+        "mv: /mnt2/xdst: set times: function not implemented\n"
+        "mv: /mnt2/xdst: set owner/group: function not implemented\n";
+    static const char expected_dir_stderr[] =
+        "mv: /bin/cp: waitpid: no child processes\n";
+
+    base_allocate = host.allocate;
+    base_resize = host.resize;
+    host.allocate = controlled_allocate;
+    host.resize = controlled_resize;
+    allocation_failure_countdown = -1;
+    resize_failure_countdown = -1;
+    host.console_poll = controlled_console_poll;
+    host.console_read = controlled_console_read;
+    host.console_write = capture_write;
+
+    /* --- Case 1: Regular file cross-mount move (fastcopy fallback) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (file)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount file test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount file test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount file test");
+
+    file = cb_vfs_open(&dummy_task, "/xsrc", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xsrc for mv cross-mount file test");
+    if (file->ops->write(file, &dummy_task, payload, sizeof(payload) - 1) != (cb_ssize_t)(sizeof(payload) - 1))
+        fail("write payload to /xsrc");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xsrc /mnt2/xdst") < 0)
+        fail("boot mv cross-mount file test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 0) {
+        fprintf(stderr, "mv cross-mount file exit status: %d (expected 0)\n", status);
+        fail("mv cross-mount file exit status");
+    }
+    if (captured_streams[1][0] != '\0') {
+        fprintf(stderr, "unexpected stdout: <%s>\n", captured_streams[1]);
+        fail("mv cross-mount file stdout non-empty");
+    }
+    if (strcmp(captured_streams[2], expected_file_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_file_stderr, captured_streams[2]);
+        fail("mv cross-mount file stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xsrc", &st) == 0 || *dummy_task.error_cell != CB_ENOENT)
+        fail("mv cross-mount source /xsrc was not unlinked");
+
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/xdst", &st) != 0 || st.type != CB_NODE_REGULAR)
+        fail("mv cross-mount destination /mnt2/xdst stat failed");
+    if (st.size != sizeof(payload) - 1)
+        fail("mv cross-mount destination /mnt2/xdst size mismatch");
+
+    file = cb_vfs_open(&dummy_task, "/mnt2/xdst", CB_O_RDONLY, 0);
+    if (file == NULL)
+        fail("open /mnt2/xdst after mv cross-mount");
+    memset(read_buffer, 0, sizeof(read_buffer));
+    nread = file->ops->read(file, &dummy_task, read_buffer, sizeof(read_buffer));
+    if (nread != (cb_ssize_t)(sizeof(payload) - 1) ||
+        memcmp(read_buffer, payload, sizeof(payload) - 1) != 0)
+        fail("mv cross-mount destination payload content mismatch");
+    cb_open_file_release(file);
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
+
+    /* --- Case 2: Directory cross-mount move (copy fallback attempting /bin/cp) --- */
+    reset_console(NULL);
+    kernel = cb_kernel_create(&host);
+    if (kernel == NULL)
+        fail("mv cross-mount kernel creation (dir)");
+    cb_register_base_programs(kernel);
+
+    memset(&dummy_task, 0, sizeof(dummy_task));
+    dummy_task.kernel = kernel;
+    dummy_task.cwd = kernel->vfs_root;
+    dummy_task.root = kernel->vfs_root;
+    dummy_task.error_cell = cb_allocate(kernel, sizeof(int));
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/mnt2", 0777) < 0)
+        fail("mkdir /mnt2 for mv cross-mount dir test");
+    mount2 = cb_ramfs_mount_create(kernel);
+    if (mount2 == NULL)
+        fail("second RAMFS creation for mv cross-mount dir test");
+    if (cb_vfs_mount_path(&dummy_task, "/mnt2", mount2) < 0)
+        fail("mount /mnt2 for mv cross-mount dir test");
+
+    if (cb_vfs_mkdir_path(&dummy_task, "/xdir", 0777) < 0)
+        fail("mkdir /xdir for mv cross-mount dir test");
+    file = cb_vfs_open(&dummy_task, "/xdir/child", CB_O_CREAT | CB_O_WRONLY, 0644);
+    if (file == NULL)
+        fail("create /xdir/child for mv cross-mount dir test");
+    cb_open_file_release(file);
+
+    if (cb_kernel_boot(kernel, "mv /xdir /mnt2/ydir") < 0)
+        fail("boot mv cross-mount dir test");
+    status = cb_kernel_run(kernel);
+
+    if (status != 1) {
+        fprintf(stderr, "mv cross-mount dir exit status: %d (expected 1)\n", status);
+        fail("mv cross-mount dir exit status");
+    }
+    if (strcmp(captured_streams[2], expected_dir_stderr) != 0) {
+        fprintf(stderr, "expected stderr:\n<%s>\nactual stderr:\n<%s>\n",
+                expected_dir_stderr, captured_streams[2]);
+        fail("mv cross-mount dir stderr mismatch");
+    }
+
+    if (cb_vfs_stat_path(&dummy_task, "/xdir", &st) != 0 || st.type != CB_NODE_DIRECTORY)
+        fail("mv cross-mount dir source /xdir was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/xdir/child", &st) != 0)
+        fail("mv cross-mount dir source child was improperly mutated");
+    if (cb_vfs_stat_path(&dummy_task, "/mnt2/ydir", &st) == 0)
+        fail("mv cross-mount dir destination /mnt2/ydir must not exist");
+
+    cb_release(kernel, dummy_task.error_cell);
+    cb_kernel_destroy(kernel);
+}
+
+/* VFS-04: proves the rename() allocation-failure path (cb_string_duplicate
+   for the new name) leaves no dangling node and both names fully intact --
+   the injected fail_at=0 targets the one allocation cb_vfs_rename_paths
+   makes before it ever mutates any node/parent state. */
+static int renameallocprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    struct cb_stat_v1 st;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/allocsrc", 0777) < 0)
+        return 910;
+
+    allocation_failure_countdown = 0;
+    if (api->rename("/allocsrc", "/allocdst") == 0) {
+        allocation_failure_countdown = -1;
+        return 911;
+    }
+    allocation_failure_countdown = -1;
+    if (api->get_errno() != CB_ENOMEM)
+        return 912;
+    if (api->stat("/allocsrc", &st) < 0)
+        return 913;
+    if (api->stat("/allocdst", &st) == 0)
+        return 914;
+
+    /* The runtime must still work normally afterward: no corrupted state
+       or leaked allocation from the failed attempt. */
+    if (api->rename("/allocsrc", "/allocdst") < 0)
+        return 915;
+    if (api->stat("/allocdst", &st) < 0)
+        return 916;
+
+    return 0;
+}
+
+static const struct cb_program_v1 renameallocprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "renameallocprobe", 0,
+    64 * 1024, renameallocprobe_main
+};
+
+/* Same reasoning as register_yes_probes: FIXTURE_FULL is already at
+ * CB_MAX_PROGRAMS's 64-slot ceiling, so VFS-04's allocation-failure probe
+ * gets its own scoped fixture instead of growing that production capacity. */
+static int register_vfs04_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &renameallocprobe_program) == 0 ?
+           0 : -1;
+}
+
+extern int cb_fts_core_walk_main(int argc, char *argv[]);
+extern int cb_fts_skip_walk_main(int argc, char *argv[]);
+extern int cb_fts_close_walk_main(int argc, char *argv[]);
+extern int cb_fts_cycle_walk_main(int argc, char *argv[]);
+extern int cb_fts_allocfail_walk_main(int argc, char *argv[]);
+
+static int fts_make_file(const struct cb_api_v1 *api, const char *path)
+{
+    int fd = api->open(path, CB_O_WRONLY | CB_O_CREAT, 0600);
+    if (fd < 0)
+        return -1;
+    return api->close(fd);
+}
+
+static int ftscoreprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsA", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/f1") < 0 ||
+        api->mkdir("/tmp/ftsA/d1", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/d1/f2") < 0 ||
+        api->mkdir("/tmp/ftsA/d1/d2", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/d1/d2/f3") < 0 ||
+        api->mkdir("/tmp/ftsB", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsB/f4") < 0)
+        return 800;
+    result = cb_libc_start(api, 0, NULL, cb_fts_core_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 810 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftscoreprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscoreprobe", 0,
+    64 * 1024, ftscoreprobe_main
+};
+
+static int ftsskipprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsskip", 0777) < 0 ||
+        api->mkdir("/tmp/ftsskip/keep", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsskip/keep/k1") < 0 ||
+        api->mkdir("/tmp/ftsskip/skip", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsskip/skip/s1") < 0)
+        return 820;
+    result = cb_libc_start(api, 0, NULL, cb_fts_skip_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 830 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftsskipprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftsskipprobe", 0,
+    64 * 1024, ftsskipprobe_main
+};
+
+static int ftscloseprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    int result;
+    int handles[CB_MAX_DIRS];
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsclose", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a/b", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a/b/c", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsclose/a/b/c/leaf") < 0)
+        return 840;
+    result = cb_libc_start(api, 0, NULL, cb_fts_close_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 850 + result;
+    /* Real evidence the three still-open frames (root, a, b) at the point
+       of the early fts_close were actually released, not leaked: every
+       CB_MAX_DIRS slot must still be available from scratch. */
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        handles[index] = api->opendir("/tmp");
+        if (handles[index] < 0)
+            return 860;
+    }
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        if (api->closedir(handles[index]) < 0)
+            return 861;
+    }
+    return 0;
+}
+
+static const struct cb_program_v1 ftscloseprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscloseprobe", 0,
+    64 * 1024, ftscloseprobe_main
+};
+
+static int ftscycleprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    int result;
+    char path[64];
+    int level;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* A genuine, reachable-from-root graph cycle turns out to be
+       unconstructible against this RAMFS backend at all -- see
+       tests/fts_cycle_walk.c's own comment and
+       notes/iterations/FTS-CORE-01.md for the verified reasoning
+       (attempted via a raw node_ops->rename splice of the mount root
+       into one of its own descendants; ramfs_rename rejects any node
+       with a NULL parent with EPERM, and no rename-based construction
+       on a non-root node can avoid disconnecting the cyclic component
+       from root instead, since RAMFS has no hardlink primitive). This
+       builds a real 8-level-deep, ordinary (acyclic) chain instead, to
+       prove cycle detection does not false-positive on legitimate deep
+       nesting. */
+    if (api->mkdir("/tmp/ftsdeep", 0777) < 0)
+        return 870;
+    strcpy(path, "/tmp/ftsdeep");
+    for (level = 0; level < 8; ++level) {
+        size_t len = strlen(path);
+        path[len] = '/';
+        path[len + 1] = (char)('a' + level);
+        path[len + 2] = '\0';
+        if (api->mkdir(path, 0777) < 0)
+            return 871;
+    }
+
+    result = cb_libc_start(api, 0, NULL, cb_fts_cycle_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 880 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftscycleprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscycleprobe", 0,
+    64 * 1024, ftscycleprobe_main
+};
+
+static int ftsallocfailprobe_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    int result;
+    int fail_at;
+    int handles[CB_MAX_DIRS];
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/ftsallocroot", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsallocroot/leaf") < 0)
+        return 890;
+
+    /* Covers fts_open's own allocation and entry_create's three logical
+       allocations (FTSENT, fts_path, fts_statp) for the root entry, each
+       of which makes two underlying cb_allocate calls (payload plus
+       bookkeeping), same accounting as direntlibcallocfailprobe_main
+       above. */
+    for (fail_at = 0; fail_at < 8; ++fail_at) {
+        allocation_failure_countdown = fail_at;
+        result = cb_libc_start(api, 0, NULL, cb_fts_allocfail_walk_main);
+        cb_libc_start(api, 0, NULL, dirent_noop_main);
+        allocation_failure_countdown = -1;
+        if (result != 0)
+            return 900 + fail_at;
+        for (index = 0; index < CB_MAX_DIRS; ++index) {
+            handles[index] = api->opendir("/tmp");
+            if (handles[index] < 0)
+                return 910;
+        }
+        for (index = 0; index < CB_MAX_DIRS; ++index) {
+            if (api->closedir(handles[index]) < 0)
+                return 911;
+        }
+    }
+    return 0;
+}
+
+static const struct cb_program_v1 ftsallocfailprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftsallocfailprobe", 0,
+    64 * 1024, ftsallocfailprobe_main
+};
+
+static int register_fts_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &ftscoreprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftsskipprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftscloseprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftscycleprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftsallocfailprobe_program) == 0
+               ? 0
+               : -1;
+}
+
+static void test_fts(void)
+{
+    run_case("ftscoreprobe", "", 0, FIXTURE_FTS);
+    run_case("ftsskipprobe", "", 0, FIXTURE_FTS);
+    run_case("ftscloseprobe", "", 0, FIXTURE_FTS);
+    run_case("ftscycleprobe", "", 0, FIXTURE_FTS);
+    run_case("ftsallocfailprobe", "", 0, FIXTURE_FTS);
+}
+
+extern int cb_strrchr_probe_main(int argc, char *argv[]);
+extern int cb_memset_probe_main(int argc, char *argv[]);
+extern int cb_unlink_probe_main(int argc, char *argv[]);
+extern int cb_rmdir_walk_main(int argc, char *argv[]);
+extern int cb_getchar_walk_main(int argc, char *argv[]);
+
+CB_LIBC_PROGRAM(strrchrprobe_program, "strrchrprobe", cb_strrchr_probe_main);
+CB_LIBC_PROGRAM(memsetprobe_program, "memsetprobe", cb_memset_probe_main);
+CB_LIBC_PROGRAM(libcunlinkprobe_program, "libcunlinkprobe",
+                cb_unlink_probe_main);
+
+static int rm01rmdirprobe_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/rm01_rmdir_target", 0777) < 0)
+        return 970;
+    if (fts_make_file(api, "/tmp/rm01_rmdir_file") < 0)
+        return 971;
+    result = cb_libc_start(api, 0, NULL, cb_rmdir_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 980 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 rm01rmdirprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01rmdirprobe", 0,
+    64 * 1024, rm01rmdirprobe_main
+};
+
+static int rm01getcharprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    reset_console("hi");
+    result = cb_libc_start(api, 0, NULL, cb_getchar_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 990 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 rm01getcharprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01getcharprobe", 0,
+    64 * 1024, rm01getcharprobe_main
+};
+
+/* No mkdir shell command exists yet (only the raw api op), so rm's own
+   -r/-d behavior can't be driven through the shell the way
+   test_ls_behavior.sh drives ls. Builds the test tree directly through
+   the raw api, then spawns the REAL registered "rm" program (not a
+   direct cb_libc_start call: rm.c's main() calls exit(), which
+   terminates whichever task is currently running it -- spawning it as
+   an actual child task and waiting for it, exactly as the shell itself
+   does, is required for that to be safe to call more than once). */
+static int rm01cmdprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const wrapper_argv[], char *const envp[])
+{
+    struct cb_stat_v1 st;
+    cb_pid_t pid;
+    int status;
+    char *rm_argv_recursive[] = {(char *)"rm", (char *)"-r",
+                                 (char *)"/tmp/rmtree", NULL};
+    char *rm_argv_emptydir[] = {(char *)"rm", (char *)"-d",
+                                (char *)"/tmp/rmempty", NULL};
+    char *rm_argv_forcemissing[] = {(char *)"rm", (char *)"-r", (char *)"-f",
+                                    (char *)"/tmp/rmnothere", NULL};
+    (void)argc;
+    (void)wrapper_argv;
+
+    /* Originally written as a single-child-per-level tree to work
+       around VFS-03's directory-cursor skip bug (see
+       notes/iterations/RM-01.md and notes/iterations/VFS-03.md): rm -r's
+       pattern of removing the entry it just visited, via the SAME open
+       directory handle, before reading the next one, hit VFS-03's
+       accepted "skip a sibling on concurrent removal" case on EVERY
+       multi-child directory, silently leaving later siblings (and their
+       entire subtrees) never visited or removed. That gap is now fixed
+       by VFS-05's look-ahead directory cursor (see
+       notes/iterations/VFS-05.md), so this restores the realistic
+       multi-child tree -- "top" is a second, later-visited sibling of
+       "a" at /tmp/rmtree's own level -- to actually prove rm -r handles
+       real, multi-entry directories end to end. */
+    if (api->mkdir("/tmp/rmtree", 0777) < 0 ||
+        api->mkdir("/tmp/rmtree/a", 0777) < 0 ||
+        api->mkdir("/tmp/rmtree/a/b", 0777) < 0 ||
+        fts_make_file(api, "/tmp/rmtree/a/b/f") < 0 ||
+        fts_make_file(api, "/tmp/rmtree/top") < 0)
+        return 1000;
+
+    if (api->spawn("rm", rm_argv_recursive, envp, NULL, 0, &pid) < 0)
+        return 1001;
+    if (api->waitpid(pid, &status) != pid)
+        return 1002;
+    if (status != 0)
+        return 1010 + status;
+    if (api->stat("/tmp/rmtree", &st) == 0)
+        return 1020;
+
+    if (api->mkdir("/tmp/rmempty", 0777) < 0)
+        return 1030;
+    if (api->spawn("rm", rm_argv_emptydir, envp, NULL, 0, &pid) < 0)
+        return 1031;
+    if (api->waitpid(pid, &status) != pid)
+        return 1032;
+    if (status != 0)
+        return 1040 + status;
+    if (api->stat("/tmp/rmempty", &st) == 0)
+        return 1050;
+
+    if (api->spawn("rm", rm_argv_forcemissing, envp, NULL, 0, &pid) < 0)
+        return 1061;
+    if (api->waitpid(pid, &status) != pid)
+        return 1062;
+    if (status != 0)
+        return 1070 + status;
+
+    return 0;
+}
+
+static const struct cb_program_v1 rm01cmdprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01cmdprobe", 0,
+    64 * 1024, rm01cmdprobe_main
+};
+
+static int register_rm01_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &strrchrprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &memsetprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &libcunlinkprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01rmdirprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01getcharprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01cmdprobe_program) == 0
+               ? 0
+               : -1;
+}
+
+static void test_rm01(void)
+{
+    run_case("strrchrprobe", "", 0, FIXTURE_RM01);
+    run_case("memsetprobe", "", 0, FIXTURE_RM01);
+    run_case("libcunlinkprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01rmdirprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01getcharprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01cmdprobe", "", 0, FIXTURE_RM01);
+}
+
 static void test_err(void)
 {
     run_case("errinterleave", "", 0, 1);
@@ -4940,12 +6022,46 @@ static void test_err(void)
     run_case("warnprobe failed", "preserved\n", 0, FIXTURE_ERR);
     expect_streams("preserved\n", "");
 
+    run_case("warnxprobe ordinary", "warnxprobe: ordinary format\ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: ordinary format\n");
+    run_case("warnxprobe null", "warnxprobe: \ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: \n");
+    run_case("warnxprobe empty", "warnxprobe: \ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: \n");
+    run_case("warnxprobe failed", "preserved\n", 0, FIXTURE_ERR);
+    expect_streams("preserved\n", "");
+
+    /* CAT-01/STDIN-01 addendum: fclose(stdout)/fclose(stderr) now succeed
+       honestly -- prove a write after fclose genuinely fails rather than
+       silently succeeding, for both streams. */
+    run_case("fclosestdoutprobe", "before\nbefore\n", 0, FIXTURE_ERR);
+    expect_streams("before\n", "before\n");
+
     /* A zero-progress writer must not trap err in an infinite retry loop. */
     capture_write_limit = 0;
     run_case("libcerrprobe", "", 7, 1);
     capture_write_limit = (size_t)-1;
 }
 
+int cb_terminal_engine_probe(void);
+static void test_terminal_engine(void)
+{
+    int result = cb_terminal_engine_probe();
+    if (result != 0) {
+        fprintf(stderr, "FAIL: terminal engine probe status %d\n", result);
+        exit(1);
+    }
+}
+
+int cb_signal_probe(const struct cb_host_ops_v1 *host);
+static void test_signals(void)
+{
+    int result = cb_signal_probe(cb_linux_host_ops());
+    if (result != 0) {
+        fprintf(stderr, "FAIL: signal probe status %d\n", result);
+        exit(1);
+    }
+}
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 static void test_tee_state(void)
 {
@@ -4967,6 +6083,8 @@ static void test_console_write(void)
 
 static void test_mac_acceptance(void)
 {
+    test_terminal_engine();
+    test_signals();
     test_tee_state();
     test_console_write();
 #define CB_MAC_CASE(command, expected, status) \
@@ -5132,6 +6250,15 @@ int main(int argc, char **argv)
         run_case("stdioprobe decimal", " -42", 0, 1);
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--terminal-engine") == 0) {
+        test_terminal_engine();
+        puts("terminal engine tests passed");
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--signals") == 0) {
+        test_signals();
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--tee-state") == 0) {
         test_tee_state();
         puts("tee state tests passed");
@@ -5220,6 +6347,8 @@ int main(int argc, char **argv)
         run_case("libctruncateprobe", "", 0, 1);
         run_case("truncateprobe", "", 0, 1);
         run_case("truncateinterleave", "", 0, 1);
+    run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
+    run_case("lsinterleave", "", 0, FIXTURE_LS);
         puts("truncate tests passed");
         return 0;
     }
@@ -5253,6 +6382,10 @@ int main(int argc, char **argv)
     test_nullboot();
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
+    test_vfs_rmdir_rename();
+    test_mv_cross_mount();
+    test_fts();
+    test_rm01();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
@@ -5358,6 +6491,7 @@ int main(int argc, char **argv)
     run_case("libcdirentprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntbasicprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntmutationprobe", "", 0, FIXTURE_DIRENT);
+    run_case("direntdrainprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntisolationprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntoldtableprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntopendirnulltableprobe", "", 0, FIXTURE_DIRENT);
@@ -5377,6 +6511,8 @@ int main(int argc, char **argv)
     test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
+    run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
+    run_case("lsinterleave", "", 0, FIXTURE_LS);
     run_case("libcdirnameprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnameoldtableprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnamenulltableprobe", "", 0, FIXTURE_DIRNAME);

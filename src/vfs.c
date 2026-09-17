@@ -404,6 +404,19 @@ int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
     return directory->ops->child_at(directory, index, child_out);
 }
 
+int cb_vfs_next_sibling(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out)
+{
+    if (node == NULL || !node_ops_valid(node->ops))
+        return -CB_EIO;
+    if (node->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, next_sibling) +
+                sizeof(node->ops->next_sibling) ||
+        node->ops->next_sibling == NULL)
+        return -CB_ENOSYS;
+    return node->ops->next_sibling(node, sibling_out);
+}
+
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode)
 {
     char normalized[CB_PATH_MAX];
@@ -453,6 +466,168 @@ int cb_vfs_unlink_path(struct cb_task *task, const char *path)
     }
     if (result >= 0)
         result = node->ops->unlink(node);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+int cb_vfs_rmdir_path(struct cb_task *task, const char *path)
+{
+    char normalized[CB_PATH_MAX];
+    struct cb_vfs_node *node;
+    int result = normalize_for_task(task, path, normalized);
+    if (result >= 0)
+        result = resolve_normalized(task, normalized, &node);
+    if (result >= 0) {
+        /* Same mount-root protection cb_vfs_unlink_path already applies;
+           a mount root/mount point has no parent to detach from and must
+           never be silently removed out from under the mount table. */
+        for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+            if (task->kernel->mounts[i].mount_point == node ||
+                task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount) == node) {
+                result = -CB_EPERM;
+                break;
+            }
+        }
+    }
+    if (result >= 0 && !node_ops_valid(node->ops))
+        result = -CB_EIO;
+    if (result >= 0 && (node->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, rmdir) +
+                sizeof(node->ops->rmdir) || node->ops->rmdir == NULL))
+        result = -CB_ENOSYS;
+    if (result >= 0)
+        result = node->ops->rmdir(node);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    cb_task_set_error(task, 0);
+    return 0;
+}
+
+int cb_vfs_rename_paths(struct cb_task *task, const char *old_path,
+                        const char *new_path)
+{
+    char old_normalized[CB_PATH_MAX];
+    char new_normalized[CB_PATH_MAX];
+    struct cb_vfs_node *old_node;
+    struct cb_vfs_node *new_parent;
+    struct cb_vfs_node *existing = NULL;
+    const char *new_name;
+    struct cb_stat_v1 old_status;
+    char *new_name_owned;
+    int result;
+    int lookup_result;
+
+    result = normalize_for_task(task, old_path, old_normalized);
+    if (result >= 0)
+        result = resolve_normalized(task, old_normalized, &old_node);
+    if (result >= 0)
+        result = normalize_for_task(task, new_path, new_normalized);
+    if (result >= 0)
+        result = resolve_parent(task, new_normalized, &new_parent, &new_name);
+    if (result >= 0 && (!node_ops_valid(old_node->ops) ||
+                        !node_ops_valid(new_parent->ops)))
+        result = -CB_EIO;
+    if (result >= 0 && old_node->mount != new_parent->mount)
+        result = -CB_EXDEV;
+    /* Mirrors cb_vfs_rmdir_path/cb_vfs_unlink_path: the source cannot be a
+       mount root -- it would have no parent to detach from, and moving a
+       mount out from under the mount table is not supported. */
+    if (result >= 0) {
+        for (size_t i = 0; i < task->kernel->mount_count; ++i) {
+            if (task->kernel->mounts[i].mount_point == old_node ||
+                task->kernel->mounts[i].mount->ops->root(task->kernel->mounts[i].mount) == old_node) {
+                result = -CB_EPERM;
+                break;
+            }
+        }
+    }
+    /* POSIX rename(2): reject making a directory a subdirectory of itself.
+       Without this, new_parent could already be old_node itself or any
+       descendant of it (reached by resolve_parent walking straight through
+       old_node, which succeeds fine -- there is no infinite loop in getting
+       here). Relinking old_node under such a new_parent would make
+       old_node's own descendant its new parent while that descendant's
+       parent pointer still points at old_node, producing a cycle
+       disconnected from root entirely (ramfs_rename only ever touches the
+       node being moved, never new_parent's own parent pointer). Walk
+       upward from new_parent via the existing parent op; if old_node is
+       ever reached (including new_parent == old_node itself), reject with
+       EINVAL before anything is resolved further, let alone mutated.
+       Bounded the same way cwd_string/the fts ancestor walk are, so a
+       pre-existing corrupt tree can't spin this loop forever either. */
+    if (result >= 0) {
+        struct cb_vfs_node *walk = new_parent;
+        size_t hops = 0;
+        while (walk != NULL) {
+            if (walk == old_node) {
+                result = -CB_EINVAL;
+                break;
+            }
+            if (++hops > CB_PATH_MAX / 2) {
+                result = -CB_ENAMETOOLONG;
+                break;
+            }
+            if (!node_ops_valid(walk->ops))
+                break;
+            walk = walk->ops->parent(walk);
+        }
+    }
+    if (result >= 0)
+        result = old_node->ops->stat(old_node, &old_status);
+    if (result >= 0) {
+        lookup_result = new_parent->ops->lookup(new_parent, new_name,
+                                                strlen(new_name), &existing);
+        if (lookup_result == 0 && existing == old_node) {
+            /* Renaming a name onto itself: a no-op success, same as
+               POSIX rename() on identical old/new paths. */
+            cb_task_set_error(task, 0);
+            return 0;
+        }
+        if (lookup_result == 0) {
+            struct cb_stat_v1 existing_status;
+            result = existing->ops->stat(existing, &existing_status);
+            if (result >= 0) {
+                if (old_status.type == CB_NODE_DIRECTORY) {
+                    /* Replacing an existing directory target is out of
+                       scope here (VFS-04's accept criteria only requires
+                       replacing an existing regular-file target); reject
+                       rather than silently merging or losing entries. */
+                    result = existing_status.type == CB_NODE_DIRECTORY
+                                 ? -CB_ENOTEMPTY : -CB_ENOTDIR;
+                } else if (existing_status.type == CB_NODE_DIRECTORY) {
+                    result = -CB_EISDIR;
+                }
+            }
+        } else if (lookup_result != -CB_ENOENT) {
+            result = lookup_result;
+        }
+        /* lookup_result == -CB_ENOENT falls through with existing == NULL:
+           the destination name is free, an ordinary move. */
+    }
+    if (result >= 0 && (old_node->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, rename) +
+                sizeof(old_node->ops->rename) || old_node->ops->rename == NULL))
+        result = -CB_ENOSYS;
+    if (result >= 0) {
+        new_name_owned = cb_string_duplicate(task->kernel, new_name);
+        if (new_name_owned == NULL)
+            result = -CB_ENOMEM;
+    }
+    /* Everything above only inspects state; nothing has mutated yet, so a
+       failure at any point above leaves both names fully intact. From
+       here, both remaining steps are failure-free by construction (the
+       name is already allocated; the existing-target type was already
+       validated as replaceable), so the pair cannot be left half-done. */
+    if (result >= 0 && existing != NULL)
+        result = existing->ops->unlink(existing);
+    if (result >= 0)
+        result = old_node->ops->rename(old_node, new_parent, new_name_owned);
     if (result < 0) {
         cb_task_set_error(task, -result);
         return -1;

@@ -253,4 +253,63 @@ for symbol in err errno_location errx exit fclose feof fopen fprintf fread fwrit
     fi
 done
 
+mv_source=upstream/netbsd/bin/mv/mv.c
+mv_pathnames=upstream/netbsd/bin/mv/pathnames.h
+mv_object=$build_path/netbsd_mv.o
+mv_hash=df5de897a14e2f8210140e468b94319eaf100018490bfebe564152bf337bfd54
+mv_pathnames_hash=82819eb682b4e2e8ec84604d8b9b11532f987427d697989ff21c6aa56fc30d6a
+
+if [[ $(sha256sum "$mv_source" | awk '{print $1}') != "$mv_hash" ]] ||
+   ! matches "$mv_hash" "$provenance_file"; then
+    echo 'FAIL: mv source/provenance pin differs' >&2
+    exit 1
+fi
+if [[ $(sha256sum "$mv_pathnames" | awk '{print $1}') != "$mv_pathnames_hash" ]] ||
+   ! matches "$mv_pathnames_hash" "$provenance_file"; then
+    echo 'FAIL: mv pathnames source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$mv_object" | matches '[[:space:]]T[[:space:]]+cb_mv_main$' ||
+   nm "$mv_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: mv entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in access close errno_location errx execl exit fcpxattr fchflags fchmod fchown \
+        fprintf futimes getchar getopt getopt_state_location getprogname group_from_gid \
+        isatty lstat malloc memmove open printf read rename rmdir setlocale \
+        setprogname signal stat stderr_stream strlcpy strlen strmode strrchr \
+        unlink user_from_uid vfork waitpid warn warnx write; do
+    if ! nm -u "$mv_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$" ||
+       nm -u "$mv_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: mv private boundary for $symbol" >&2
+        exit 1
+    fi
+done
+
+cat_source=upstream/netbsd/bin/cat/cat.c
+cat_object=$build_path/netbsd_cat.o
+cat_hash=2cc2ced0fcc6c143e1406e64cdd64ea768101fcd19b6dad531b911a611697cbd
+
+if [[ $(sha256sum "$cat_source" | awk '{print $1}') != "$cat_hash" ]] ||
+   ! matches "$cat_hash" "$provenance_file"; then
+    echo 'FAIL: cat source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$cat_object" | matches '[[:space:]]T[[:space:]]+cb_cat_main$' ||
+   nm "$cat_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: cat entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in clearerr close err fclose fcntl ferror fileno fopen fprintf \
+        fstat getc getopt getopt_state_location getprogname isascii \
+        iscntrl malloc open putchar read setbuf setlocale setprogname \
+        stderr_stream stdin_stream stdout_stream strcmp strtol toascii \
+        warn warnx write; do
+    if ! nm -u "$cat_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$" ||
+       nm -u "$cat_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: cat private boundary for $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

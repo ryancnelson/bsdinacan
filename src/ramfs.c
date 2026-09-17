@@ -56,6 +56,12 @@ static const char *ramfs_name(struct cb_vfs_node *common);
 static int ramfs_truncate(struct cb_vfs_node *common, cb_off_t length);
 static int ramfs_child_at(struct cb_vfs_node *common, size_t index,
                           struct cb_vfs_node **child_out);
+static int ramfs_rmdir(struct cb_vfs_node *common);
+static int ramfs_rename(struct cb_vfs_node *common,
+                        struct cb_vfs_node *new_parent_common,
+                        char *new_name_owned);
+static int ramfs_next_sibling(struct cb_vfs_node *common,
+                              struct cb_vfs_node **sibling_out);
 static struct cb_vfs_node *ramfs_mount_root(struct cb_vfs_mount *common);
 static void ramfs_mount_destroy(struct cb_vfs_mount *common);
 
@@ -82,7 +88,10 @@ static const struct cb_vfs_node_ops ramfs_node_ops = {
     ramfs_parent,
     ramfs_name,
     ramfs_truncate,
-    ramfs_child_at
+    ramfs_child_at,
+    ramfs_rmdir,
+    ramfs_rename,
+    ramfs_next_sibling
 };
 
 static const struct cb_vfs_mount_ops ramfs_mount_ops = {
@@ -309,6 +318,84 @@ static int ramfs_child_at(struct cb_vfs_node *common, size_t index,
         }
     }
     *child_out = NULL;
+    return 0;
+}
+
+/* See notes/iterations/VFS-05.md. node's own next_sibling field already
+   gives exactly this, for any node (file or directory) with a parent --
+   no type check needed, unlike child_at (which only makes sense on a
+   directory). Called on a node before it is ever unlinked (the caller's
+   contract, documented on the node_ops field itself); ramfs_unlink
+   clears an unlinked node's own next_sibling to NULL, so calling this
+   afterward would not give the right answer, but nothing here needs to
+   guard against that misuse -- it is the caller's obligation, exactly
+   like every other node op that requires calling in a particular order
+   (e.g. rename's new_name_owned ownership contract). */
+static int ramfs_next_sibling(struct cb_vfs_node *common,
+                              struct cb_vfs_node **sibling_out)
+{
+    struct cb_ramfs_node *node = ramfs_node(common);
+    *sibling_out = node->next_sibling ? &node->next_sibling->common : NULL;
+    return 0;
+}
+
+/* Mirrors ramfs_unlink's detach-from-parent-list mechanics, but for a
+   directory: ramfs_unlink deliberately refuses every directory (EISDIR or
+   ENOTEMPTY) since unlink() must never remove one -- rmdir() is the
+   dedicated operation for that, hence a separate function rather than a
+   shared helper with a bypass flag. */
+static int ramfs_rmdir(struct cb_vfs_node *common)
+{
+    struct cb_ramfs_node *node = ramfs_node(common);
+    struct cb_ramfs_node **link;
+    if (node->type != CB_NODE_DIRECTORY)
+        return -CB_ENOTDIR;
+    if (node->children != NULL)
+        return -CB_ENOTEMPTY;
+    if (node->parent == NULL)
+        return -CB_EPERM;
+    link = &node->parent->children;
+    while (*link != NULL && *link != node)
+        link = &(*link)->next_sibling;
+    if (*link == NULL)
+        return -CB_EIO;
+    *link = node->next_sibling;
+    node->parent = NULL;
+    node->next_sibling = NULL;
+    ramfs_node_release(common);
+    return 0;
+}
+
+/* Pure pointer relinking plus installing the caller-owned new name: cannot
+   fail for allocation reasons, so cb_vfs_rename_paths pre-allocates
+   new_name_owned and validates everything else before ever calling this,
+   keeping the two state-mutating steps of a replacing rename (this call
+   and the existing-target unlink before it) failure-free once reached. */
+static int ramfs_rename(struct cb_vfs_node *common,
+                        struct cb_vfs_node *new_parent_common,
+                        char *new_name_owned)
+{
+    struct cb_ramfs_node *node = ramfs_node(common);
+    struct cb_ramfs_node *new_parent = ramfs_node(new_parent_common);
+    struct cb_ramfs_node **link;
+    struct cb_kernel *kernel = common->mount->kernel;
+    if (node->parent == NULL) {
+        cb_release(kernel, new_name_owned);
+        return -CB_EPERM;
+    }
+    link = &node->parent->children;
+    while (*link != NULL && *link != node)
+        link = &(*link)->next_sibling;
+    if (*link == NULL) {
+        cb_release(kernel, new_name_owned);
+        return -CB_EIO;
+    }
+    *link = node->next_sibling;
+    node->next_sibling = new_parent->children;
+    new_parent->children = node;
+    node->parent = new_parent;
+    cb_release(kernel, node->name);
+    node->name = new_name_owned;
     return 0;
 }
 

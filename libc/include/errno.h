@@ -28,6 +28,10 @@
 #define ENOSYS CB_ENOSYS
 #define EFAULT CB_EFAULT
 #define EOVERFLOW CB_EOVERFLOW
+#define EXDEV CB_EXDEV
+#define ETXTBSY CB_ETXTBSY
+#define EOPNOTSUPP CB_ENOSYS
+#define ENOTSUP CB_ENOSYS
 
 #define errno (*cb_libc_errno_location())
 
