@@ -73,7 +73,31 @@ struct cb_stat_v1 {
     uint64_t size;
     uint32_t mode;
     uint32_t type;
+    /* Appended by FS-STAT-01. device: a real per-mount id (assigned once
+       at mount creation), not a constant -- distinguishes mounts for
+       EXDEV detection. nlink: a real POSIX-computed value (1 for
+       non-directories, since RAMFS has no hardlink primitive; 2 plus
+       the count of child directories for directories), not a constant.
+       {a,m,c}time_ms: real host wall-clock milliseconds since epoch,
+       recorded at node creation and updated on read/write/truncate/
+       rename -- not a fabricated per-file value. uid/gid: a fixed 0,
+       matching cb_libc_getuid()'s existing always-0 answer -- this
+       runtime has no user/group concept and permissions are deferred
+       for this milestone, so 0 is the honest single-user constant this
+       system already commits to elsewhere, not an invented per-file
+       value. Callers must check struct_size before reading, exactly
+       like every other optional extension in this header. */
+    uint32_t device;
+    uint32_t nlink;
+    uint32_t uid;
+    uint32_t gid;
+    uint64_t atime_ms;
+    uint64_t mtime_ms;
+    uint64_t ctime_ms;
 };
+#define CB_STAT_V1_METADATA_MIN_SIZE \
+    (offsetof(struct cb_stat_v1, ctime_ms) + \
+     sizeof(((struct cb_stat_v1 *)0)->ctime_ms))
 
 enum cb_spawn_action_type {
     CB_SPAWN_DUP2 = 1,

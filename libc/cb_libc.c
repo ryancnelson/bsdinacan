@@ -172,23 +172,43 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
         break;
     }
 
-    stat_buf->st_dev = 1;
     stat_buf->st_ino = raw_stat->inode;
     stat_buf->st_mode = type_bits | (raw_stat->mode & 07777);
-    stat_buf->st_nlink = 1;
-    stat_buf->st_uid = 0;
-    stat_buf->st_gid = 0;
     stat_buf->st_rdev = 0;
     stat_buf->st_size = (int64_t)raw_stat->size;
-    stat_buf->st_atimespec.tv_sec = 0;
-    stat_buf->st_atimespec.tv_nsec = 0;
-    stat_buf->st_mtimespec.tv_sec = 0;
-    stat_buf->st_mtimespec.tv_nsec = 0;
-    stat_buf->st_ctimespec.tv_sec = 0;
-    stat_buf->st_ctimespec.tv_nsec = 0;
     stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
     stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
     stat_buf->st_flags = 0;
+
+    /* FS-STAT-01: real device/nlink/uid/gid/timestamps if the runtime's
+       cb_stat_v1 carries them; an old runtime whose struct predates this
+       append cannot honestly report them, so it keeps the same fixed
+       sentinels this function always used (device 1, nlink 1, zero
+       timestamps) rather than reading past what the caller actually
+       populated. */
+    if (raw_stat->struct_size >= CB_STAT_V1_METADATA_MIN_SIZE) {
+        stat_buf->st_dev = raw_stat->device;
+        stat_buf->st_nlink = raw_stat->nlink;
+        stat_buf->st_uid = raw_stat->uid;
+        stat_buf->st_gid = raw_stat->gid;
+        stat_buf->st_atimespec.tv_sec = (int64_t)(raw_stat->atime_ms / 1000);
+        stat_buf->st_atimespec.tv_nsec = (long)((raw_stat->atime_ms % 1000) * 1000000);
+        stat_buf->st_mtimespec.tv_sec = (int64_t)(raw_stat->mtime_ms / 1000);
+        stat_buf->st_mtimespec.tv_nsec = (long)((raw_stat->mtime_ms % 1000) * 1000000);
+        stat_buf->st_ctimespec.tv_sec = (int64_t)(raw_stat->ctime_ms / 1000);
+        stat_buf->st_ctimespec.tv_nsec = (long)((raw_stat->ctime_ms % 1000) * 1000000);
+    } else {
+        stat_buf->st_dev = 1;
+        stat_buf->st_nlink = 1;
+        stat_buf->st_uid = 0;
+        stat_buf->st_gid = 0;
+        stat_buf->st_atimespec.tv_sec = 0;
+        stat_buf->st_atimespec.tv_nsec = 0;
+        stat_buf->st_mtimespec.tv_sec = 0;
+        stat_buf->st_mtimespec.tv_nsec = 0;
+        stat_buf->st_ctimespec.tv_sec = 0;
+        stat_buf->st_ctimespec.tv_nsec = 0;
+    }
 }
 
 int cb_libc_stat(const char *path, struct stat *stat_buf)

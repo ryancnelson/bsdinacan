@@ -40,6 +40,7 @@ extern int cb_basename_oldtable_main(int argc, char *argv[]);
 
 extern const struct cb_program_v1 cb_direntprobe_program;
 extern int cb_direntoldtable_main(int argc, char *argv[]);
+extern int cb_stat_oldtable_main(int argc, char *argv[]);
 extern int cb_direntallocfail_main(int argc, char *argv[]);
 extern int cb_direntreaddirunavail_main(int argc, char *argv[]);
 extern int dirent_rebind_open(int argc, char *argv[]);
@@ -2247,6 +2248,42 @@ static int direntoldtableprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+/* FS-STAT-01: wraps the real stat() to truncate the OUTPUT cb_stat_v1's
+   own struct_size to its pre-FS-STAT-01 size, after letting the real
+   implementation populate it fully -- proving translate_stat's guard is
+   what suppresses the new fields, not that the runtime lacks them. */
+static int (*stat_oldtable_real_stat)(const char *path,
+                                      struct cb_stat_v1 *stat_buffer);
+
+static int stat_oldtable_wrapper(const char *path,
+                                 struct cb_stat_v1 *stat_buffer)
+{
+    int result = stat_oldtable_real_stat(path, stat_buffer);
+    if (result == 0)
+        stat_buffer->struct_size =
+            (uint32_t)offsetof(struct cb_stat_v1, device);
+    return result;
+}
+
+static int statoldtableprobe_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    struct cb_api_v1 copy;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    copy = *api;
+    stat_oldtable_real_stat = api->stat;
+    copy.stat = stat_oldtable_wrapper;
+    result = cb_libc_start(&copy, 0, NULL, cb_stat_oldtable_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 421;
+    return 0;
+}
+
 static int direntopendirnulltableprobe_main(const struct cb_api_v1 *api,
                                             int argc, char *const argv[],
                                             char *const envp[])
@@ -3399,6 +3436,65 @@ static int ramfsprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+/* FS-STAT-01: real (not fallback) device/nlink/uid/gid/timestamp values.
+   "/" has bin, tmp and home as subdirectories (nlink = 2 + 3); "/bin" is
+   empty (nlink = 2 + 0); "/home" has one subdirectory, "user"
+   (nlink = 2 + 1) -- the fixed bootstrap layout cb_ramfs_mount_create
+   always creates, so these exact counts hold in a fresh kernel. */
+static int fsstat01probe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    struct cb_stat_v1 root_stat, bin_stat, home_stat, file_stat, after_write;
+    int descriptor;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->stat("/", &root_stat) < 0 || api->stat("/bin", &bin_stat) < 0 ||
+        api->stat("/home", &home_stat) < 0)
+        return 500;
+    if (root_stat.struct_size < CB_STAT_V1_METADATA_MIN_SIZE)
+        return 501;
+    if (root_stat.nlink != 5)
+        return 502;
+    if (bin_stat.nlink != 2)
+        return 503;
+    if (home_stat.nlink != 3)
+        return 504;
+    if (root_stat.device == 0 || root_stat.device != bin_stat.device)
+        return 505;
+    if (root_stat.uid != 0 || root_stat.gid != 0)
+        return 506;
+    if (root_stat.atime_ms == 0 || root_stat.mtime_ms == 0 ||
+        root_stat.ctime_ms == 0)
+        return 507;
+
+    descriptor = api->open("/tmp/fsstat01", CB_O_WRONLY | CB_O_CREAT, 0644);
+    if (descriptor < 0)
+        return 508;
+    if (api->fstat(descriptor, &file_stat) < 0)
+        return 509;
+    if (file_stat.nlink != 1)
+        return 510;
+    if (api->write(descriptor, "x", 1) != 1)
+        return 511;
+    if (api->fstat(descriptor, &after_write) < 0)
+        return 512;
+    /* Real host clock: monotonic, but not asserted strictly greater --
+       two calls inside the same millisecond would otherwise make this a
+       flaky test rather than a meaningful one. */
+    if (after_write.mtime_ms < file_stat.mtime_ms)
+        return 513;
+    if (api->close(descriptor) < 0)
+        return 514;
+    return 0;
+}
+
+static const struct cb_program_v1 fsstat01probe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "fsstat01probe", 0,
+    64 * 1024, fsstat01probe_main
+};
+
 static const struct cb_program_v1 pidcheck_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "pidcheck", 0,
     64 * 1024, pidcheck_main
@@ -3573,6 +3669,11 @@ static const struct cb_program_v1 direntisolationprobe_program = {
 static const struct cb_program_v1 direntoldtableprobe_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntoldtableprobe", 0,
     64 * 1024, direntoldtableprobe_main
+};
+
+static const struct cb_program_v1 statoldtableprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "statoldtableprobe", 0,
+    64 * 1024, statoldtableprobe_main
 };
 
 static const struct cb_program_v1 direntopendirnulltableprobe_program = {
@@ -4761,6 +4862,10 @@ static void run_case(const char *command, const char *expected_output,
             fail("fclosestdoutprobe registration");
         if (cb_kernel_register(kernel, &cb_format_probe_program) < 0)
             fail("formatprobe registration");
+        if (cb_kernel_register(kernel, &statoldtableprobe_program) < 0)
+            fail("statoldtableprobe registration");
+        if (cb_kernel_register(kernel, &fsstat01probe_program) < 0)
+            fail("fsstat01probe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -6148,6 +6253,12 @@ static void test_err(void)
        a single field per call. */
     run_case("formatprobe m A", "  1    22    tail333", 0, FIXTURE_ERR);
     expect_streams("  1    22    tail333", "");
+
+    /* FS-STAT-01: an old, pre-append cb_stat_v1 struct_size must fall
+       back to the original fixed sentinels rather than leak whatever
+       the runtime actually wrote for device/nlink/uid/gid/timestamps. */
+    run_case("statoldtableprobe", "", 0, FIXTURE_ERR);
+    run_case("fsstat01probe", "", 0, FIXTURE_ERR);
 
     /* A zero-progress writer must not trap err in an infinite retry loop. */
     capture_write_limit = 0;

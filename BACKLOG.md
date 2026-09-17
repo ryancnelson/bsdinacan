@@ -500,8 +500,22 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### FS-STAT-01 — one coalesced `cb_stat_v1` metadata append
 
-- **Status:** Ready; unassigned. **Supersedes the earlier `FTS-XDEV-01` idea** —
-  that would have been a second, separate append and is dissolved into this one.
+- **Status:** Done. `device`/`nlink`/`uid`/`gid`/`atime`/`mtime`/`ctime`
+  appended to `cb_stat_v1` in one `struct_size` increment. `device`: a
+  real per-mount id assigned at mount creation. `nlink`: computed fresh
+  from the live children list (1 for non-directories, since RAMFS has no
+  hardlink primitive; 2 + child-directory count for directories) — not a
+  stored counter. `uid`/`gid`: fixed `0`, matching `cb_libc_getuid()`'s
+  existing always-0 single-user commitment, not a fabricated per-file
+  value — permissions remain deferred for this milestone. Timestamps:
+  real host wall-clock milliseconds, updated on create/write/truncate/
+  rename/read. `CB_STAT_V1_METADATA_MIN_SIZE` is `offsetof`/`sizeof`-based,
+  not a hardcoded byte count, so it stays meaningful on Mac68k's different
+  struct alignment. Full write-up including the honest-data reasoning and
+  a real pre-existing test regression found and fixed along the way:
+  `notes/iterations/FS-STAT-01.md`. **Supersedes the earlier `FTS-XDEV-01`
+  idea** — that would have been a second, separate append and is
+  dissolved into this one.
 - **Base:** main
 - **Scope:** append the canonical POSIX stat metadata set to `cb_stat_v1` in a
   **single** `struct_size` increment: device, `atime`/`mtime`/`ctime`, `nlink`,
