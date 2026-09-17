@@ -1138,6 +1138,22 @@ int cb_libc_iscntrl(int character)
     return (character >= 0 && character <= 0x1f) || character == 0x7f;
 }
 
+long cb_libc_strtol(const char *nptr, char **endptr, int base)
+{
+    intmax_t val = cb_libc_strtoimax(nptr, endptr, base);
+    if (val > LONG_MAX) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_ERANGE);
+        return LONG_MAX;
+    }
+    if (val < LONG_MIN) {
+        if (bound_api != NULL && bound_api->set_errno != NULL)
+            bound_api->set_errno(CB_ERANGE);
+        return LONG_MIN;
+    }
+    return (long)val;
+}
+
 static struct cb_stdio_state_v1 *stdio_state(void)
 {
     struct cb_stdio_state_v1 *state = NULL;
