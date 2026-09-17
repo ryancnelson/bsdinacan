@@ -23,6 +23,7 @@ extern const struct cb_program_v1 cb_getopt_arg_probe_program;
 extern const struct cb_program_v1 cb_errxprobe_program;
 extern const struct cb_program_v1 cb_err_probe_program;
 extern const struct cb_program_v1 cb_warn_probe_program;
+extern const struct cb_program_v1 cb_warnx_probe_program;
 extern const struct cb_program_v1 cb_strcpy_probe_program;
 extern const struct cb_program_v1 cb_head_probe_program, cb_head_pipe_program;
 extern int cb_strcpy_probe_main(int argc, char **argv);
@@ -4650,6 +4651,8 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_ERR) {
         if (cb_kernel_register(kernel, &cb_warn_probe_program) < 0)
             fail("warnprobe registration");
+        if (cb_kernel_register(kernel, &cb_warnx_probe_program) < 0)
+            fail("warnxprobe registration");
     } else if (fixture == FIXTURE_BASENAME) {
         if (register_basename_probes(kernel) != 0)
             fail("basename probe registration");
@@ -5682,6 +5685,15 @@ static void test_err(void)
     run_case("warnprobe empty", "warnprobe: : no such file or directory\ncontinued\n", 0, FIXTURE_ERR);
     expect_streams("continued\n", "warnprobe: : no such file or directory\n");
     run_case("warnprobe failed", "preserved\n", 0, FIXTURE_ERR);
+    expect_streams("preserved\n", "");
+
+    run_case("warnxprobe ordinary", "warnxprobe: ordinary format\ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: ordinary format\n");
+    run_case("warnxprobe null", "warnxprobe: \ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: \n");
+    run_case("warnxprobe empty", "warnxprobe: \ncontinued\n", 0, FIXTURE_ERR);
+    expect_streams("continued\n", "warnxprobe: \n");
+    run_case("warnxprobe failed", "preserved\n", 0, FIXTURE_ERR);
     expect_streams("preserved\n", "");
 
     /* A zero-progress writer must not trap err in an infinite retry loop. */
