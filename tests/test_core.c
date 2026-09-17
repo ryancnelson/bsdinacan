@@ -1927,12 +1927,26 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     (void)argv;
     (void)envp;
 
-    /* 4a, skip on removal: create C, B, A in that order so the resulting
-       list (newest-first) is [A, B, C]. Read A, unlink the ALREADY-
-       RETURNED A (not the next one), and confirm the following read
-       skips B entirely and returns C -- unlinking the next not-yet-
-       returned entry would only reflect ordinary shrinkage, not prove a
-       skip. */
+    /* VFS-05 changed this test's own expectations, not just the code
+       under test: readdir()'s cursor advances by live node identity
+       (looked ahead before returning the current entry), not child_at()'s
+       ordinal position re-walked from the live list -- see
+       notes/iterations/VFS-05.md. VFS-03's own design note explicitly
+       accepted a skip-on-removal and a duplicate-on-insertion as
+       within-POSIX-spec for a generic racing mutator; this same test
+       previously asserted exactly those two outcomes as correct. VFS-05
+       does not reopen that reasoning for a genuine external race -- it
+       fixes the specific case a generic race cannot cover: the SAME task,
+       through the SAME open handle, removing the entry it just visited
+       before asking for the next one (rm -r's own pattern). Neither a
+       skip nor a duplicate is within spec for that pattern.
+
+       4a, no skip despite removing the just-returned entry: create C, B,
+       A in that order so the resulting list (newest-first) is [A, B, C].
+       Read A, unlink the ALREADY-RETURNED A (not the next one), and
+       confirm the following read now correctly returns B, not C --
+       unlinking the next not-yet-returned entry would only reflect
+       ordinary shrinkage, not prove anything about this specific case. */
     if (api->mkdir("/tmp/skipdir", 0755) < 0)
         return 380;
     if ((fd = api->open("/tmp/skipdir/C", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1953,14 +1967,19 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
     if (api->unlink("/tmp/skipdir/A") < 0)
         return 386;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "C") != 0)
+        strcmp(name, "B") != 0)
         return 387;
+    if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
+        strcmp(name, "C") != 0)
+        return 397;
     if (api->closedir(handle) < 0)
         return 388;
 
-    /* 4b, duplicate on insertion: create B, A in that order, so the list
-       is [A, B]. Read A, then create X (prepended, giving [X, A, B]),
-       and confirm the following read re-returns A rather than B or X. */
+    /* 4b, no duplicate despite an unrelated concurrent insertion: create
+       B, A in that order, so the list is [A, B]. Read A, then create X
+       (prepended, giving [X, A, B]), and confirm the following read
+       returns B -- neither a re-returned A nor the newly-inserted X,
+       which the look-ahead captured before X ever existed. */
     if (api->mkdir("/tmp/dupdir", 0755) < 0)
         return 389;
     if ((fd = api->open("/tmp/dupdir/B", CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
@@ -1979,10 +1998,87 @@ static int direntmutationprobe_main(const struct cb_api_v1 *api, int argc,
         api->close(fd) < 0)
         return 394;
     if (api->readdir(handle, name, sizeof(name), &inode, &type) != 0 ||
-        strcmp(name, "A") != 0)
+        strcmp(name, "B") != 0)
         return 395;
     if (api->closedir(handle) < 0)
         return 396;
+    return 0;
+}
+
+/* VFS-05's actual motivating case: rm -r's own access pattern is not
+   "unlink one entry, read one more" (direntmutationprobe above) but
+   "visit and remove every entry in the directory through one open
+   handle, in a single pass." Builds a 5-entry directory, drains it by
+   unlinking each entry immediately after readdir() returns it, and
+   confirms every single one was visited exactly once -- no skip, no
+   duplicate, regardless of RAMFS's own newest-first ordering. */
+static int direntdrainprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    static const char *const files[] = {"a", "b", "c", "d", "e"};
+    int handle;
+    char name[CB_PATH_MAX];
+    uint64_t inode;
+    uint32_t type;
+    int fd;
+    int seen[5];
+    size_t index;
+    size_t visits;
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/draindir", 0755) < 0)
+        return 500;
+    for (index = 0; index < 5; ++index) {
+        char path[CB_PATH_MAX];
+        strcpy(path, "/tmp/draindir/");
+        strcpy(path + strlen(path), files[index]);
+        if ((fd = api->open(path, CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+            api->close(fd) < 0)
+            return 501;
+        seen[index] = 0;
+    }
+
+    handle = api->opendir("/tmp/draindir");
+    if (handle < 0)
+        return 502;
+    visits = 0;
+    for (;;) {
+        result = api->readdir(handle, name, sizeof(name), &inode, &type);
+        if (result != 0)
+            return 503;
+        if (name[0] == '\0')
+            break;
+        for (index = 0; index < 5; ++index) {
+            if (strcmp(name, files[index]) == 0) {
+                if (seen[index] != 0)
+                    return 504; /* duplicate */
+                seen[index] = 1;
+                break;
+            }
+        }
+        if (index == 5)
+            return 505; /* unrecognized entry */
+        ++visits;
+        {
+            char path[CB_PATH_MAX];
+            strcpy(path, "/tmp/draindir/");
+            strcpy(path + strlen(path), name);
+            if (api->unlink(path) < 0)
+                return 506;
+        }
+        if (visits > 5)
+            return 507; /* would indicate an infinite loop */
+    }
+    if (visits != 5)
+        return 508; /* skip: not everything was visited */
+    for (index = 0; index < 5; ++index)
+        if (!seen[index])
+            return 509;
+    if (api->closedir(handle) < 0)
+        return 510;
     return 0;
 }
 
@@ -3456,6 +3552,11 @@ static const struct cb_program_v1 direntmutationprobe_program = {
     64 * 1024, direntmutationprobe_main
 };
 
+static const struct cb_program_v1 direntdrainprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntdrainprobe", 0,
+    64 * 1024, direntdrainprobe_main
+};
+
 static const struct cb_program_v1 direntisolationchild_program = {
     CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "direntisolationchild", 0,
     64 * 1024, direntisolationchild_main
@@ -4631,6 +4732,7 @@ static void run_case(const char *command, const char *expected_output,
         if (cb_kernel_register(kernel, &cb_direntprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntbasicprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntmutationprobe_program) < 0 ||
+            cb_kernel_register(kernel, &direntdrainprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationchild_program) < 0 ||
             cb_kernel_register(kernel, &direntisolationprobe_program) < 0 ||
             cb_kernel_register(kernel, &direntoldtableprobe_program) < 0 ||
@@ -6204,6 +6306,7 @@ int main(int argc, char **argv)
     run_case("libcdirentprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntbasicprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntmutationprobe", "", 0, FIXTURE_DIRENT);
+    run_case("direntdrainprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntisolationprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntoldtableprobe", "", 0, FIXTURE_DIRENT);
     run_case("direntopendirnulltableprobe", "", 0, FIXTURE_DIRENT);

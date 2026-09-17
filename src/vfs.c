@@ -404,6 +404,19 @@ int cb_vfs_child_at(struct cb_vfs_node *directory, size_t index,
     return directory->ops->child_at(directory, index, child_out);
 }
 
+int cb_vfs_next_sibling(struct cb_vfs_node *node,
+                        struct cb_vfs_node **sibling_out)
+{
+    if (node == NULL || !node_ops_valid(node->ops))
+        return -CB_EIO;
+    if (node->ops->struct_size <
+            offsetof(struct cb_vfs_node_ops, next_sibling) +
+                sizeof(node->ops->next_sibling) ||
+        node->ops->next_sibling == NULL)
+        return -CB_ENOSYS;
+    return node->ops->next_sibling(node, sibling_out);
+}
+
 int cb_vfs_mkdir_path(struct cb_task *task, const char *path, uint32_t mode)
 {
     char normalized[CB_PATH_MAX];
