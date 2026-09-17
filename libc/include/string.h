@@ -16,6 +16,18 @@ char *strcpy(char *dest, const char *src) __asm__("cb_libc_strcpy");
 #define strcpy cb_libc_strcpy
 #endif
 #define strchr cb_libc_strchr
+#define strrchr cb_libc_strrchr
+
+#if defined(CANNEDBSD_BUILDING_LIBC_MEMSET)
+#if defined(__GNUC__) || defined(__clang__)
+void *memset(void *destination, int character, size_t count)
+    __asm__("cb_libc_memset");
+#else
+#error "NetBSD memset import needs a compiler-specific link-name adapter"
+#endif
+#else
+#define memset cb_libc_memset
+#endif
 
 #if defined(CANNEDBSD_BUILDING_LIBC_MEMCMP)
 #if defined(__GNUC__) || defined(__clang__)

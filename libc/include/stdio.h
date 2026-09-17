@@ -24,6 +24,7 @@ size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, FILE *strea
 #define fclose cb_libc_fclose
 #define fread cb_libc_fread
 #define getc cb_libc_getc
+#define getchar() getc(stdin)
 #define feof cb_libc_feof
 #define stdin cb_libc_stdin_stream
 #define puts cb_libc_puts

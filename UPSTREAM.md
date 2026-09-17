@@ -502,3 +502,70 @@ The imported file is byte-for-byte unchanged; vendored under `RM-01`, per
 dependency on `STAT-02` (unclaimed as of this commit) that blocks completing
 the build, and for the small set of independent gaps (`strrchr`, `memset`,
 `getchar`, `__unused`, public `unlink`/`rmdir`) this ID owns directly.
+
+## NetBSD `strrchr`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/strrchr.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/strrchr.c`
+- SHA-256: `2a5533ac29b3de543e1e8bdfd34b67a0e0420004e01154edd4b90aa0d3f96d55`
+- Embedded RCS identifier: `$NetBSD: strrchr.c,v 1.7 2020/04/07 08:07:58 skrll Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1988, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Same treatment as the
+already-imported `strchr.c` sibling: `string.h`'s plain `#define strrchr
+cb_libc_strrchr` renames the pinned definition itself (this file has no
+`#undef strrchr`, unlike `memset.c` below), so no link-name adapter is
+needed. `RM-01`'s own gap: `rm.c`'s `checkdot()` calls `strrchr(s, '\0')`
+unconditionally to find its own argument's terminator before trimming
+trailing slashes, and `strrchr(s, '/')` to extract the basename.
+
+## NetBSD `memset`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `common/lib/libc/string/memset.c`
+- Local path: `upstream/netbsd/common/lib/libc/string/memset.c`
+- SHA-256: `0ccb3b88060b85f8a5a01785e2b142f96cbadada6b15970d7adf62e887c580ee`
+- Embedded RCS identifier: `$NetBSD: memset.c,v 1.12 2019/03/30 10:18:03 jmcneill Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1990, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged, but needed more than
+`strrchr` did to build and run correctly, both found by a failing test
+rather than assumed away:
+
+1. **Link-name adapter required.** Unlike `strchr`/`strrchr`, `memset.c`
+   does an unconditional `#undef memset` right after including
+   `<string.h>`, which defeats a plain `#define`. Uses the same
+   `__asm__("cb_libc_memset")` treatment as `strcpy`/`strcmp`/`memcpy`/
+   `memmove`/`memcmp`, gated on `CANNEDBSD_BUILDING_LIBC_MEMSET`.
+2. **`u_char`/`u_int`/`u_long` added to `compat/netbsd/include/sys/types.h`**
+   — legacy BSD aliases this file uses internally that the existing
+   import-only shim didn't have.
+3. **`UINT_MAX` added to `compat/netbsd/include/limits.h`** — the word-fill
+   fast path replicates a byte pattern across a full word by testing `#if
+   UINT_MAX > 0xffff` / `> 0xffffffff`. An undefined `UINT_MAX` evaluates
+   to 0 in `#if`, silently skipping the replication steps and leaving the
+   upper bytes of every word-sized store zeroed instead of pattern-filled.
+   Caught by a failing `memsetprobe` test asserting on filled-buffer
+   contents, not by inspection.
+4. **Compiled with `-fno-builtin-memset -fno-tree-loop-distribute-patterns`.**
+   Without these, GCC's loop-idiom recognition rewrites this file's own
+   fill loops into calls back to `memset` — which resolves, via the same
+   link-name binding this file itself installs, to this exact function,
+   producing unbounded self-recursion and a stack-overflow segfault at
+   runtime (not a compile-time symptom). Confirmed via `gdb`'s backtrace
+   showing `cb_libc_memset` calling itself over a thousand frames deep.
+   `memcpy`/`memmove` avoid this by building at `-Os`, which happens not to
+   enable this particular pass on this compiler; `-Os` alone was tried
+   here first and did not prevent it, so the two `-fno-*` flags are used
+   directly instead of relying on optimization-level side effects.
+
+`RM-01`'s own gap: `rm.c`'s `-P` (secure overwrite) macros call `memset`;
+out of scope for the accepted matrix (see `notes/iterations/RM-01.md`), but
+the declaration and a correct implementation still need to exist for the
+file to parse and for other, in-scope code paths to link against the same
+archive member.

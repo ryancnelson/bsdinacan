@@ -14,4 +14,17 @@
 #define PATH_MAX CB_PATH_MAX
 #endif
 
+/*
+ * Import-only shim, added for the pinned NetBSD memset.c: its word-fill
+ * fast path replicates a byte pattern across a full `unsigned int` by
+ * testing `#if UINT_MAX > 0xffff` (and > 0xffffffff) to decide how many
+ * doubling steps to run. An undefined UINT_MAX evaluates to 0 in #if,
+ * silently skipping those steps -- not a compile error, a silent wrong
+ * answer in the upper bytes of every word-sized store. Confirmed by a
+ * failing memset probe test before this was added, not assumed.
+ */
+#ifndef UINT_MAX
+#define UINT_MAX 0xffffffffU
+#endif
+
 #endif

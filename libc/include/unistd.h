@@ -17,6 +17,8 @@ typedef cb_off_t off_t;
 #define close cb_libc_close
 #define truncate cb_libc_truncate
 #define ftruncate cb_libc_ftruncate
+#define unlink cb_libc_unlink
+#define rmdir cb_libc_rmdir
 
 #define environ (*cb_libc_environ_location())
 

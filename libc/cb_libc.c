@@ -159,6 +159,36 @@ int cb_libc_stat(const char *path, struct cb_stat_v1 *stat_buffer)
     return bound_api->stat(path, stat_buffer);
 }
 
+int cb_libc_unlink(const char *path)
+{
+    if (bound_api->unlink == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->unlink(path);
+}
+
+/* rmdir was appended by VFS-04, past api_is_usable's checked struct_size
+   boundary -- unlike unlink (present since the original base table), an
+   old-table bind can genuinely be too small to reach this field at all,
+   not just have it left NULL. Same shape as opendir_api_available above. */
+static int rmdir_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, rmdir) +
+                   sizeof(bound_api->rmdir) &&
+           bound_api->rmdir != NULL;
+}
+
+int cb_libc_rmdir(const char *path)
+{
+    if (!rmdir_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->rmdir(path);
+}
+
 void *cb_libc_malloc(size_t size)
 {
     return bound_api->allocate(size);

@@ -4322,11 +4322,13 @@ enum test_fixture {
     FIXTURE_CONV = 8,
     FIXTURE_VFS04 = 9,
     FIXTURE_LS = 10,
-    FIXTURE_FTS = 11
+    FIXTURE_FTS = 11,
+    FIXTURE_RM01 = 12
 };
 
 static int register_vfs04_probes(struct cb_kernel *kernel);
 static int register_fts_probes(struct cb_kernel *kernel);
+static int register_rm01_probes(struct cb_kernel *kernel);
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
  * Every new shared probe must be explicitly registered here and in Mac main. */
@@ -4671,6 +4673,9 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_FTS) {
         if (register_fts_probes(kernel) != 0)
             fail("FTS-CORE-01 probe registration");
+    } else if (fixture == FIXTURE_RM01) {
+        if (register_rm01_probes(kernel) != 0)
+            fail("RM-01 probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -5586,6 +5591,80 @@ static void test_fts(void)
     run_case("ftsallocfailprobe", "", 0, FIXTURE_FTS);
 }
 
+extern int cb_strrchr_probe_main(int argc, char *argv[]);
+extern int cb_memset_probe_main(int argc, char *argv[]);
+extern int cb_unlink_probe_main(int argc, char *argv[]);
+extern int cb_rmdir_walk_main(int argc, char *argv[]);
+extern int cb_getchar_walk_main(int argc, char *argv[]);
+
+CB_LIBC_PROGRAM(strrchrprobe_program, "strrchrprobe", cb_strrchr_probe_main);
+CB_LIBC_PROGRAM(memsetprobe_program, "memsetprobe", cb_memset_probe_main);
+CB_LIBC_PROGRAM(libcunlinkprobe_program, "libcunlinkprobe",
+                cb_unlink_probe_main);
+
+static int rm01rmdirprobe_main(const struct cb_api_v1 *api, int argc,
+                               char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/rm01_rmdir_target", 0777) < 0)
+        return 970;
+    if (fts_make_file(api, "/tmp/rm01_rmdir_file") < 0)
+        return 971;
+    result = cb_libc_start(api, 0, NULL, cb_rmdir_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 980 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 rm01rmdirprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01rmdirprobe", 0,
+    64 * 1024, rm01rmdirprobe_main
+};
+
+static int rm01getcharprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    reset_console("hi");
+    result = cb_libc_start(api, 0, NULL, cb_getchar_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 990 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 rm01getcharprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "rm01getcharprobe", 0,
+    64 * 1024, rm01getcharprobe_main
+};
+
+static int register_rm01_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &strrchrprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &memsetprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &libcunlinkprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01rmdirprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &rm01getcharprobe_program) == 0
+               ? 0
+               : -1;
+}
+
+static void test_rm01(void)
+{
+    run_case("strrchrprobe", "", 0, FIXTURE_RM01);
+    run_case("memsetprobe", "", 0, FIXTURE_RM01);
+    run_case("libcunlinkprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01rmdirprobe", "", 0, FIXTURE_RM01);
+    run_case("rm01getcharprobe", "", 0, FIXTURE_RM01);
+}
+
 static void test_err(void)
 {
     run_case("errinterleave", "", 0, 1);
@@ -5948,6 +6027,7 @@ int main(int argc, char **argv)
     test_vfs_mount_routing();
     test_vfs_rmdir_rename();
     test_fts();
+    test_rm01();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");

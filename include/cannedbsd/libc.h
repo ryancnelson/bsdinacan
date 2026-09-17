@@ -60,6 +60,13 @@ int cb_libc_ftruncate(int descriptor, cb_off_t length);
    translation unit with no access to cb_libc.c's private bound_api) can
    populate an FTSENT's fts_statp without any new ABI surface. */
 int cb_libc_stat(const char *path, struct cb_stat_v1 *stat_buffer);
+/* Thin pass-throughs to bound_api->unlink/rmdir. unlink has been on the
+   base table since before this project's optional-extension convention
+   existed, so only a NULL check is needed (matching cb_libc_stat above).
+   rmdir was appended by VFS-04, so it additionally needs the struct_size
+   guard every appended field gets (matching cb_libc_opendir's family). */
+int cb_libc_unlink(const char *path);
+int cb_libc_rmdir(const char *path);
 int cb_libc_isatty(int descriptor);
 int cb_libc_tcgetattr(int descriptor, struct cb_termios_v1 *attributes);
 int cb_libc_tcsetattr(int descriptor, int action,
@@ -92,6 +99,8 @@ void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);
 int cb_libc_memcmp(const void *left, const void *right, size_t count);
 char *cb_libc_strchr(const char *text, int character);
+char *cb_libc_strrchr(const char *text, int character);
+void *cb_libc_memset(void *destination, int character, size_t count);
 char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
 char *cb_libc_basename_upstream(char *path);
