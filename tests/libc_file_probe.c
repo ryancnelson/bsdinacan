@@ -65,6 +65,20 @@ int main(int argc, char **argv)
         if (sb.st_ctimespec.tv_sec != 0 || sb.st_ctimespec.tv_nsec != 0) return 122;
         if (sb.st_atime != 0 || sb.st_mtime != 0 || sb.st_ctime != 0) return 123;
 
+        /* fcntl and flock declarations */
+        {
+            struct flock fl;
+            fl.l_type = F_WRLCK;
+            fl.l_whence = 0;
+            fl.l_start = 0;
+            fl.l_len = 0;
+            fl.l_pid = 0;
+            errno = 0;
+            if (fcntl(1, F_SETLKW, &fl) != -1 || errno != ENOSYS) return 124;
+            errno = 0;
+            if (fcntl(1, F_GETFL, 0) != -1 || errno != ENOSYS) return 125;
+        }
+
         return 0;
     }
     if (strcmp(mode, "mman-probe") == 0) {

@@ -186,8 +186,8 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### FCNTL-01 — `fcntl.h` declarations with no locking implementation
 
-- **Status:** Ready; unassigned. **Scope set by director decision** — an earlier
-  draft proposed an advisory-locking stub and that is rejected.
+- **Status:** Done; merged to main.
+- **Base:** main
 - **Depends on:** FILEUTIL-01 (Done)
 - **Scope:** `fcntl.h`, `O_NONBLOCK`, and the `struct flock` declaration
   `cat.c:78` needs to compile. **No locking implementation and no stub that
