@@ -301,6 +301,13 @@ int cb_libc_fcpxattr(int from_descriptor, int to_descriptor)
     return -1;
 }
 
+/*
+ * In fastcopy(), open(to, O_CREAT | O_TRUNC | O_WRONLY, sbp->st_mode) has
+ * already created the destination file with the exact synthesized st_mode
+ * bits (incorporating raw_stat->mode & 07777). Because the target descriptor
+ * was already instantiated with the requested mode bits at creation time,
+ * this descriptor-mode confirmation returns 0 truthfully.
+ */
 int cb_libc_fchmod(int descriptor, uint32_t mode)
 {
     (void)descriptor;
@@ -313,7 +320,8 @@ int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid)
     (void)descriptor;
     (void)uid;
     (void)gid;
-    return 0;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
 }
 
 int cb_libc_fchflags(int descriptor, uint32_t flags)
@@ -328,14 +336,16 @@ int cb_libc_futimes(int descriptor, const struct timeval *times)
 {
     (void)descriptor;
     (void)times;
-    return 0;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
 }
 
 int cb_libc_utimes(const char *path, const struct timeval *times)
 {
     (void)path;
     (void)times;
-    return 0;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
 }
 
 void (*cb_libc_signal(int sig, void (*func)(int)))(int)
@@ -399,14 +409,14 @@ const char *cb_libc_user_from_uid(uint32_t uid, int nouser)
 {
     (void)uid;
     (void)nouser;
-    return "root";
+    return NULL;
 }
 
 const char *cb_libc_group_from_gid(uint32_t gid, int nogroup)
 {
     (void)gid;
     (void)nogroup;
-    return "wheel";
+    return NULL;
 }
 
 size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz)
