@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <fts.h>
 #include <string.h>
 
@@ -39,6 +40,7 @@ int cb_fts_core_walk_main(int argc, char *argv[])
     if (fts == NULL)
         return 3;
 
+    errno = 17; /* EEXIST: verify fts_read clears pre-existing errno on clean EOF */
     while ((ent = fts_read(fts)) != NULL) {
         if (ent->fts_accpath != ent->fts_path)
             return 4;
@@ -110,6 +112,8 @@ int cb_fts_core_walk_main(int argc, char *argv[])
         }
         order++;
     }
+    if (errno != 0)
+        return 21;
     if (fts_close(fts) != 0)
         return 18;
 
