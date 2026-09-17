@@ -20,10 +20,14 @@ int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(FILE *stream, const char *format, ...);
 size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, FILE *stream);
 
+int cb_libc_getchar(void);
+int cb_libc_rename(const char *oldpath, const char *newpath);
+
 #define fopen cb_libc_fopen
 #define fclose cb_libc_fclose
 #define fread cb_libc_fread
 #define getc cb_libc_getc
+#define getchar cb_libc_getchar
 #define feof cb_libc_feof
 #define stdin cb_libc_stdin_stream
 #define puts cb_libc_puts
@@ -33,6 +37,7 @@ size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, FILE *strea
 #define printf cb_libc_printf
 #define fprintf cb_libc_fprintf
 #define fwrite cb_libc_fwrite
+#define rename cb_libc_rename
 #define stdout cb_libc_stdout_stream
 #define stderr cb_libc_stderr_stream
 

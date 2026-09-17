@@ -172,11 +172,20 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
         break;
     }
 
+    stat_buf->st_dev = 1;
     stat_buf->st_ino = raw_stat->inode;
     stat_buf->st_mode = type_bits | (raw_stat->mode & 07777);
+    stat_buf->st_nlink = 1;
+    stat_buf->st_uid = 0;
+    stat_buf->st_gid = 0;
+    stat_buf->st_rdev = 0;
     stat_buf->st_size = (int64_t)raw_stat->size;
+    stat_buf->st_atime = 0;
+    stat_buf->st_mtime = 0;
+    stat_buf->st_ctime = 0;
     stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
     stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
+    stat_buf->st_flags = 0;
 }
 
 int cb_libc_stat(const char *path, struct stat *stat_buf)
@@ -226,6 +235,208 @@ int cb_libc_fstat(int descriptor, struct stat *stat_buf)
 int cb_libc_lstat(const char *path, struct stat *stat_buf)
 {
     return cb_libc_stat(path, stat_buf);
+}
+
+int cb_libc_rename(const char *old_path, const char *new_path)
+{
+    if (old_path == NULL || new_path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    if (bound_api->struct_size < sizeof(struct cb_api_v1) ||
+        bound_api->rename == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->rename(old_path, new_path);
+}
+
+int cb_libc_unlink(const char *path)
+{
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    return bound_api->unlink(path);
+}
+
+int cb_libc_rmdir(const char *path)
+{
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, rename) ||
+        bound_api->rmdir == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return -1;
+    }
+    return bound_api->rmdir(path);
+}
+
+int cb_libc_access(const char *path, int mode)
+{
+    struct cb_stat_v1 raw_stat;
+    int result;
+
+    (void)mode;
+    if (path == NULL) {
+        bound_api->set_errno(CB_EFAULT);
+        return -1;
+    }
+    raw_stat.abi_version = CB_ABI_VERSION_V1;
+    raw_stat.struct_size = sizeof(struct cb_stat_v1);
+    result = bound_api->stat(path, &raw_stat);
+    if (result < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int cb_libc_fcpxattr(int from_descriptor, int to_descriptor)
+{
+    (void)from_descriptor;
+    (void)to_descriptor;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_fchmod(int descriptor, uint32_t mode)
+{
+    (void)descriptor;
+    (void)mode;
+    return 0;
+}
+
+int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid)
+{
+    (void)descriptor;
+    (void)uid;
+    (void)gid;
+    return 0;
+}
+
+int cb_libc_fchflags(int descriptor, uint32_t flags)
+{
+    (void)descriptor;
+    (void)flags;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_futimes(int descriptor, const struct timeval *times)
+{
+    (void)descriptor;
+    (void)times;
+    return 0;
+}
+
+int cb_libc_utimes(const char *path, const struct timeval *times)
+{
+    (void)path;
+    (void)times;
+    return 0;
+}
+
+void (*cb_libc_signal(int sig, void (*func)(int)))(int)
+{
+    (void)sig;
+    (void)func;
+    return (void (*)(int))0;
+}
+
+int32_t cb_libc_vfork(void)
+{
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_execl(const char *path, const char *arg0, ...)
+{
+    (void)path;
+    (void)arg0;
+    bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int32_t cb_libc_waitpid(int32_t pid, int *status, int options)
+{
+    (void)pid;
+    (void)status;
+    (void)options;
+    bound_api->set_errno(CB_ECHILD);
+    return -1;
+}
+
+void cb_libc_strmode(uint32_t mode, char *p)
+{
+    if (p == NULL)
+        return;
+    switch (mode & S_IFMT) {
+    case S_IFDIR:  p[0] = 'd'; break;
+    case S_IFCHR:  p[0] = 'c'; break;
+    case S_IFBLK:  p[0] = 'b'; break;
+    case S_IFREG:  p[0] = '-'; break;
+    case S_IFLNK:  p[0] = 'l'; break;
+    case S_IFSOCK: p[0] = 's'; break;
+    case S_IFIFO:  p[0] = 'p'; break;
+    default:       p[0] = '?'; break;
+    }
+    p[1] = (mode & S_IRUSR) ? 'r' : '-';
+    p[2] = (mode & S_IWUSR) ? 'w' : '-';
+    p[3] = (mode & S_ISUID) ? ((mode & S_IXUSR) ? 's' : 'S') : ((mode & S_IXUSR) ? 'x' : '-');
+    p[4] = (mode & S_IRGRP) ? 'r' : '-';
+    p[5] = (mode & S_IWGRP) ? 'w' : '-';
+    p[6] = (mode & S_ISGID) ? ((mode & S_IXGRP) ? 's' : 'S') : ((mode & S_IXGRP) ? 'x' : '-');
+    p[7] = (mode & S_IROTH) ? 'r' : '-';
+    p[8] = (mode & S_IWOTH) ? 'w' : '-';
+    p[9] = (mode & S_ISVTX) ? ((mode & S_IXOTH) ? 't' : 'T') : ((mode & S_IXOTH) ? 'x' : '-');
+    p[10] = ' ';
+    p[11] = '\0';
+}
+
+const char *cb_libc_user_from_uid(uint32_t uid, int nouser)
+{
+    (void)uid;
+    (void)nouser;
+    return "root";
+}
+
+const char *cb_libc_group_from_gid(uint32_t gid, int nogroup)
+{
+    (void)gid;
+    (void)nogroup;
+    return "wheel";
+}
+
+size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz)
+{
+    size_t srclen;
+    if (src == NULL)
+        return 0;
+    srclen = cb_libc_strlen(src);
+    if (siz != 0 && dst != NULL) {
+        size_t copylen = (srclen >= siz) ? (siz - 1) : srclen;
+        cb_libc_memcpy(dst, src, copylen);
+        dst[copylen] = '\0';
+    }
+    return srclen;
+}
+
+char *cb_libc_strrchr(const char *text, int character)
+{
+    const char *last = NULL;
+    char ch;
+    if (text == NULL)
+        return NULL;
+    ch = (char)character;
+    for (const char *p = text; *p != '\0'; p++) {
+        if (*p == ch)
+            last = p;
+    }
+    if (ch == '\0')
+        return (char *)(text + cb_libc_strlen(text));
+    return (char *)last;
 }
 
 void *cb_libc_malloc(size_t size)
@@ -551,6 +762,11 @@ int cb_libc_getc(struct cb_libc_file *stream)
     return read_input(&ref, &byte, 1) <= 0 ? EOF : (int)byte;
 }
 
+int cb_libc_getchar(void)
+{
+    return cb_libc_getc(cb_libc_stdin_stream);
+}
+
 size_t cb_libc_fread(void *buffer, size_t size, size_t count,
                      struct cb_libc_file *stream)
 {
@@ -781,6 +997,22 @@ void cb_libc_warn(const char *fmt, ...)
     write_all(2, error_text, cb_libc_strlen(error_text));
     write_all(2, "\n", 1);
     bound_api->set_errno(saved_error);
+}
+
+void cb_libc_warnx(const char *fmt, ...)
+{
+    va_list arguments;
+    const char *name = bound_api->getprogname();
+    if (name == NULL)
+        name = "";
+    write_all(2, name, cb_libc_strlen(name));
+    write_all(2, ": ", 2);
+    if (fmt != NULL) {
+        va_start(arguments, fmt);
+        format_output(2, fmt, arguments);
+        va_end(arguments);
+    }
+    write_all(2, "\n", 1);
 }
 
 void cb_libc_err(int eval, const char *fmt, ...)

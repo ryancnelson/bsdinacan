@@ -15,5 +15,8 @@ typedef cb_ssize_t ssize_t;
 typedef int32_t blksize_t;
 typedef int64_t blkcnt_t;
 typedef uint32_t dev_t;
+typedef int32_t pid_t;
+typedef int sig_atomic_t;
+typedef uint32_t time_t;
 
 #endif
