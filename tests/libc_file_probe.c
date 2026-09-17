@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -13,6 +14,16 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "mman-probe") == 0) {
+        void *p;
+        errno = 0;
+        p = mmap(NULL, 1024, PROT_READ, MAP_SHARED | MAP_FILE, -1, 0);
+        if (p != MAP_FAILED || errno != ENOSYS) return 80;
+        errno = 0;
+        if (munmap((void *)0x1000, 1024) != -1 || errno != ENOSYS) return 81;
+        if (madvise((void *)0x1000, 1024, MADV_SEQUENTIAL) != 0) return 82;
+        return 0;
+    }
     if (strcmp(mode, "default-mode") == 0) {
         int fd = open("/tmp/default-mode", O_CREAT | O_WRONLY, DEFFILEMODE);
         if (fd != 3) { if (fd >= 0) close(fd); return 34; }

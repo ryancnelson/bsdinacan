@@ -41,6 +41,7 @@ static int entry(const struct cb_api_v1 *api, int argc,
         if (state->input_streams != NULL) return 43;
         return cb_file_call(api, "foreign");
     }
+    if (cb_file_call(api, "mman-probe") != 0) return 50;
     /* No descriptors beyond stdin/stdout/stderr exist yet. The ordinary
      * source creates with DEFFILEMODE and closes fd3; verify before later
      * task exit or kernel cleanup could hide a leaked descriptor/file. */
