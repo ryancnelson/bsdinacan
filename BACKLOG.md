@@ -130,22 +130,24 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### LS-02 — unchanged NetBSD `ls` with the long form
 
-- Status: Blocked
-- Base: main
-- Depends: FS-STAT-01, FTS-CHILDREN-01
-- Hypothesis: `LS-01` deliberately shipped an owned single-column command
-  because no public `struct stat` existed. `FS-STAT-01` and
-  `FTS-CHILDREN-01` were queued to remove exactly that constraint, so the
-  pinned `ls.c` becomes importable once both land, and the milestone's
-  "unchanged NetBSD utilities" wording becomes literally true.
-- Red test: `ls -l /f1` must print a long-form record rather than
-  `usage: ls [file]`.
-- Acceptance: byte-for-byte import with a SHA-256 `UPSTREAM.md` entry, the
-  owned `commands/ls.c` retired in the same commit, and a measured statement of
-  which options are supported and which fail honestly. Termcap and multi-column
-  width stay out of scope; `-l` must not depend on them. Permissions remain
-  deferred per this milestone, so decide and write down what `-l` prints in the
-  mode column rather than fabricating one.
+- Status: Done. See `notes/iterations/LS-02.md` for the full veneer
+  (`fts_children`/`fts_link`/`fts_parent`/`FTS_SEEDOT` folded in from
+  `FTS-CHILDREN-01`, the printf formatter's further extension, the real
+  wide-character subsystem, and the new `wall_clock_millis` ABI append for
+  `time(3)`/`ctime(3)`).
+- Base: `origin/main` at `e6dcb3d` (post-`FS-STAT-01`).
+- Depends: FS-STAT-01 (Done), FTS-CHILDREN-01 (Done, folded into this ID).
+- Acceptance, as measured: byte-for-byte import of
+  `ls.c`/`ls.h`/`print.c`/`cmp.c`/`extern.h`/`util.c` with SHA-256
+  `UPSTREAM.md` entries, the owned `commands/ls.c` retired in the same
+  commit, mac68k CMake target added in the same commit. Termcap and real
+  terminal-width detection stayed out of scope (`ioctl(TIOCGWINSZ)` fails
+  honestly with `ENOTTY`, fixed 80-column fallback). The mode column reads
+  RAMFS's real per-node mode bits via `strmode(3)` (already-existing,
+  genuine per-file data, not fabricated); `uid`/`gid` are 0, the same
+  already-committed single-user constant `FS-STAT-01` documented. Supported:
+  default sorted listing, `-1 -a -A -f -r -t -c -u -S -i -n -l -R -F -M`.
+  Honestly failing: `-h` (`ENOSYS`, `humanize_number` unimplemented).
 
 ### WC-02 — unchanged NetBSD `wc`
 
@@ -492,9 +494,21 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### FTS-CHILDREN-01 — `fts_children` for `ls` only
 
-- **Status:** Blocked on FTS-CORE-01
+- **Status:** Done, folded into `LS-02`'s own landing rather than merged
+  separately (see `notes/iterations/LS-02.md`). Snapshot + cursor design
+  in `libc/cb_fts.c`: `fts_children()` drains a directory (or previews
+  `path_argv` at depth 0) into a linked list via a non-descending
+  `classify_peek()`, never disturbing `fts_read()`'s own position;
+  `fts_read()` consumes from that snapshot when present, calling the real
+  `classify()` at actual consumption time to open/push for real descent.
+  `rm`/`cp` never call it, so this is purely additive for them. Also fixed
+  a second, real gap only `ls.c` exposed: `fts_open()`'s `compar` callback
+  was accepted and stored but never applied — `cb_libc_fts_children()` now
+  sorts its returned list with it (a linked-list merge sort, not
+  `qsort(3)`, since this libc veneer has none and RAMFS directories are
+  small) whenever it is non-`NULL`.
 - **Base:** main
-- **Depends on:** FTS-CORE-01
+- **Depends on:** FTS-CORE-01 (Done)
 - **Scope:** `fts_children` alone, measured as called only from `ls.c:429` and
   `ls.c:472`. Deliberately separate so RM-01 and CP-01 never wait on it.
 

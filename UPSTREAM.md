@@ -726,3 +726,91 @@ directory traversal, VFS `mkdir`, and chunked 64KB read/write fallback loops
 when `mmap` returns `MAP_FAILED` (`ENOSYS`). It makes 0 calls to `vfork`,
 `fork`, `exec*`, `spawn`, `system`, or `popen`. Compiled with `-DSMALL
 -Dmain=cb_cp_main`.
+
+## NetBSD `ls`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/ls.c`
+- Local path: `upstream/netbsd/bin/ls/ls.c`
+- SHA-256: `385a3c3f495913a04127fe52e082030c57e43e5d1bacf9299b2d7b5b2597787a`
+- Embedded RCS identifier: `$NetBSD: ls.c,v 1.79 2024/12/11 12:56:31 simonb Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993, 1994), retained verbatim in the imported file.
+
+## NetBSD `ls` `ls.h`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/ls.h`
+- Local path: `upstream/netbsd/bin/ls/ls.h`
+- SHA-256: `50610b1281ff61a6171de9c73dab7ee9861e0ab0fbd66118242786abb325dc34`
+- Embedded RCS identifier: `$NetBSD: ls.h,v 1.20 2024/12/11 12:56:31 simonb Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993), retained verbatim in the imported file.
+
+## NetBSD `ls` `print.c`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/print.c`
+- Local path: `upstream/netbsd/bin/ls/print.c`
+- SHA-256: `012336e4f206483f4aaf31a7380889aa677f66b53fc388442766dccacd1ee8a8`
+- Embedded RCS identifier: `$NetBSD: print.c,v 1.59 2024/12/11 12:56:31 simonb Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993, 1994), retained verbatim in the imported file.
+
+## NetBSD `ls` `cmp.c`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/cmp.c`
+- Local path: `upstream/netbsd/bin/ls/cmp.c`
+- SHA-256: `6a43161605d90c8b6a69103356a83cb01dbd8b7032b342335dd04cdc2003e73a`
+- Embedded RCS identifier: `$NetBSD: cmp.c,v 1.17 2003/08/07 09:05:14 agc Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993), retained verbatim in the imported file.
+
+## NetBSD `ls` `extern.h`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/extern.h`
+- Local path: `upstream/netbsd/bin/ls/extern.h`
+- SHA-256: `fef4bb08e410d5b9aee230df8160391383a94d1ce2d0c6d537ad3168d1af7851`
+- Embedded RCS identifier: `$NetBSD: extern.h,v 1.17 2011/08/29 14:44:21 joerg Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1991, 1993), retained verbatim in the imported file.
+
+## NetBSD `ls` `util.c`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/ls/util.c`
+- Local path: `upstream/netbsd/bin/ls/util.c`
+- SHA-256: `87205a7e649375576afc954f0d58597ebb4db8383c2dbffd1b0379d320f2c88a`
+- Embedded RCS identifier: `$NetBSD: util.c,v 1.35 2026/08/15 13:33:36 riastradh Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1989, 1993, 1994), retained verbatim in the imported file.
+
+All six imported files are byte-for-byte unchanged. Registered via the
+pre-existing `commands/ls_module.c`, replacing the bootstrap-era
+cannedBSD-owned `commands/ls.c` (`LS-01`: single-column, no options, `-l`
+a usage error) that occupied the same name; see `notes/iterations/LS-02.md`
+for the full veneer this needed (real `device`/`nlink`/`uid`/`gid`/
+timestamps from `FS-STAT-01`, `fts_children`/`fts_link`/`fts_parent`/
+`FTS_SEEDOT` from `FTS-CHILDREN-01`, dynamic-width/left-justify/unsigned
+`%*d`/`%-*s`/`%u` support added to the internal formatter, a real
+single-byte-per-character wide-character subsystem and `strvis` for the
+default and `-b`/`-B` escaping paths, and a new `wall_clock_millis`
+accessor appended to `cb_api_v1` so `time(3)` has a real current time to
+read). `-l`'s mode column reads the real per-node mode bits RAMFS has
+tracked since node creation (whatever the creating `mkdir`/`open` call
+passed) via `strmode(3)`, not a fabricated value; permission enforcement
+itself remains deferred for this milestone, same as every other command.
+`uid`/`gid` are 0 for the same already-committed reason as `FS-STAT-01`.
+`-h`/`-i` and any option depending on `TIOCGWINSZ` (terminal width,
+multi-column layout sizing beyond the fixed 80-column fallback) fail
+honestly (`ENOSYS`/`ENOTTY`) rather than fabricate a terminal geometry or
+humanized size; termcap is out of scope. Compiled with `-DSMALL
+-Dmain=cb_ls_main`.

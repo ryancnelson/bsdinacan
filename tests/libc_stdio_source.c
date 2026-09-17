@@ -20,7 +20,9 @@ int main(int argc, char *argv[])
     if (argc == 2 && argv[1][0] == 'p')
         return printf("broken") == EOF && errno == EPIPE ? 0 : 16;
     if (argc == 2 && argv[1][0] == 'u')
-        return printf("prefix:%u", 1U) == EOF && errno == EINVAL ? 0 : 15;
+        /* %u itself became a supported conversion since LS-02 (a real
+           pinned consumer needed it); %x remains genuinely unsupported. */
+        return printf("prefix:%x", 1U) == EOF && errno == EINVAL ? 0 : 15;
 
     count = printf("out:%s:%%", "value");
     if (count != 11)

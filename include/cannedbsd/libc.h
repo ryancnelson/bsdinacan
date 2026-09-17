@@ -114,6 +114,34 @@ void cb_libc_setprogname(const char *name);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);
+int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...);
+int cb_libc_ioctl(int fd, unsigned long request, ...);
+int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
+                            const char *suffix, int scale, int flags);
+/* wchar_t is a compiler builtin, already visible here via <stddef.h>
+   (included transitively through cannedbsd/abi.h) -- spelled directly
+   so this declaration is identical to libc/include/wchar.h's, not just
+   convertible to it (an int/wchar_t mismatch is a real conflicting-type
+   error on targets where wchar_t is unsigned, e.g. this project's own
+   Alpine/musl build). mbstate_t is this project's own opaque struct
+   (see wchar.h) and not visible here, so it stays spelled as void *;
+   wint_t (see wctype.h) is typedef'd equal to int, so cb_libc_iswprint's
+   plain int spelling here already matches it exactly. */
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, void *ps);
+size_t cb_libc_wcrtomb(char *s, wchar_t wc, void *ps);
+int cb_libc_iswprint(int wc);
+int cb_libc_wcwidth(wchar_t wc);
+size_t cb_libc_strvis(char *dst, const char *src, int flags);
+const char *cb_libc_getenv(const char *name);
+int cb_libc_atoi(const char *nptr);
+char *cb_libc_getbsize(int *headerlenp, long *blocksizep);
+char *cb_libc_flags_to_string(unsigned long flags, const char *def);
+/* LS-02: time_t is spelled uint32_t here, matching st_atimespec.tv_sec's
+   existing type (see struct timespec/struct stat above), since this
+   internal header predates and does not itself define the public
+   time_t typedef (see libc/include/time.h). */
+uint32_t cb_libc_time(uint32_t *out);
+char *cb_libc_ctime(const uint32_t *timer);
 extern struct cb_libc_file *const cb_libc_stdin_stream;
 extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
@@ -149,6 +177,11 @@ char *cb_libc_basename(char *path);
 #define S_ISUID 0004000
 #define S_ISGID 0002000
 #define S_ISVTX 0001000
+
+/* LS-02: pinned ls/print.c's -h sizing multiplies st_blocks by this to
+   get bytes; the real BSD constant (the fixed unit st_blocks counts in),
+   not a value this project invented. */
+#define S_BLKSIZE 512
 
 #define S_IRWXU 0000700
 #define S_IRUSR 0000400
@@ -199,6 +232,11 @@ struct stat {
 #define st_atime st_atimespec.tv_sec
 #define st_mtime st_mtimespec.tv_sec
 #define st_ctime st_ctimespec.tv_sec
+/* LS-02: pinned ls/cmp.c's MTIMENSEC_CMP uses the legacy flat NetBSD
+   nanosecond field names alongside the POSIX timespec ones. */
+#define st_atimensec st_atimespec.tv_nsec
+#define st_mtimensec st_mtimespec.tv_nsec
+#define st_ctimensec st_ctimespec.tv_nsec
 
 struct timeval;
 

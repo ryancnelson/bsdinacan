@@ -4206,8 +4206,19 @@ static const struct cb_program_v1 ls_interleave_child_program = {
 static int ls_interleave_main(const struct cb_api_v1 *api, int argc,
                               char *const argv[], char *const envp[])
 {
-    char *argv_alpha[] = {(char *)"ls", (char *)"/tmp/lsdir-alpha", NULL};
-    char *argv_beta[] = {(char *)"ls", (char *)"/tmp/lsdir-beta", NULL};
+    /* -1: forces printscol (a plain linked-list walk), not the default
+       column mode's printcol() -- LS-02 wired in the real pinned ls.c,
+       whose printcol() caches a file-scope `static FTSENT **array` across
+       invocations by design (real BSD ls never runs a second `ls` in the
+       same process). Two of these tasks calling printcol() with the same
+       entry count in one host process is a real, separately-flagged
+       heap-use-after-free once the first task's own allocations are
+       reclaimed at its task exit (see notes/iterations/LS-02.md's "found,
+       not fixed" section) -- not something this interleaving test is
+       trying to exercise, so it uses the one column mode that never
+       touches that cache. */
+    char *argv_alpha[] = {(char *)"ls", (char *)"-1", (char *)"/tmp/lsdir-alpha", NULL};
+    char *argv_beta[] = {(char *)"ls", (char *)"-1", (char *)"/tmp/lsdir-beta", NULL};
     int fd, status;
     (void)argc;
     (void)argv;
@@ -6185,7 +6196,10 @@ static void test_err(void)
     /* "formatprobe b <letter>" exercises tests/libc_format_probe.c's
        bad[] table: every entry must be rejected with EOF/EINVAL before
        reading its (absent) variadic argument, writing nothing to either
-       stream. Letters run through the full current bad[] length. */
+       stream. Letters run through the full current bad[] length (LS-02
+       removed %ld/%u/%*d/%-4s from this table -- they became valid
+       conversions -- and added %'d/%'s, net two entries shorter: A-W,
+       not A-Y). */
     run_case("formatprobe b A", "prefix:", 0, FIXTURE_ERR);
     expect_streams("prefix:", "");
     run_case("formatprobe b B", "prefix:", 0, FIXTURE_ERR);
@@ -6230,15 +6244,13 @@ static void test_err(void)
     expect_streams("prefix:", "");
     run_case("formatprobe b V", "prefix:", 0, FIXTURE_ERR);
     expect_streams("prefix:", "");
-    /* CAT-01 extension: %-4s, %.1s and %33s -- flags, precision and
-       overflowing width are rejected on %s exactly like %d. %4s itself
-       (formerly bad, index removed from the table) is now valid -- see
+    /* CAT-01 extension: %.1s and %33s -- precision and overflowing width
+       are rejected on %s exactly like %d (%-4s, also originally listed
+       here, became valid under LS-02's left-justify support -- see the
+       bad[] table's own comment). %4s itself (formerly bad, index
+       removed from the table) is now valid -- see
        cases M/N above and the direct 'n' mode below. */
     run_case("formatprobe b W", "prefix:", 0, FIXTURE_ERR);
-    expect_streams("prefix:", "");
-    run_case("formatprobe b X", "prefix:", 0, FIXTURE_ERR);
-    expect_streams("prefix:", "");
-    run_case("formatprobe b Y", "prefix:", 0, FIXTURE_ERR);
     expect_streams("prefix:", "");
 
     run_case("formatprobe s A", " -42:tail", 0, FIXTURE_ERR);
@@ -6253,6 +6265,19 @@ static void test_err(void)
        a single field per call. */
     run_case("formatprobe m A", "  1    22    tail333", 0, FIXTURE_ERR);
     expect_streams("  1    22    tail333", "");
+
+    /* LS-02: %u/%llu/%*llu/%*lu with correctly-typed variadic arguments
+       (unlike cases[]'s int-only table above, which cannot safely carry
+       a real unsigned long long) -- the shapes pinned ls/print.c's
+       "%*"PRIu64" "/"%*llu "/"%*lu "/"total %llu\n" call sites use. */
+    run_case("formatprobe u A", "7 12345     42   8", 0, FIXTURE_ERR);
+    expect_streams("7 12345     42   8", "");
+    /* %*lld: the "%*lld, %*lld " device-number column shape. */
+    run_case("formatprobe l A", "  -42", 0, FIXTURE_ERR);
+    expect_streams("  -42", "");
+    /* "'" thousands-separator flag: ls -M's "%'*llu "/"total %'llu\n". */
+    run_case("formatprobe c A", "1,234,567|     999|42", 0, FIXTURE_ERR);
+    expect_streams("1,234,567|     999|42", "");
 
     /* FS-STAT-01: an old, pre-append cb_stat_v1 struct_size must fall
        back to the original fixed sentinels rather than leak whatever

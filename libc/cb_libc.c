@@ -1321,17 +1321,46 @@ static int format_output(int descriptor, const char *format,
                 return -1;
             ++cursor;
         } else {
-            /* Bounded width 1-32 (or none), shared by %d and %s -- see
-               FORMAT-01-design.md. Originally scoped to %Nd alone for
-               uniq's "%4d %s" need, which never required a width on %s.
-               CAT-01 measured pinned cat.c's -b blank-line-continuation
-               path calling fprintf(stdout, "%6s\t", "") and demonstrated
-               that scope insufficient for a second consumer -- extended
-               here, not because %Ns was anticipated, but because it was
-               actually needed. Same immediate-CB_EINVAL policy as %d for
-               any flag/precision/length-modifier/other conversion. */
+            /* Bounded width 1-32 (literal or "*"-from-argument), an
+               optional "-" left-justify flag or "'" thousands-separator
+               flag (mutually exclusive in every real call site), an
+               optional length modifier ("l"/"ll"), and %d/%u/%s -- see
+               FORMAT-01-design.md's original %Nd/%Ns scope and its
+               LS-02 addendum. LS-02 measured pinned ls/print.c's column
+               layout ("%*llu ", "%-*s  ", "%*"PRIu64" ", "%'*llu " for
+               -M) and demonstrated that scope insufficient for a second
+               consumer -- extended here, not anticipated speculatively.
+               Same immediate-CB_EINVAL policy as before for precision,
+               any other flag, or any other conversion. */
+            int left_justify = 0;
+            int use_commas = 0;
             unsigned width = 0;
-            if (*cursor >= '1' && *cursor <= '9') {
+            int length_modifier = 0; /* 0 = none, 1 = 'l', 2 = "ll" */
+            if (*cursor == '-') {
+                left_justify = 1;
+                ++cursor;
+            }
+            if (*cursor == '\'') {
+                /* pinned ls/print.c's -M (thousands-separator) column
+                   width prepass and rendering both use "%'*llu " /
+                   "total %'llu\n" -- a real, reachable call site (-M
+                   is not excluded from the accepted matrix), so this
+                   groups digits by 3 for real rather than leaving -M
+                   silently incomplete (ls.c voids every printf() return
+                   value here, so an EINVAL would corrupt output rather
+                   than visibly fail). */
+                use_commas = 1;
+                ++cursor;
+            }
+            if (*cursor == '*') {
+                int argument_width = va_arg(arguments, int);
+                if (argument_width < 0 || argument_width > 32) {
+                    bound_api->set_errno(CB_EINVAL);
+                    return -1;
+                }
+                width = (unsigned)argument_width;
+                ++cursor;
+            } else if (*cursor >= '1' && *cursor <= '9') {
                 do {
                     unsigned digit = (unsigned)(*cursor - '0');
                     if (width > (32U - digit) / 10U) {
@@ -1342,25 +1371,81 @@ static int format_output(int descriptor, const char *format,
                     ++cursor;
                 } while (*cursor >= '0' && *cursor <= '9');
             }
-            if (*cursor == 'd') {
-                int value;
-                unsigned magnitude;
-                /* 2^3 < 10: ceil(bits/3) bounds decimal digits; reserve a sign. */
-                char number[(sizeof(int) * CHAR_BIT + 2) / 3 + 2];
+            if (*cursor == 'l') {
+                length_modifier = 1;
+                ++cursor;
+                if (*cursor == 'l') {
+                    length_modifier = 2;
+                    ++cursor;
+                }
+            }
+            if (left_justify && *cursor != 's') {
+                /* Only ls's user/group/flags columns need left-justify,
+                   and only on %s; no signed/unsigned consumer does. */
+                bound_api->set_errno(CB_EINVAL);
+                return -1;
+            }
+            if (use_commas && *cursor != 'u') {
+                /* Real ls.c call sites only ever pair "'" with %llu. */
+                bound_api->set_errno(CB_EINVAL);
+                return -1;
+            }
+            if (*cursor == 'd' || *cursor == 'u') {
+                int is_unsigned = (*cursor == 'u');
+                long long svalue = 0;
+                unsigned long long magnitude;
+                int negative = 0;
+                /* 2^3 < 10: ceil(bits/3) bounds decimal digits for the
+                   widest length modifier (long long); reserve a sign. */
+                char number[(sizeof(long long) * CHAR_BIT + 2) / 3 + 2];
+                /* Grouped copy: the digits above plus a comma every 3
+                   digits (at most 6 for a 64-bit value) -- built only
+                   when use_commas is set. */
+                char grouped[sizeof(number) + 8];
                 char *end = number + sizeof(number);
                 char *digits = end;
                 size_t length;
-                value = va_arg(arguments, int);
-                magnitude = (unsigned)value;
-                if (value < 0)
-                    magnitude = 0U - magnitude;
+                if (is_unsigned) {
+                    if (length_modifier == 2)
+                        magnitude = va_arg(arguments, unsigned long long);
+                    else if (length_modifier == 1)
+                        magnitude = va_arg(arguments, unsigned long);
+                    else
+                        magnitude = va_arg(arguments, unsigned int);
+                } else {
+                    if (length_modifier == 2)
+                        svalue = va_arg(arguments, long long);
+                    else if (length_modifier == 1)
+                        svalue = va_arg(arguments, long);
+                    else
+                        svalue = va_arg(arguments, int);
+                    negative = svalue < 0;
+                    magnitude = negative ?
+                        (unsigned long long)0 - (unsigned long long)svalue :
+                        (unsigned long long)svalue;
+                }
                 do {
                     *--digits = (char)('0' + magnitude % 10U);
                     magnitude /= 10U;
                 } while (magnitude != 0);
-                if (value < 0)
+                if (negative)
                     *--digits = '-';
                 length = (size_t)(end - digits);
+                if (use_commas && length > 3) {
+                    char *write_ptr = grouped + sizeof(grouped);
+                    size_t digit_count = 0;
+                    const char *read_ptr = end;
+                    *--write_ptr = '\0'; /* placeholder; not counted */
+                    while (read_ptr > digits) {
+                        --read_ptr;
+                        *--write_ptr = *read_ptr;
+                        ++digit_count;
+                        if (digit_count % 3 == 0 && read_ptr > digits)
+                            *--write_ptr = ',';
+                    }
+                    digits = write_ptr;
+                    length = (size_t)(grouped + sizeof(grouped) - 1 - write_ptr);
+                }
                 while (width > length) {
                     if (add_output(descriptor, " ", 1, &total) < 0)
                         return -1;
@@ -1372,19 +1457,30 @@ static int format_output(int descriptor, const char *format,
             } else if (*cursor == 's') {
                 const char *text = va_arg(arguments, const char *);
                 size_t length;
+                if (length_modifier != 0) {
+                    bound_api->set_errno(CB_EINVAL);
+                    return -1;
+                }
                 if (text == NULL)
                     text = "(null)";
                 length = cb_libc_strlen(text);
-                /* Right-justify, like %d: pad if shorter, never truncate
-                   if the string is already wider than the requested
-                   field -- same non-truncating policy %d already uses. */
+                /* Right-justify by default (pad if shorter, never
+                   truncate if already wider); left-justify moves the
+                   padding after the text instead. */
+                if (!left_justify) {
+                    while (width > length) {
+                        if (add_output(descriptor, " ", 1, &total) < 0)
+                            return -1;
+                        --width;
+                    }
+                }
+                if (add_output(descriptor, text, length, &total) < 0)
+                    return -1;
                 while (width > length) {
                     if (add_output(descriptor, " ", 1, &total) < 0)
                         return -1;
                     --width;
                 }
-                if (add_output(descriptor, text, length, &total) < 0)
-                    return -1;
                 ++cursor;
             } else {
                 bound_api->set_errno(CB_EINVAL);
@@ -1417,6 +1513,397 @@ int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...)
     result = format_output(stream->descriptor, format, arguments);
     va_end(arguments);
     return result;
+}
+
+/* LS-02: appends up to `remaining` bytes of `text` into `*cursor`,
+   advancing both, always leaving room for the eventual NUL snprintf
+   writes on return -- mirrors real snprintf's "would have written"
+   contract via `*total`, which is not clamped to the buffer size. */
+static void snprintf_append(char **cursor, size_t *remaining, int *total,
+                            const char *text, size_t length)
+{
+    size_t copy = length;
+    if (copy > *remaining)
+        copy = *remaining;
+    if (copy > 0) {
+        cb_libc_memcpy(*cursor, text, copy);
+        *cursor += copy;
+        *remaining -= copy;
+    }
+    *total += (int)length;
+}
+
+/* LS-02: pinned ls/print.c's column-width prepass calls snprintf with
+   exactly bare %s/%d/%u/%lld/%llu (no width, no left-justify, no other
+   conversion) -- see the exact call sites grepped for this ID. A
+   dedicated, buffer-writing formatter rather than routing through
+   format_output's descriptor-based one, since the two sinks (a real fd
+   vs. a caller's buffer) don't share enough to be worth unifying for
+   this narrow, already-measured surface. */
+int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...)
+{
+    va_list arguments;
+    const char *cursor = format;
+    char *out = buffer;
+    size_t remaining = size > 0 ? size - 1 : 0;
+    int total = 0;
+
+    if (format == NULL || (buffer == NULL && size != 0)) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    va_start(arguments, format);
+    while (*cursor != '\0') {
+        const char *literal = cursor;
+        while (*cursor != '\0' && *cursor != '%')
+            ++cursor;
+        snprintf_append(&out, &remaining, &total, literal,
+                        (size_t)(cursor - literal));
+        if (*cursor == '\0')
+            break;
+        ++cursor;
+        if (*cursor == '%') {
+            snprintf_append(&out, &remaining, &total, "%", 1);
+            ++cursor;
+            continue;
+        }
+        {
+            int length_modifier = 0;
+            if (*cursor == 'l') {
+                length_modifier = 1;
+                ++cursor;
+                if (*cursor == 'l') {
+                    length_modifier = 2;
+                    ++cursor;
+                }
+            }
+            if (*cursor == 's') {
+                const char *text;
+                if (length_modifier != 0) {
+                    va_end(arguments);
+                    bound_api->set_errno(CB_EINVAL);
+                    return -1;
+                }
+                text = va_arg(arguments, const char *);
+                if (text == NULL)
+                    text = "(null)";
+                snprintf_append(&out, &remaining, &total, text,
+                                cb_libc_strlen(text));
+                ++cursor;
+            } else if (*cursor == 'd' || *cursor == 'u') {
+                int is_unsigned = (*cursor == 'u');
+                long long svalue = 0;
+                unsigned long long magnitude;
+                int negative = 0;
+                char number[(sizeof(long long) * CHAR_BIT + 2) / 3 + 2];
+                char *end = number + sizeof(number);
+                char *digits = end;
+                if (is_unsigned) {
+                    if (length_modifier == 2)
+                        magnitude = va_arg(arguments, unsigned long long);
+                    else if (length_modifier == 1)
+                        magnitude = va_arg(arguments, unsigned long);
+                    else
+                        magnitude = va_arg(arguments, unsigned int);
+                } else {
+                    if (length_modifier == 2)
+                        svalue = va_arg(arguments, long long);
+                    else if (length_modifier == 1)
+                        svalue = va_arg(arguments, long);
+                    else
+                        svalue = va_arg(arguments, int);
+                    negative = svalue < 0;
+                    magnitude = negative ?
+                        (unsigned long long)0 - (unsigned long long)svalue :
+                        (unsigned long long)svalue;
+                }
+                do {
+                    *--digits = (char)('0' + magnitude % 10U);
+                    magnitude /= 10U;
+                } while (magnitude != 0);
+                if (negative)
+                    *--digits = '-';
+                snprintf_append(&out, &remaining, &total, digits,
+                                (size_t)(end - digits));
+                ++cursor;
+            } else {
+                va_end(arguments);
+                bound_api->set_errno(CB_EINVAL);
+                return -1;
+            }
+        }
+    }
+    va_end(arguments);
+    if (size > 0)
+        *out = '\0';
+    return total;
+}
+
+/* LS-02: ls -h (SI-scaled sizes) is outside the accepted matrix -- see
+   util.h's own comment. Always fails; ls.c's own err(1,...) at its one
+   call site makes -h fail loudly rather than print a fabricated size. */
+int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
+                            const char *suffix, int scale, int flags)
+{
+    (void)buffer;
+    (void)length;
+    (void)quantity;
+    (void)suffix;
+    (void)scale;
+    (void)flags;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+/* LS-02: single, immutable C locale (see wchar.h's own comment) -- a
+   real 1:1 byte<->wide-character mapping, genuinely stateless (mbstate_t
+   carries no real state to track), not a fabricated multibyte decoder.
+   Consuming the terminating NUL returns 0 per POSIX's own mbrtowc
+   contract, not 1. */
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, void *ps)
+{
+    (void)ps;
+    if (s == NULL)
+        return 0; /* stateless: "reset" always already holds */
+    if (n == 0)
+        return (size_t)-2;
+    if (pwc != NULL)
+        *pwc = (unsigned char)s[0];
+    return s[0] == '\0' ? 0 : 1;
+}
+
+size_t cb_libc_wcrtomb(char *s, wchar_t wc, void *ps)
+{
+    (void)ps;
+    if (s == NULL)
+        return 1; /* stateless: the "reset" sequence is zero bytes wide */
+    s[0] = (char)wc;
+    return 1;
+}
+
+int cb_libc_iswprint(int wc)
+{
+    return wc >= 0x20 && wc <= 0x7E;
+}
+
+int cb_libc_wcwidth(wchar_t wc)
+{
+    if (wc == 0)
+        return 0;
+    return cb_libc_iswprint((int)wc) ? 1 : -1;
+}
+
+/* LS-02: values must match libc/include/vis.h exactly; not visible here
+   since this file does not include the public vis.h. */
+#define LS02_VIS_WHITE  0x02
+#define LS02_VIS_CSTYLE 0x08
+
+size_t cb_libc_strvis(char *dst, const char *src, int flags)
+{
+    char *start = dst;
+    unsigned char c;
+    while ((c = (unsigned char)*src++) != '\0') {
+        int printable = c >= 0x21 && c <= 0x7E;
+        int is_space = (c == ' ');
+        int needs_escape;
+        if (c == '\\') {
+            *dst++ = '\\';
+            *dst++ = '\\';
+            continue;
+        }
+        if (is_space)
+            needs_escape = (flags & LS02_VIS_WHITE) != 0;
+        else
+            needs_escape = !printable;
+        if (!needs_escape) {
+            *dst++ = (char)c;
+            continue;
+        }
+        if (flags & LS02_VIS_CSTYLE) {
+            char cstyle = 0;
+            switch (c) {
+            case '\n': cstyle = 'n'; break;
+            case '\t': cstyle = 't'; break;
+            case '\r': cstyle = 'r'; break;
+            case '\b': cstyle = 'b'; break;
+            case '\a': cstyle = 'a'; break;
+            case '\f': cstyle = 'f'; break;
+            case '\v': cstyle = 'v'; break;
+            default: break;
+            }
+            if (cstyle != 0) {
+                *dst++ = '\\';
+                *dst++ = cstyle;
+                continue;
+            }
+        }
+        /* Octal fallback: \ooo, always three digits. */
+        *dst++ = '\\';
+        *dst++ = (char)('0' + ((c >> 6) & 07));
+        *dst++ = (char)('0' + ((c >> 3) & 07));
+        *dst++ = (char)('0' + (c & 07));
+    }
+    *dst = '\0';
+    return (size_t)(dst - start);
+}
+
+/* LS-02: real getenv, not previously publicly wrapped (only used
+   internally by cb_libc_setlocale before this). ls.c's only use is
+   COLUMNS, an honest lookup against real task environ -- CANNEDBSD_ never
+   sets it, so it is genuinely unset here, not fabricated absent. */
+const char *cb_libc_getenv(const char *name)
+{
+    if (bound_api == NULL || bound_api->getenv == NULL)
+        return NULL;
+    return bound_api->getenv(name);
+}
+
+int cb_libc_atoi(const char *nptr)
+{
+    return (int)cb_libc_strtol(nptr, NULL, 10);
+}
+
+/* LS-02: real default path, not a stub -- see util.h's own comment. */
+char *cb_libc_getbsize(int *headerlenp, long *blocksizep)
+{
+    static char label[] = "512";
+    if (headerlenp != NULL)
+        *headerlenp = (int)(sizeof(label) - 1);
+    if (blocksizep != NULL)
+        *blocksizep = 512;
+    return label;
+}
+
+/* LS-02: st_flags is always 0 here (see util.h's own comment), so the
+   only reachable case is "return the caller's default for zero flags",
+   exactly matching real flags_to_string's own zero-flags behavior. */
+char *cb_libc_flags_to_string(unsigned long flags, const char *def)
+{
+    static char empty[] = "";
+    if (flags == 0)
+        return (char *)def;
+    return empty;
+}
+
+/* wall_clock_millis was appended by LS-02, past api_is_usable's checked
+   struct_size boundary -- same shape as rmdir_api_available above. */
+static int wall_clock_api_available(void)
+{
+    return bound_api->struct_size >=
+               offsetof(struct cb_api_v1, wall_clock_millis) +
+                   sizeof(bound_api->wall_clock_millis) &&
+           bound_api->wall_clock_millis != NULL;
+}
+
+/* LS-02: real current time via the newly-exposed wall_clock_millis
+   (see abi.h/core.c's own comments) -- an honest ENOSYS refusal on an
+   old runtime that predates it, not a fabricated zero. */
+uint32_t cb_libc_time(uint32_t *out)
+{
+    uint64_t millis;
+    uint32_t seconds;
+    if (!wall_clock_api_available()) {
+        bound_api->set_errno(CB_ENOSYS);
+        return (uint32_t)-1;
+    }
+    millis = bound_api->wall_clock_millis();
+    seconds = (uint32_t)(millis / 1000U);
+    if (out != NULL)
+        *out = seconds;
+    return seconds;
+}
+
+/* Howard Hinnant's civil_from_days (public domain): exact proleptic
+   Gregorian civil date from a day count relative to 1970-01-01, valid
+   for the entire range a uint32_t time_t can represent. Chosen over a
+   naive year-loop for correctness across leap years without a lookup
+   table. */
+static void ls02_civil_from_days(long z, int *y, int *m, int *d)
+{
+    long era;
+    unsigned doe, yoe, doy, mp, dd, mm;
+    z += 719468;
+    era = (z >= 0 ? z : z - 146096) / 146097;
+    doe = (unsigned)(z - era * 146097);
+    yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    mp = (5 * doy + 2) / 153;
+    dd = doy - (153 * mp + 2) / 5 + 1;
+    mm = mp + (mp < 10 ? 3 : (unsigned)-9);
+    *y = (int)(yoe + (unsigned)era * 400) + (mm <= 2 ? 1 : 0);
+    *m = (int)mm;
+    *d = (int)dd;
+}
+
+/* LS-02: pinned ls/print.c's printtime() reads exact fixed character
+   offsets out of ctime(3)'s 26-byte "Www Mmm dd hh:mm:ss yyyy\n\0"
+   format, so this must match that layout exactly, not just be
+   "a reasonable date string". */
+char *cb_libc_ctime(const uint32_t *timer)
+{
+    static const char weekday_names[7][4] = {
+        "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+    };
+    static const char month_names[12][4] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+    static char buf[26];
+    long total_seconds;
+    long days, remainder;
+    int weekday, hour, minute, second, year, month, day;
+
+    if (timer == NULL)
+        return NULL;
+    total_seconds = (long)*timer;
+    days = total_seconds / 86400;
+    remainder = total_seconds % 86400;
+    if (remainder < 0) {
+        remainder += 86400;
+        days -= 1;
+    }
+    hour = (int)(remainder / 3600);
+    minute = (int)((remainder % 3600) / 60);
+    second = (int)(remainder % 60);
+    /* 1970-01-01 was a Thursday (index 4). */
+    weekday = (int)(((days % 7) + 7 + 4) % 7);
+    ls02_civil_from_days(days, &year, &month, &day);
+
+    cb_libc_memcpy(buf, weekday_names[weekday], 3);
+    buf[3] = ' ';
+    cb_libc_memcpy(buf + 4, month_names[month - 1], 3);
+    buf[7] = ' ';
+    buf[8] = (char)(day < 10 ? ' ' : '0' + day / 10);
+    buf[9] = (char)('0' + day % 10);
+    buf[10] = ' ';
+    buf[11] = (char)('0' + hour / 10);
+    buf[12] = (char)('0' + hour % 10);
+    buf[13] = ':';
+    buf[14] = (char)('0' + minute / 10);
+    buf[15] = (char)('0' + minute % 10);
+    buf[16] = ':';
+    buf[17] = (char)('0' + second / 10);
+    buf[18] = (char)('0' + second % 10);
+    buf[19] = ' ';
+    buf[20] = (char)('0' + (year / 1000) % 10);
+    buf[21] = (char)('0' + (year / 100) % 10);
+    buf[22] = (char)('0' + (year / 10) % 10);
+    buf[23] = (char)('0' + year % 10);
+    buf[24] = '\n';
+    buf[25] = '\0';
+    return buf;
+}
+
+/* LS-02: honest failure for every request, including TIOCGWINSZ -- see
+   sys/ioctl.h's own comment. No real terminal geometry exists here. */
+int cb_libc_ioctl(int fd, unsigned long request, ...)
+{
+    (void)fd;
+    (void)request;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOTTY);
+    return -1;
 }
 
 void cb_libc_errx(int eval, const char *fmt, ...)

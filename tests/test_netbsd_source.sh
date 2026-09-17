@@ -362,4 +362,76 @@ for symbol in chflags chmod close errno_location fcpxattr fts_set \
     fi
 done
 
+ls_source=upstream/netbsd/bin/ls/ls.c
+ls_h=upstream/netbsd/bin/ls/ls.h
+ls_print_source=upstream/netbsd/bin/ls/print.c
+ls_cmp_source=upstream/netbsd/bin/ls/cmp.c
+ls_extern=upstream/netbsd/bin/ls/extern.h
+ls_util_source=upstream/netbsd/bin/ls/util.c
+ls_object=$build_path/netbsd_ls.o
+ls_print_object=$build_path/netbsd_ls_print.o
+ls_cmp_object=$build_path/netbsd_ls_cmp.o
+ls_util_object=$build_path/netbsd_ls_util.o
+ls_hash=385a3c3f495913a04127fe52e082030c57e43e5d1bacf9299b2d7b5b2597787a
+ls_h_hash=50610b1281ff61a6171de9c73dab7ee9861e0ab0fbd66118242786abb325dc34
+ls_print_hash=012336e4f206483f4aaf31a7380889aa677f66b53fc388442766dccacd1ee8a8
+ls_cmp_hash=6a43161605d90c8b6a69103356a83cb01dbd8b7032b342335dd04cdc2003e73a
+ls_extern_hash=fef4bb08e410d5b9aee230df8160391383a94d1ce2d0c6d537ad3168d1af7851
+ls_util_hash=87205a7e649375576afc954f0d58597ebb4db8383c2dbffd1b0379d320f2c88a
+
+for pair in "$ls_source:$ls_hash" "$ls_h:$ls_h_hash" \
+        "$ls_print_source:$ls_print_hash" "$ls_cmp_source:$ls_cmp_hash" \
+        "$ls_extern:$ls_extern_hash" "$ls_util_source:$ls_util_hash"; do
+    src=${pair%%:*}
+    hash=${pair##*:}
+    if [[ $(sha256sum "$src" | awk '{print $1}') != "$hash" ]] ||
+       ! matches "$hash" "$provenance_file"; then
+        echo "FAIL: ls $src source/provenance pin differs" >&2
+        exit 1
+    fi
+done
+if ! nm "$ls_object" | matches '[[:space:]]T[[:space:]]+cb_ls_main$' ||
+   nm "$ls_object" | matches '[[:space:]]T[[:space:]]+main$' ||
+   nm "$ls_object" | matches '[[:space:]]T[[:space:]]+ls_main$'; then
+    echo 'FAIL: ls entry point is not privately renamed' >&2
+    exit 1
+fi
+# Cross-file references among ls.c/print.c/cmp.c's own helpers (acccmp,
+# modcmp, namecmp, printacol, printcol, printlong, printscol, printstream,
+# revacccmp, revmodcmp, revnamecmp, revsizecmp, revstatcmp, sizecmp,
+# statcmp, f_*, blocksize, termwidth, printescaped, safe_print,
+# f_octal_escape) are expected undefined references within these objects
+# and are not host-facing -- only the specific libc-shaped names below are
+# checked, same style as the cp/cp-utils boundary check above.
+for symbol in atoi err exit flags_to_string fprintf free fts_children \
+        fts_close fts_open fts_read fts_set getbsize getenv getopt \
+        getopt_state_location getprogname getuid group_from_gid ioctl \
+        isatty malloc printf setlocale setprogname snprintf stderr_stream \
+        strcpy strerror strlen user_from_uid warnx; do
+    if nm -u "$ls_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: ls imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+for symbol in ctime err fprintf humanize_number printf putchar readlink \
+        realloc snprintf stderr_stream strerror strmode time warn; do
+    if nm -u "$ls_print_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: ls print.c imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+for symbol in strcmp; do
+    if nm -u "$ls_cmp_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: ls cmp.c imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+for symbol in errx free fwrite iswprint malloc mbrtowc memset printf \
+        stdout_stream strlen strvis wcrtomb wcwidth; do
+    if nm -u "$ls_util_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: ls util.c imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

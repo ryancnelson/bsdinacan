@@ -16,4 +16,11 @@ intmax_t cb_libc_strtoimax(const char *restrict nptr, char **restrict endptr,
                           int base);
 #define strtoimax cb_libc_strtoimax
 
+/* LS-02: pinned ls/print.c formats st_ino (uint64_t) via PRIu64. This
+   veneer's printf/fprintf/snprintf %llu handler reads an unsigned long
+   long va_arg, so PRIu64 must say "llu" regardless of what uint64_t is
+   actually typedef'd to on the host -- the pairing is internally
+   consistent because this veneer controls both sides. */
+#define PRIu64 "llu"
+
 #endif

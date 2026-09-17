@@ -30,11 +30,26 @@ int main(int argc, char **argv)
     static const char *const bad[] = {
         "prefix:%33d", "prefix:%999999d", "prefix:%04d", "prefix:%-4d",
         "prefix:%+d", "prefix:% d", "prefix:%#d", "prefix:%.1d",
-        "prefix:%ld", "prefix:%hd", "prefix:%zd", "prefix:%jd",
+        "prefix:%hd", "prefix:%zd", "prefix:%jd",
         "prefix:%x", "prefix:%f", "prefix:%p", "prefix:%c",
         "prefix:%0d", "prefix:%", "prefix:%999999999999999999999999999d",
-        "prefix:%4%", "prefix:%*d", "prefix:%u", "prefix:%-4s",
-        "prefix:%.1s", "prefix:%33s"
+        "prefix:%4%",
+        "prefix:%.1s", "prefix:%33s",
+        /* LS-02: "'" (thousands separator) is only valid paired with
+           %u/%llu/%lu (pinned ls/print.c's own "%'*llu " and
+           "total %'llu\n" -- see cb_libc.c's format_output); %'d and
+           %'s must still be rejected. %u/%ld/%lld/%*d/%-4s became valid
+           conversions under LS-02 (pinned ls needs %*lld, bare %llu,
+           %*llu, %*lu, and left-justified %s -- the left-justify check
+           does not distinguish a literal digit width from a "*" one,
+           so a literal-width left-justify is valid too, not just the
+           "*" shape ls.c itself happens to use) and were removed from
+           this table rather than kept here to be "rejected" --
+           exercising a now-valid conversion through this bare
+           printf(bad[index]) call (no corresponding variadic argument
+           at all) would itself be undefined behavior, not a real
+           boundary test. */
+        "prefix:%'d", "prefix:%'s"
     };
     unsigned index;
     int count;
@@ -79,6 +94,29 @@ int main(int argc, char **argv)
            (pad 4), "%1d" of 333 -> "333" (no pad, wider than field). */
         count = fprintf(stdout, "%3d%6d%8s%1d", 1, 22, "tail", 333);
         return count == 20 && errno == ENOENT ? 0 : 19;
+    }
+    if (argv[1][0] == 'u') {
+        /* LS-02: %u/%llu/%*llu/%*lu, the shapes pinned ls/print.c's
+           "%*"PRIu64" ", "%*llu ", "%*lu ", and "total %llu\n" call
+           sites actually use -- correctly typed variadic arguments,
+           unlike the int/const-char*-only cases[] table above, since
+           these need a real unsigned long long. */
+        count = printf("%u %llu %*llu %*lu", 7U, 12345ULL, 6, 42ULL, 3, 8UL);
+        return count == 18 && errno == ENOENT ? 0 : 20;
+    }
+    if (argv[1][0] == 'l') {
+        /* %*lld, the shape "%*lld, %*lld " (block/major/minor device
+           columns) needs -- a signed conversion with a dynamic width. */
+        count = printf("%*lld", 5, -42LL);
+        return count == 5 && errno == ENOENT ? 0 : 21;
+    }
+    if (argv[1][0] == 'c') {
+        /* The "'" thousands-separator flag ls -M's "%'*llu " and
+           "total %'llu\n" call sites use -- grouped by 3 from the
+           right, real digit-grouping, not merely accepted-and-ignored
+           syntax (see cb_libc.c's format_output comment on why). */
+        count = printf("%'llu|%'*llu|%'llu", 1234567ULL, 8, 999ULL, 42ULL);
+        return count == 21 && errno == ENOENT ? 0 : 22;
     }
     if (argv[1][0] == 'w') {
         errno = EBADF;

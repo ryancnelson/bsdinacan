@@ -120,8 +120,28 @@ add_library(cb_fts OBJECT ${ROOT}/libc/cb_fts.c)
 target_include_directories(cb_fts PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 
-add_library(cb_ls OBJECT ${ROOT}/commands/ls.c)
-target_include_directories(cb_ls PRIVATE ${ROOT}/libc/include)
+# LS-02: pinned NetBSD ls.c/print.c/cmp.c/util.c, mirroring the Linux
+# Makefile's include set (compat/netbsd/include for sys/param.h's MIN/
+# MAX and sys/types.h, libc/include for the rest, upstream/netbsd/bin/ls
+# for the files' own mutual "ls.h"/"extern.h" includes). Replaces the
+# retired cannedBSD-owned commands/ls.c (LS-01).
+add_library(cb_ls OBJECT ${ROOT}/upstream/netbsd/bin/ls/ls.c)
+target_include_directories(cb_ls PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
+target_compile_definitions(cb_ls PRIVATE SMALL ls_main=cb_ls_main)
+
+add_library(cb_ls_print OBJECT ${ROOT}/upstream/netbsd/bin/ls/print.c)
+target_include_directories(cb_ls_print PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
+target_compile_definitions(cb_ls_print PRIVATE SMALL)
+
+add_library(cb_ls_cmp OBJECT ${ROOT}/upstream/netbsd/bin/ls/cmp.c)
+target_include_directories(cb_ls_cmp PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
+
+add_library(cb_ls_util OBJECT ${ROOT}/upstream/netbsd/bin/ls/util.c)
+target_include_directories(cb_ls_util PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
 
 add_library(cb_rm OBJECT ${ROOT}/upstream/netbsd/bin/rm/rm.c)
 target_include_directories(cb_rm PRIVATE
@@ -199,7 +219,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OB
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
-    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils>
+    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_ls_print> $<TARGET_OBJECTS:cb_ls_cmp> $<TARGET_OBJECTS:cb_ls_util> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
