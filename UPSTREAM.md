@@ -746,3 +746,33 @@ It depends on `mkdir(2)` (from `VFS-MKDIR-01`), `stat(2)` / `chmod(2)`,
 mode compilation is not yet implemented). `mkdir` and `mkdir -p` execute
 entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
 `system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.
+
+## NetBSD `wc`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/wc/wc.c`
+- Local path: `upstream/netbsd/usr.bin/wc/wc.c`
+- SHA-256: `e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f`
+- Embedded RCS identifier: `$NetBSD: wc.c,v 1.37 2024/01/14 17:39:19 christos Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1980, 1991, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/wc_module.c` (retiring the bootstrap `commands/wc.c` command in the same
+commit). The build renames `main` to `cb_wc_main`.
+
+It depends on `fstat(2)` (leveraging `FS-STAT-01` metadata for the regular-file
+`st_size` fast path on `-c`), `read(2)`, `open(2)`, `close(2)`, `getopt(3)`,
+`setlocale(3)`, `mbrtowc(3)` / `iswspace(3)` (provided by `libc/include/wchar.h`
+and `libc/include/wctype.h`), `warn(3)` / `warnx(3)`, and
+`compat/netbsd/include/sys/file.h`.
+
+**File-scope statics audit:** All file-scope statics (`tlinect`, `twordct`,
+`tcharct`, `tlongest`, `doline`, `doword`, `dobyte`, `dochar`, `dolongest`,
+`rval`) are scalar integer and boolean counters; zero pointer statics exist
+across the translation unit, with no heap or pointer caching across calls (zero
+heap use-after-free risk).
+
+Executes entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
+`system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.

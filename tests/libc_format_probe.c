@@ -33,7 +33,7 @@ int main(int argc, char **argv)
         "prefix:%ld", "prefix:%hd", "prefix:%zd", "prefix:%jd",
         "prefix:%x", "prefix:%f", "prefix:%p", "prefix:%c",
         "prefix:%0d", "prefix:%", "prefix:%999999999999999999999999999d",
-        "prefix:%4%", "prefix:%*d", "prefix:%u", "prefix:%-4s",
+        "prefix:%4%", "prefix:%*d", "prefix:%o", "prefix:%-4s",
         "prefix:%.1s", "prefix:%33s"
     };
     unsigned index;

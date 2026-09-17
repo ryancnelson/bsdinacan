@@ -247,6 +247,15 @@ size_t cb_libc_strspn(const char *s, const char *charset);
 size_t cb_libc_strcspn(const char *s, const char *charset);
 void *cb_libc_setmode(const char *mode_str);
 uint32_t cb_libc_getmode(const void *set, uint32_t mode);
+#ifndef _MBSTATE_T_DECLARED
+typedef struct {
+    int __state;
+} mbstate_t;
+#define _MBSTATE_T_DECLARED
+#endif
+
+int cb_libc_iswspace(unsigned int wc);
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

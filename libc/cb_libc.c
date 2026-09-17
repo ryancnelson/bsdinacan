@@ -1441,6 +1441,37 @@ static int format_output(int descriptor, const char *format,
                 if (add_output(descriptor, text, length, &total) < 0)
                     return -1;
                 ++cursor;
+            } else if (*cursor == 'u' ||
+                       (*cursor == 'l' && *(cursor + 1) == 'u') ||
+                       (*cursor == 'l' && *(cursor + 1) == 'l' && *(cursor + 2) == 'u')) {
+                uint64_t magnitude;
+                /* 2^3 < 10: ceil(bits/3) bounds decimal digits. */
+                char number[(sizeof(uint64_t) * CHAR_BIT + 2) / 3 + 1];
+                char *end = number + sizeof(number);
+                char *digits = end;
+                size_t length;
+                if (*cursor == 'l' && *(cursor + 1) == 'l') {
+                    magnitude = (uint64_t)va_arg(arguments, unsigned long long);
+                    cursor += 3;
+                } else if (*cursor == 'l') {
+                    magnitude = (uint64_t)va_arg(arguments, unsigned long);
+                    cursor += 2;
+                } else {
+                    magnitude = (uint64_t)va_arg(arguments, unsigned int);
+                    cursor += 1;
+                }
+                do {
+                    *--digits = (char)('0' + (magnitude % 10U));
+                    magnitude /= 10U;
+                } while (magnitude != 0);
+                length = (size_t)(end - digits);
+                while (width > length) {
+                    if (add_output(descriptor, " ", 1, &total) < 0)
+                        return -1;
+                    --width;
+                }
+                if (add_output(descriptor, digits, length, &total) < 0)
+                    return -1;
             } else {
                 bound_api->set_errno(CB_EINVAL);
                 return -1;
@@ -1954,4 +1985,29 @@ size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_l
     }
 
     return (total_bytes - remaining) / size;
+}
+
+int cb_libc_iswspace(unsigned int wc)
+{
+    if (wc <= 0x7f) {
+        return cb_libc_isspace((int)wc);
+    }
+    return 0;
+}
+
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
+{
+    (void)ps;
+    if (s == NULL)
+        return 0;
+    if (n == 0)
+        return (size_t)-2;
+    if (*s == '\0') {
+        if (pwc != NULL)
+            *pwc = L'\0';
+        return 0;
+    }
+    if (pwc != NULL)
+        *pwc = (wchar_t)(unsigned char)*s;
+    return 1;
 }

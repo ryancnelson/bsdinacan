@@ -334,7 +334,7 @@ static void test_allocation_cleanup(void)
             "echo -n hello | wc -c") < 0)
         fail("allocation cleanup boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n       5\n") != 0)
         fail("allocation cleanup acceptance behavior");
     cb_kernel_destroy(kernel);
     if (allocation_balance != 0)
@@ -361,7 +361,7 @@ static void test_uninitialized_host_memory(void)
             "echo -n hello | wc -c") < 0)
         fail("dirty-memory boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n       5\n") != 0)
         fail("dirty-memory acceptance behavior");
     cb_kernel_destroy(kernel);
 }
@@ -6621,14 +6621,15 @@ int main(int argc, char **argv)
     run_case("echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x",
              "one\ntwo\n", 0, 0);
     run_case("cd /tmp; pwd", "/tmp\n", 0, 0);
-    run_case("echo -n hello | wc -c", "5\n", 0, 0);
-    run_case("echo -n | wc -c", "0\n", 0, 0);
-    run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "6\n", 0, 0);
+    run_case("echo -n hello | wc -c", "       5\n", 0, 0);
+    run_case("echo -n | wc -c", "       0\n", 0, 0);
+    run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "       6 /tmp/wc\n", 0, 0);
     run_case("wc -c /missing",
              "wc: /missing: no such file or directory\n", 1, 0);
     expect_streams("", "wc: /missing: no such file or directory\n");
-    run_case("wc", "usage: wc -c [file]\n", 2, 0);
-    expect_streams("", "usage: wc -c [file]\n");
+    run_case("wc -z",
+             "wc: illegal option -- z\nusage: wc [-c | -m] [-Llw] [file ...]\n", 1, 0);
+    expect_streams("", "wc: illegal option -- z\nusage: wc [-c | -m] [-Llw] [file ...]\n");
     run_case("export WORD=works; echo $WORD", "works\n", 0, 0);
     run_case("echo input > /tmp/in; cat < /tmp/in", "input\n", 0, 0);
     run_case("echo '' \"\" a\\ b 'c d' \"e f\" ';' '|'",

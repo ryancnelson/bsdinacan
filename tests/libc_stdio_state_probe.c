@@ -55,7 +55,7 @@ int main(int argc, char **argv)
         return !ferror(stdout) && !ferror(stderr) ? 0 : 21;
     }
     if (strcmp(mode, "format") == 0) {
-        if (printf("%u", 1U) >= 0 || errno != EINVAL) return 22;
+        if (printf("%x", 1U) >= 0 || errno != EINVAL) return 22;
         return !ferror(stdout) && !ferror(stderr) ? 0 : 23;
     }
     if (strcmp(mode, "clean") == 0)
