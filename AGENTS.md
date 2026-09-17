@@ -68,6 +68,35 @@ clone. Confirmed 2026-09-17 against `check-publication`.
    A setup error or unrelated compiler failure is not useful red evidence.
    A deliberately reverted fix can validate a regression test, but must not be
    described as a test written before implementation.
+
+   **Every control needs a negative control: a control you have never watched
+   fire is not a control.** If you add a check, a guard, a gate or an assertion,
+   also break the thing it protects on purpose and confirm the check reports it,
+   naming the right subject. This is distinct from red-then-green on the feature:
+   it asks whether the *detector* works, not whether the behavior does. The
+   discipline arrived independently five times in one day, which is why it is
+   written here rather than rediscovered a sixth time:
+
+   - A handshake harness deliberately leaked a descriptor the controller should
+     have closed, and asserted the resulting deadlock was *detected and
+     attributed* rather than hanging. Three earlier rounds of `rc=124` had taught
+     nobody anything precisely because nothing reported which role was stuck.
+   - `MILESTONE-E2E-01` unregistered one command and observed status 0 become
+     127, proving the session test notices a missing command at all.
+   - `STATICS-REPRO-01` reproduced each state-corruption bug under the sanitizer
+     first, so the fix had demonstrated failures to verify against instead of a
+     structural argument.
+   - `BUILD-SYNC-01` broke each of its three parity invariants in turn and
+     confirmed each named the correct source and flag.
+   - `SOLARIS-02`'s marker corroboration is required to ship with a run where the
+     marker is emitted early but the record count or shutdown evidence is wrong,
+     so that a marker alone cannot pass.
+
+   The failure this prevents is the one that recurs most here: a gate that is
+   green because it checks nothing. `mac68k` passed for months while not
+   compiling five registered commands; a damage-transport oracle passed 14 of 14
+   of its own tests while falsely reporting a full match on a 1-slot geometry.
+   Neither was caught by adding more passing cases.
 3. Make the smallest coherent implementation pass that test. Keep refactoring
    inside the tested boundary and keep the test green.
 4. Run the focused test, then the complete `make ci` gate. Assert setup,
