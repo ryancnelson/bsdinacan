@@ -484,3 +484,21 @@ RAMFS output/error files internally, including the65538-byte boundary, binary
 bytes and checked pipe producer/consumer statuses. Source/symbol fences pin the
 import and reject unprefixed libc dependencies. Compiler stack-usage reports
 are isolated function-frame evidence, not a claim of a measured peak call chain.
+
+## NetBSD `rm`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/rm/rm.c`
+- Local path: `upstream/netbsd/bin/rm/rm.c`
+- SHA-256: `aebdd0b46b263ca8d5c6b12cc5bf27a21b878c5ad8230c6248583b43ace53f22`
+- Embedded RCS identifier: `$NetBSD: rm.c,v 1.58 2026/04/26 01:49:28 jschauma Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1990, 1993, 1994, 2003), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged; vendored under `RM-01`, per
+`notes/iterations/RM-01.md`. Wiring (build rule, veneer additions,
+`commands/rm_module.c`) is not yet in place — see that note for the measured
+dependency on `STAT-02` (unclaimed as of this commit) that blocks completing
+the build, and for the small set of independent gaps (`strrchr`, `memset`,
+`getchar`, `__unused`, public `unlink`/`rmdir`) this ID owns directly.
