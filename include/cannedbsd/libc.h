@@ -116,6 +116,14 @@ char *cb_libc_basename(char *path);
 #define S_IWOTH 0000002
 #define S_IXOTH 0000001
 
+#ifndef _STRUCT_TIMESPEC_DECLARED
+struct timespec {
+    uint32_t tv_sec;
+    long tv_nsec;
+};
+#define _STRUCT_TIMESPEC_DECLARED
+#endif
+
 /*
  * POSIX struct stat definition, shared between cb_libc.c (which populates it)
  * and libc/include/sys/stat.h (which exposes it to ordinary source).
@@ -131,13 +139,17 @@ struct stat {
     uint32_t st_gid;
     uint32_t st_rdev;
     int64_t st_size;
-    uint32_t st_atime;
-    uint32_t st_mtime;
-    uint32_t st_ctime;
+    struct timespec st_atimespec;
+    struct timespec st_mtimespec;
+    struct timespec st_ctimespec;
     int32_t st_blksize;
     int64_t st_blocks;
     uint32_t st_flags;
 };
+
+#define st_atime st_atimespec.tv_sec
+#define st_mtime st_mtimespec.tv_sec
+#define st_ctime st_ctimespec.tv_sec
 
 struct timeval;
 
@@ -169,6 +181,19 @@ int32_t cb_libc_waitpid(int32_t pid, int *status, int options);
 void *cb_libc_mmap(void *addr, size_t len, int prot, int flags, int fd, cb_off_t offset);
 int cb_libc_munmap(void *addr, size_t len);
 int cb_libc_madvise(void *addr, size_t len, int behav);
+int cb_libc_chmod(const char *path, uint32_t mode);
+int cb_libc_lchmod(const char *path, uint32_t mode);
+int cb_libc_chflags(const char *path, uint32_t flags);
+int cb_libc_lutimens(const char *path, const struct timespec times[2]);
+uint32_t cb_libc_getuid(void);
+uint32_t cb_libc_umask(uint32_t numask);
+char *cb_libc_strncat(char *s1, const char *s2, size_t n);
+int cb_libc_link(const char *name1, const char *name2);
+int cb_libc_symlink(const char *name1, const char *name2);
+cb_ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz);
+int cb_libc_mkfifo(const char *path, uint32_t mode);
+int cb_libc_mknod(const char *path, uint32_t mode, uint32_t dev);
+int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

@@ -180,9 +180,12 @@ static void translate_stat(const struct cb_stat_v1 *raw_stat, struct stat *stat_
     stat_buf->st_gid = 0;
     stat_buf->st_rdev = 0;
     stat_buf->st_size = (int64_t)raw_stat->size;
-    stat_buf->st_atime = 0;
-    stat_buf->st_mtime = 0;
-    stat_buf->st_ctime = 0;
+    stat_buf->st_atimespec.tv_sec = 0;
+    stat_buf->st_atimespec.tv_nsec = 0;
+    stat_buf->st_mtimespec.tv_sec = 0;
+    stat_buf->st_mtimespec.tv_nsec = 0;
+    stat_buf->st_ctimespec.tv_sec = 0;
+    stat_buf->st_ctimespec.tv_nsec = 0;
     stat_buf->st_blksize = 1024; /* Arbitrary I/O buffer sizing hint for client stdio/cat */
     stat_buf->st_blocks = 0;    /* RAMFS allocates byte buffers; 0 allocated disk blocks */
     stat_buf->st_flags = 0;
@@ -421,6 +424,128 @@ int cb_libc_madvise(void *addr, size_t len, int behav)
     (void)len;
     (void)behav;
     return 0;
+}
+
+int cb_libc_chmod(const char *path, uint32_t mode)
+{
+    (void)path;
+    (void)mode;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_lchmod(const char *path, uint32_t mode)
+{
+    (void)path;
+    (void)mode;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_chflags(const char *path, uint32_t flags)
+{
+    (void)path;
+    (void)flags;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_lutimens(const char *path, const struct timespec times[2])
+{
+    (void)path;
+    (void)times;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+uint32_t cb_libc_getuid(void)
+{
+    return 0;
+}
+
+static uint32_t current_umask = 022;
+
+uint32_t cb_libc_umask(uint32_t numask)
+{
+    uint32_t old_mask = current_umask;
+    current_umask = numask & 0777;
+    return old_mask;
+}
+
+char *cb_libc_strncat(char *s1, const char *s2, size_t n)
+{
+    char *dest = s1;
+    if (s1 == NULL || s2 == NULL)
+        return s1;
+    while (*dest != '\0')
+        dest++;
+    while (n > 0 && *s2 != '\0') {
+        *dest++ = *s2++;
+        n--;
+    }
+    *dest = '\0';
+    return s1;
+}
+
+int cb_libc_link(const char *name1, const char *name2)
+{
+    (void)name1;
+    (void)name2;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_symlink(const char *name1, const char *name2)
+{
+    (void)name1;
+    (void)name2;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+cb_ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz)
+{
+    (void)path;
+    (void)buf;
+    (void)bufsiz;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_EINVAL);
+    return -1;
+}
+
+int cb_libc_mkfifo(const char *path, uint32_t mode)
+{
+    (void)path;
+    (void)mode;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_mknod(const char *path, uint32_t mode, uint32_t dev)
+{
+    (void)path;
+    (void)mode;
+    (void)dev;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
+}
+
+int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid)
+{
+    (void)path;
+    (void)uid;
+    (void)gid;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_ENOSYS);
+    return -1;
 }
 
 void cb_libc_strmode(uint32_t mode, char *p)

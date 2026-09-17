@@ -18,4 +18,12 @@
 #define MAXPATHLEN 1024
 #endif
 
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
+
+#ifndef MAXBSIZE
+#define MAXBSIZE 65536
+#endif
+
 #endif

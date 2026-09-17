@@ -43,6 +43,7 @@ static int entry(const struct cb_api_v1 *api, int argc,
     }
     if (cb_file_call(api, "mman-probe") != 0) return 50;
     if (cb_file_call(api, "mkdir-probe") != 0) return 51;
+    if (cb_file_call(api, "cp-stub-probe") != 0) return 57;
     /* No descriptors beyond stdin/stdout/stderr exist yet. The ordinary
      * source creates with DEFFILEMODE and closes fd3; verify before later
      * task exit or kernel cleanup could hide a leaked descriptor/file. */

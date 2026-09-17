@@ -60,6 +60,9 @@
 /* fts_set() instructions. */
 #define FTS_SKIP 1
 
+/* fts_level constants. */
+#define FTS_ROOTLEVEL 0
+
 typedef struct cb_fts FTS;
 
 typedef struct cb_ftsent {

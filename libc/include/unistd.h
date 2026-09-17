@@ -22,6 +22,11 @@
 #define vfork cb_libc_vfork
 #define execl cb_libc_execl
 #define _exit cb_libc_exit
+#define getuid cb_libc_getuid
+#define link cb_libc_link
+#define symlink cb_libc_symlink
+#define readlink cb_libc_readlink
+#define lchown cb_libc_lchown
 
 #define F_OK 0
 #define X_OK 1
@@ -42,5 +47,10 @@ int cb_libc_rmdir(const char *path);
 void cb_libc_strmode(mode_t mode, char *p);
 pid_t cb_libc_vfork(void);
 int cb_libc_execl(const char *path, const char *arg0, ...);
+uid_t cb_libc_getuid(void);
+int cb_libc_link(const char *name1, const char *name2);
+int cb_libc_symlink(const char *name1, const char *name2);
+ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz);
+int cb_libc_lchown(const char *path, uid_t uid, gid_t gid);
 
 #endif
