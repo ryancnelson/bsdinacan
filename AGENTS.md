@@ -43,6 +43,20 @@ cd ../<repo>-<ID>
 Do not merge, rebase, delete branches, remove worktrees, or push to `main`
 unless the coordinating prompt explicitly asks for it.
 
+Nobody works in the primary checkout, including the coordinator: a branch
+checkout there mutates the same files another agent is compiling. The symptom
+is an intermittent `cannot find build/*.o` link failure, which looks like disk
+trouble and is really a concurrent checkout swapping the tree under a running
+compiler. Verify by read-only inspection or a throwaway clone instead.
+
+A worktree's `.git` is a *file* pointing at the parent repository, not a
+directory. Bind-mounting only the worktree into the Linux container therefore
+leaves every `git` invocation failing with `fatal: not a git repository`, which
+fails `check-publication` and so fails the whole `ci` gate for a reason that
+has nothing to do with the change under test. Either mount the parent
+repository at its real path as well, or run the gate from a disposable full
+clone. Confirmed 2026-09-17 against `check-publication`.
+
 ## Run one falsifiable loop
 
 1. Establish the task's clean baseline. On supported Linux hosts run
@@ -102,6 +116,25 @@ the latest commit must have green required checks.
   detect (`ENOSYS`, `EOPNOTSUPP`, or `NULL`) -- never return a fabricated success
   stub that silences the caller without performing the operation, and never
   return fabricated data.
+- Ownership is per *symbol*, not only per utility. Work assigned per utility
+  while several utilities need the same libc surface produced six independent
+  duplicate implementations of shared symbols (`fts_read` errno handling,
+  `strrchr`, `warnx`, `signal`, `user_from_uid`, `group_from_gid`); three were
+  real bugs that passed review and the gate and merged. Before implementing any
+  shared symbol, check `origin/main` and the other in-flight `work/<ID>`
+  branches. Consume an existing symbol rather than rewriting it; if it lacks a
+  property you need, ask its owner to add it rather than keeping a divergent
+  copy; report any addition to a shared header to the coordinator. State in your
+  handoff which shared symbols your branch touched -- asking for that list
+  explicitly caught two further collisions within minutes.
+- A capability check must name the field it is checking. `cb_libc_rmdir`'s
+  `struct_size` guard used `offsetof(rename)` rather than the `rmdir` field it
+  was gating, and was correct only by accident of struct layout. No gate catches
+  an accidentally correct check, so the field name must be verified by reading.
+- Detect compiler capabilities by probing, not by matching the compiler's name.
+  `$(CC)` is plain `cc` on hosts where that driver is Clang, so a `findstring
+  clang` test silently fails to fire and passes a GCC-only flag to Clang, which
+  rejects it and breaks the build outright.
 - Imported NetBSD files remain byte-for-byte unchanged at the pinned revision,
   retain their file license, and receive a hash and `UPSTREAM.md` entry. Put all
   renaming, compatibility, and runtime adaptation in cannedBSD-owned files.
