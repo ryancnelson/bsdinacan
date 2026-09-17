@@ -1388,6 +1388,16 @@ static int api_unlink(const char *path)
     return cb_vfs_unlink_path(active_kernel->current, path);
 }
 
+static int api_rmdir(const char *path)
+{
+    return cb_vfs_rmdir_path(active_kernel->current, path);
+}
+
+static int api_rename(const char *old_path, const char *new_path)
+{
+    return cb_vfs_rename_paths(active_kernel->current, old_path, new_path);
+}
+
 static int api_chdir(const char *path)
 {
     return cb_vfs_chdir_path(active_kernel->current, path);
@@ -1538,6 +1548,7 @@ static const char *api_strerror(int error)
     case CB_ENOTEMPTY: return "directory not empty";
     case CB_ERANGE: return "result too large";
     case CB_EOVERFLOW: return "value too large to be stored in data type";
+    case CB_EXDEV: return "cross-device link";
     default: return "unknown error";
     }
 }
@@ -1835,6 +1846,8 @@ static void initialize_api(struct cb_kernel *kernel)
     api->basename_buffer_location = api_basename_buffer_location;
     api->stdio_state_location = api_stdio_state_location;
     api->input_state_location = api_input_state_location;
+    api->rmdir = api_rmdir;
+    api->rename = api_rename;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

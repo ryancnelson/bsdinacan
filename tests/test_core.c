@@ -4209,8 +4209,11 @@ enum test_fixture {
     FIXTURE_BASENAME = 5,
     FIXTURE_YES = 6,
     FIXTURE_ERR = 7,
-    FIXTURE_CONV = 8
+    FIXTURE_CONV = 8,
+    FIXTURE_VFS04 = 9
 };
+
+static int register_vfs04_probes(struct cb_kernel *kernel);
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
  * Every new shared probe must be explicitly registered here and in Mac main. */
@@ -4541,6 +4544,9 @@ static void run_case(const char *command, const char *expected_output,
     } else if (fixture == FIXTURE_CONV) {
         if (register_conv_probes(kernel) != 0)
             fail("strtoimax probe registration");
+    } else if (fixture == FIXTURE_VFS04) {
+        if (register_vfs04_probes(kernel) != 0)
+            fail("VFS-04 probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -4921,6 +4927,324 @@ static void test_vfs_mount_routing(void)
     cb_vfs_destroy(&kernel);
 }
 
+/* VFS-04: rmdir and rename over the node/VFS contract. */
+static void test_vfs_rmdir_rename(void)
+{
+    struct cb_kernel kernel;
+    struct cb_task task;
+    struct cb_vfs_mount *other;
+    struct cb_vfs_node *node;
+    struct cb_vfs_node *node2;
+    struct cb_open_file *file;
+    struct cb_stat_v1 st;
+    struct cb_vfs_node_ops truncated;
+    const struct cb_vfs_node_ops *real_ops;
+
+    memset(&kernel, 0, sizeof(kernel));
+    memset(&task, 0, sizeof(task));
+    kernel.host = cb_linux_host_ops();
+    if (cb_vfs_initialize(&kernel) < 0)
+        fail("VFS initialization (rmdir/rename)");
+    task.kernel = &kernel;
+    task.root = kernel.vfs_root;
+    task.cwd = kernel.vfs_root;
+    cb_vfs_node_retain(task.root);
+    cb_vfs_node_retain(task.cwd);
+    task.error_cell = cb_allocate(&kernel, sizeof(int));
+
+    /* --- rmdir --- */
+
+    if (cb_vfs_rmdir_path(&task, "/nosuchdir") >= 0 || *task.error_cell != CB_ENOENT)
+        fail("rmdir missing did not return ENOENT");
+
+    file = cb_vfs_open(&task, "/afile", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /afile");
+    cb_open_file_release(file);
+    if (cb_vfs_rmdir_path(&task, "/afile") >= 0 || *task.error_cell != CB_ENOTDIR)
+        fail("rmdir on a regular file did not return ENOTDIR");
+    if (cb_vfs_stat_path(&task, "/afile", &st) < 0)
+        fail("rmdir on a file must leave it intact");
+
+    if (cb_vfs_mkdir_path(&task, "/adir", 0777) < 0)
+        fail("mkdir /adir");
+    file = cb_vfs_open(&task, "/adir/child", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /adir/child");
+    cb_open_file_release(file);
+    if (cb_vfs_rmdir_path(&task, "/adir") >= 0 || *task.error_cell != CB_ENOTEMPTY)
+        fail("rmdir on a non-empty directory did not return ENOTEMPTY");
+    if (cb_vfs_stat_path(&task, "/adir/child", &st) < 0)
+        fail("rmdir on a non-empty directory must leave its contents intact");
+
+    other = cb_ramfs_mount_create(&kernel);
+    if (other == NULL || cb_vfs_mkdir_path(&task, "/mnt2", 0777) < 0 ||
+        cb_vfs_mount_path(&task, "/mnt2", other) < 0)
+        fail("mount /mnt2 for rmdir/rename tests");
+    if (cb_vfs_rmdir_path(&task, "/mnt2") >= 0 || *task.error_cell != CB_EPERM)
+        fail("rmdir on a mount point did not return EPERM");
+
+    if (cb_vfs_mkdir_path(&task, "/emptydir", 0777) < 0)
+        fail("mkdir /emptydir");
+    if (cb_vfs_rmdir_path(&task, "/emptydir") < 0)
+        fail("rmdir on an empty directory should succeed");
+    if (cb_vfs_stat_path(&task, "/emptydir", &st) == 0)
+        fail("rmdir must actually remove the directory");
+
+    /* Old struct_size table: truncate before the rmdir/rename fields and
+       confirm ENOSYS rather than a crash or silent success, then restore
+       and confirm the real table still works normally. */
+    if (cb_vfs_mkdir_path(&task, "/oldtable", 0777) < 0)
+        fail("mkdir /oldtable");
+    if (cb_vfs_lookup_node(&task, "/oldtable", &node) < 0)
+        fail("lookup /oldtable");
+    real_ops = node->ops;
+    truncated = *real_ops;
+    truncated.struct_size = offsetof(struct cb_vfs_node_ops, rmdir);
+    truncated.rmdir = NULL;
+    truncated.rename = NULL;
+    node->ops = &truncated;
+    if (cb_vfs_rmdir_path(&task, "/oldtable") >= 0 || *task.error_cell != CB_ENOSYS)
+        fail("rmdir through an old struct_size table did not return ENOSYS");
+    node->ops = real_ops;
+    if (cb_vfs_rmdir_path(&task, "/oldtable") < 0)
+        fail("rmdir through the restored real table should succeed");
+
+    /* --- rename --- */
+
+    /* EXDEV: cross-mount rename must fail, leaving both names intact. */
+    file = cb_vfs_open(&task, "/xsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /xsrc");
+    cb_open_file_release(file);
+    if (cb_vfs_rename_paths(&task, "/xsrc", "/mnt2/xdst") >= 0 ||
+        *task.error_cell != CB_EXDEV)
+        fail("cross-mount rename did not return EXDEV");
+    if (cb_vfs_stat_path(&task, "/xsrc", &st) < 0)
+        fail("failed cross-mount rename must leave the source intact");
+    if (cb_vfs_stat_path(&task, "/mnt2/xdst", &st) == 0)
+        fail("failed cross-mount rename must not create the destination");
+
+    /* ENOTDIR / EISDIR type mismatch, both leaving names intact. */
+    if (cb_vfs_mkdir_path(&task, "/adir2", 0777) < 0)
+        fail("mkdir /adir2");
+    file = cb_vfs_open(&task, "/afile2", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /afile2");
+    cb_open_file_release(file);
+
+    if (cb_vfs_rename_paths(&task, "/adir2", "/afile2") >= 0 ||
+        *task.error_cell != CB_ENOTDIR)
+        fail("renaming a directory onto an existing file did not return ENOTDIR");
+    if (cb_vfs_stat_path(&task, "/adir2", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("failed directory-onto-file rename must leave the directory intact");
+    if (cb_vfs_stat_path(&task, "/afile2", &st) < 0 || st.type != CB_NODE_REGULAR)
+        fail("failed directory-onto-file rename must leave the file intact");
+
+    if (cb_vfs_rename_paths(&task, "/afile2", "/adir2") >= 0 ||
+        *task.error_cell != CB_EISDIR)
+        fail("renaming a file onto an existing directory did not return EISDIR");
+    if (cb_vfs_stat_path(&task, "/afile2", &st) < 0 || st.type != CB_NODE_REGULAR)
+        fail("failed file-onto-directory rename must leave the file intact");
+    if (cb_vfs_stat_path(&task, "/adir2", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("failed file-onto-directory rename must leave the directory intact");
+
+    /* Ordinary move: no existing target, same mount. */
+    if (cb_vfs_mkdir_path(&task, "/movesrc", 0777) < 0)
+        fail("mkdir /movesrc");
+    if (cb_vfs_rename_paths(&task, "/movesrc", "/movedst") < 0)
+        fail("ordinary rename should succeed");
+    if (cb_vfs_stat_path(&task, "/movesrc", &st) == 0)
+        fail("renamed source name must no longer resolve");
+    if (cb_vfs_stat_path(&task, "/movedst", &st) < 0 || st.type != CB_NODE_DIRECTORY)
+        fail("renamed destination name must resolve to the moved directory");
+
+    /* Preserves open-file identity: a file descriptor opened before the
+       rename must still refer to the exact same node afterward. */
+    file = cb_vfs_open(&task, "/idsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /idsrc");
+    if (cb_vfs_rename_paths(&task, "/idsrc", "/iddst") < 0)
+        fail("rename of an open file should succeed");
+    if (cb_vfs_lookup_node(&task, "/iddst", &node) < 0)
+        fail("lookup /iddst after rename");
+    if (node != file->object.node)
+        fail("rename must preserve the renamed file's node identity");
+    cb_open_file_release(file);
+
+    /* Atomic replace of an existing regular-file target. */
+    file = cb_vfs_open(&task, "/repltarget", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /repltarget");
+    cb_open_file_release(file);
+    file = cb_vfs_open(&task, "/replsrc", CB_O_CREAT | CB_O_WRONLY, 0600);
+    if (file == NULL)
+        fail("create /replsrc");
+    if (cb_vfs_lookup_node(&task, "/replsrc", &node) < 0)
+        fail("lookup /replsrc before replace");
+    if (cb_vfs_rename_paths(&task, "/replsrc", "/repltarget") < 0)
+        fail("rename replacing an existing regular-file target should succeed");
+    if (cb_vfs_stat_path(&task, "/replsrc", &st) == 0)
+        fail("replacing rename must remove the source name");
+    if (cb_vfs_lookup_node(&task, "/repltarget", &node2) < 0)
+        fail("lookup /repltarget after replace");
+    if (node2 != node)
+        fail("replacing rename must install the source's own node at the target name, not a copy");
+    cb_open_file_release(file);
+
+    /* rename() onto itself is a no-op success (POSIX convention). */
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/repltarget") < 0)
+        fail("renaming a path onto itself should succeed as a no-op");
+
+    /* Old struct_size table for rename, mirroring the rmdir case above. */
+    if (cb_vfs_lookup_node(&task, "/repltarget", &node) < 0)
+        fail("lookup /repltarget for old-table rename test");
+    real_ops = node->ops;
+    truncated = *real_ops;
+    truncated.struct_size = offsetof(struct cb_vfs_node_ops, rmdir);
+    truncated.rmdir = NULL;
+    truncated.rename = NULL;
+    node->ops = &truncated;
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/renamedelsewhere") >= 0 ||
+        *task.error_cell != CB_ENOSYS)
+        fail("rename through an old struct_size table did not return ENOSYS");
+    node->ops = real_ops;
+    if (cb_vfs_rename_paths(&task, "/repltarget", "/renamedelsewhere") < 0)
+        fail("rename through the restored real table should succeed");
+
+    /* POSIX EINVAL: reject making a directory a subdirectory of itself.
+       This is the exact cycle libby's cycle-detection review surfaced:
+       rename('/cycleA', '/cycleA/cycleB/cycleA') would otherwise resolve
+       new_parent=cycleB by walking straight through cycleA (no infinite
+       loop in getting there), pass every other check, and relink cycleA
+       under cycleB -- leaving cycleB's own parent pointer still pointing
+       at cycleA, a two-node cycle disconnected from root entirely. Assert
+       topology after the rejection, not just the error code: the whole
+       danger was corrupted structure, not a missing return value. */
+    if (cb_vfs_mkdir_path(&task, "/cycleA", 0777) < 0)
+        fail("mkdir /cycleA");
+    if (cb_vfs_mkdir_path(&task, "/cycleA/cycleB", 0777) < 0)
+        fail("mkdir /cycleA/cycleB");
+    if (cb_vfs_lookup_node(&task, "/cycleA", &node) < 0)
+        fail("lookup /cycleA before rejected cycle rename");
+    if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+        fail("lookup /cycleA/cycleB before rejected cycle rename");
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/cycleB/cycleA") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory into its own descendant did not return EINVAL");
+    /* Topology assertions: A is still reachable from root as the same
+       node, and B's parent is still A -- neither pointer was touched by
+       the rejected attempt. */
+    {
+        struct cb_vfs_node *reresolved_a, *b_parent;
+        if (cb_vfs_lookup_node(&task, "/cycleA", &reresolved_a) < 0 ||
+            reresolved_a != node)
+            fail("cycleA must still be reachable from root as the same node after rejection");
+        if (cb_vfs_lookup_node(&task, "/cycleA/cycleB", &node2) < 0)
+            fail("cycleA/cycleB must still resolve after rejection");
+        b_parent = node2->ops->parent(node2);
+        if (b_parent != node)
+            fail("cycleB's parent must still be cycleA after the rejected rename");
+    }
+    /* One-level case: new_parent is old_node itself, not just a descendant
+       of it (rename('/cycleA', '/cycleA/x')). Same EINVAL, same walk --
+       old_node is reached on the very first hop. */
+    if (cb_vfs_rename_paths(&task, "/cycleA", "/cycleA/x") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming a directory directly into itself did not return EINVAL");
+
+    /* Audit, per the director's request, of the rest of POSIX rename's
+       EINVAL set: '.'/'..' as an operand, and renaming the true root.
+       Neither needed a new check -- both are already correctly rejected
+       by existing machinery, verified here rather than assumed. */
+
+    /* '.' and '..' are never literal path components by the time they
+       reach resolution: cb_test_path_normalize collapses them during
+       normalization. rename("/cycleA/.", "/elsewhere") normalizes old_path
+       to plain "/cycleA" -- an ordinary, harmless rename, not a special
+       case. rename("/cycleA", "/cycleA/..") normalizes new_path to "/",
+       and resolve_parent already rejects a bare "/" (no name component
+       after the final slash) with EINVAL -- confirmed directly below,
+       not assumed from reading the code. */
+    if (cb_vfs_mkdir_path(&task, "/dotcheck", 0777) < 0)
+        fail("mkdir /dotcheck");
+    if (cb_vfs_rename_paths(&task, "/dotcheck/.", "/dotcheck2") < 0)
+        fail("rename with a trailing '.' on the source should behave as an ordinary rename");
+    if (cb_vfs_rename_paths(&task, "/dotcheck2", "/dotcheck2/..") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming onto a path that normalizes to '/' did not return EINVAL");
+
+    /* True root: any same-mount new_parent is necessarily root itself or a
+       descendant of it (root has no sibling; everything in this mount
+       chains back to it via parent()), so the new descendant-of-self walk
+       above catches old_node == root unconditionally and returns EINVAL
+       before ever reaching old_node->ops->rename(). ramfs_rename's own
+       node->parent == NULL check (the original, lower-level protection)
+       is genuine defense in depth here, not the layer actually reached --
+       confirmed directly by checking the observed errno, not assumed from
+       reading the code. */
+    if (cb_vfs_rename_paths(&task, "/", "/newroot") >= 0 ||
+        *task.error_cell != CB_EINVAL)
+        fail("renaming the true filesystem root did not return EINVAL");
+
+    cb_release(&kernel, task.error_cell);
+    cb_vfs_node_release(task.cwd);
+    cb_vfs_node_release(task.root);
+    cb_vfs_destroy(&kernel);
+}
+
+/* VFS-04: proves the rename() allocation-failure path (cb_string_duplicate
+   for the new name) leaves no dangling node and both names fully intact --
+   the injected fail_at=0 targets the one allocation cb_vfs_rename_paths
+   makes before it ever mutates any node/parent state. */
+static int renameallocprobe_main(const struct cb_api_v1 *api, int argc,
+                                 char *const argv[], char *const envp[])
+{
+    struct cb_stat_v1 st;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/allocsrc", 0777) < 0)
+        return 910;
+
+    allocation_failure_countdown = 0;
+    if (api->rename("/allocsrc", "/allocdst") == 0) {
+        allocation_failure_countdown = -1;
+        return 911;
+    }
+    allocation_failure_countdown = -1;
+    if (api->get_errno() != CB_ENOMEM)
+        return 912;
+    if (api->stat("/allocsrc", &st) < 0)
+        return 913;
+    if (api->stat("/allocdst", &st) == 0)
+        return 914;
+
+    /* The runtime must still work normally afterward: no corrupted state
+       or leaked allocation from the failed attempt. */
+    if (api->rename("/allocsrc", "/allocdst") < 0)
+        return 915;
+    if (api->stat("/allocdst", &st) < 0)
+        return 916;
+
+    return 0;
+}
+
+static const struct cb_program_v1 renameallocprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "renameallocprobe", 0,
+    64 * 1024, renameallocprobe_main
+};
+
+/* Same reasoning as register_yes_probes: FIXTURE_FULL is already at
+ * CB_MAX_PROGRAMS's 64-slot ceiling, so VFS-04's allocation-failure probe
+ * gets its own scoped fixture instead of growing that production capacity. */
+static int register_vfs04_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &renameallocprobe_program) == 0 ?
+           0 : -1;
+}
+
 static void test_err(void)
 {
     run_case("errinterleave", "", 0, 1);
@@ -5216,6 +5540,7 @@ int main(int argc, char **argv)
         run_case("libctruncateprobe", "", 0, 1);
         run_case("truncateprobe", "", 0, 1);
         run_case("truncateinterleave", "", 0, 1);
+    run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
         puts("truncate tests passed");
         return 0;
     }
@@ -5249,6 +5574,7 @@ int main(int argc, char **argv)
     test_nullboot();
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
+    test_vfs_rmdir_rename();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
@@ -5373,6 +5699,7 @@ int main(int argc, char **argv)
     test_poll_runnable_timeout();
     run_case("truncateprobe", "", 0, 1);
     run_case("truncateinterleave", "", 0, 1);
+    run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
     run_case("libcdirnameprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnameoldtableprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnamenulltableprobe", "", 0, FIXTURE_DIRNAME);
