@@ -2,7 +2,7 @@
 
 **Reviewer:** Antigravity (Independent Validation & Safety Reviewer)  
 **Date:** 2026-09-16  
-**Target Document & Commit:** `work/VFS-04` @ [`0683387`](file:///Users/ryan/devel/bsdinacan-VFS-04) (on top of merge `443054b`)  
+**Target Document & Commit:** `work/VFS-04` @ `0683387` (on top of merge `443054b`)  
 **Status:** **ACCEPTED & VERIFIED GREEN**
 
 ---
