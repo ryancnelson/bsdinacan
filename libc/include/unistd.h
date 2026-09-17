@@ -2,9 +2,7 @@
 #define CANNEDBSD_UNISTD_H
 
 #include "cannedbsd/libc.h"
-
-typedef cb_ssize_t ssize_t;
-typedef cb_off_t off_t;
+#include "sys/types.h"
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1

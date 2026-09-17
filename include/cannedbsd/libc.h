@@ -52,19 +52,15 @@ int cb_libc_open(const char *path, int flags, ...);
 int cb_libc_close(int descriptor);
 int cb_libc_truncate(const char *path, cb_off_t length);
 int cb_libc_ftruncate(int descriptor, cb_off_t length);
-/* Thin pass-through to bound_api->stat, in the same spirit as every other
-   cb_libc_* wrapper in this header. stat/fstat sit before the api_is_usable
-   struct_size checkpoint (offsetof(..., poll)) but are not in its NULL-check
-   list, so unlike truncate/ftruncate this one still guards against a bound
-   table that leaves stat unset. Exists so libc/cb_fts.c (a separate
-   translation unit with no access to cb_libc.c's private bound_api) can
-   populate an FTSENT's fts_statp without any new ABI surface. */
-int cb_libc_stat(const char *path, struct cb_stat_v1 *stat_buffer);
 /* Thin pass-throughs to bound_api->unlink/rmdir. unlink has been on the
    base table since before this project's optional-extension convention
-   existed, so only a NULL check is needed (matching cb_libc_stat above).
-   rmdir was appended by VFS-04, so it additionally needs the struct_size
-   guard every appended field gets (matching cb_libc_opendir's family). */
+   existed, so only a NULL check is needed. rmdir was appended by VFS-04,
+   so it additionally needs the struct_size guard every appended field
+   gets (matching cb_libc_opendir's family). cb_libc_stat/fstat/lstat are
+   declared further below, alongside STAT-02's struct stat -- this file
+   used to also declare an interim cb_stat_v1-shaped cb_libc_stat here for
+   FTS-CORE-01's own use before STAT-02 existed; STAT-02's reconciliation
+   of cb_fts.c replaced that need, so it is not re-declared here. */
 int cb_libc_unlink(const char *path);
 int cb_libc_rmdir(const char *path);
 int cb_libc_isatty(int descriptor);
@@ -105,6 +101,33 @@ char *cb_libc_dirname_upstream(char *path);
 char *cb_libc_dirname(char *path);
 char *cb_libc_basename_upstream(char *path);
 char *cb_libc_basename(char *path);
+#define S_IFMT   0170000
+#define S_IFIFO  0010000
+#define S_IFCHR  0020000
+#define S_IFDIR  0040000
+#define S_IFBLK  0060000
+#define S_IFREG  0100000
+#define S_IFLNK  0120000
+#define S_IFSOCK 0140000
+
+/*
+ * POSIX struct stat definition, shared between cb_libc.c (which populates it)
+ * and libc/include/sys/stat.h (which exposes it to ordinary source).
+ * Types are standard integer types (uint64_t, uint32_t, int64_t, int32_t)
+ * matching ino_t, mode_t, off_t, blksize_t, blkcnt_t.
+ */
+struct stat {
+    uint64_t st_ino;
+    uint32_t st_mode;
+    int64_t st_size;
+    int32_t st_blksize;
+    int64_t st_blocks;
+};
+
+int cb_libc_stat(const char *path, struct stat *stat_buf);
+int cb_libc_fstat(int descriptor, struct stat *stat_buf);
+int cb_libc_lstat(const char *path, struct stat *stat_buf);
+
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
 int cb_libc_closedir(struct cb_libc_dir *dirp);

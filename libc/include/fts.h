@@ -18,7 +18,7 @@
  * exists below only so it compiles, and does nothing in this cut.
  */
 
-#include "cannedbsd/abi.h"
+#include "cannedbsd/libc.h"
 #include <stddef.h>
 
 /* fts_info values. Ordinary/whiteout/directory-cycle entries all reuse the
@@ -73,16 +73,7 @@ typedef struct cb_ftsent {
     char *fts_name;            /* last component of fts_path */
     size_t fts_namelen;
     int fts_errno;             /* set when fts_info is DNR/ERR/NS */
-    /*
-     * NOT struct stat *: libc/include/sys/stat.h is still a stub (no
-     * public POSIX struct stat or stat()/fstat() wrapper exists yet --
-     * that is CAT-01's still-open decision). This populates fts_statp
-     * with exactly what cb_stat_v1 already provides (inode/size/mode/
-     * type), per the design note's own stated approach, rather than
-     * preempting CAT-01. Consumers ported later will need this field
-     * reconciled to whatever CAT-01 lands on.
-     */
-    struct cb_stat_v1 *fts_statp;
+    struct stat *fts_statp;
 } FTSENT;
 
 FTS *cb_libc_fts_open(char *const *path_argv, int options,
