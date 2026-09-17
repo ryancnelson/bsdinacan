@@ -17,6 +17,7 @@ add_library(cb_wc OBJECT ${ROOT}/upstream/netbsd/usr.bin/wc/wc.c)
 target_include_directories(cb_wc PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
+target_compile_options(cb_wc PRIVATE -include ${ROOT}/compat/netbsd/include/cannedbsd_wc_state.h)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)

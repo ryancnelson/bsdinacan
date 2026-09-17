@@ -148,6 +148,7 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 $(WC_COMMAND_OBJECT): upstream/netbsd/usr.bin/wc/wc.c \
+		compat/netbsd/include/cannedbsd_wc_state.h \
 		compat/netbsd/include/sys/file.h \
 		compat/netbsd/include/sys/param.h \
 		compat/netbsd/include/sys/types.h \
@@ -160,6 +161,7 @@ $(WC_COMMAND_OBJECT): upstream/netbsd/usr.bin/wc/wc.c \
 		libc/include/sys/types.h libc/include/unistd.h \
 		libc/include/wchar.h libc/include/wctype.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-include compat/netbsd/include/cannedbsd_wc_state.h \
 		-Dmain=cb_wc_main \
 		-c $< -o $@
 

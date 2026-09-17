@@ -3,10 +3,5 @@
 
 #include <fcntl.h>
 
-#define setlocale(cat, loc) \
-    ((void)(tlinect = twordct = tcharct = tlongest = 0, \
-            doline = doword = dobyte = dochar = dolongest = false, \
-            rval = 0), \
-     cb_libc_setlocale(cat, loc))
-
 #endif
+
