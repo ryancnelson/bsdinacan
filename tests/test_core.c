@@ -4321,10 +4321,12 @@ enum test_fixture {
     FIXTURE_ERR = 7,
     FIXTURE_CONV = 8,
     FIXTURE_VFS04 = 9,
-    FIXTURE_LS = 10
+    FIXTURE_LS = 10,
+    FIXTURE_FTS = 11
 };
 
 static int register_vfs04_probes(struct cb_kernel *kernel);
+static int register_fts_probes(struct cb_kernel *kernel);
 
 /* Keep the shared Mac suite independent of the full 64-slot native fixture.
  * Every new shared probe must be explicitly registered here and in Mac main. */
@@ -4666,6 +4668,9 @@ static void run_case(const char *command, const char *expected_output,
         if (cb_kernel_register(kernel, &ls_interleave_child_program) < 0 ||
             cb_kernel_register(kernel, &ls_interleave_program) < 0)
             fail("ls interleave test program registration");
+    } else if (fixture == FIXTURE_FTS) {
+        if (register_fts_probes(kernel) != 0)
+            fail("FTS-CORE-01 probe registration");
     }
     if (cb_kernel_boot(kernel, command) < 0)
         fail("kernel boot");
@@ -5364,6 +5369,223 @@ static int register_vfs04_probes(struct cb_kernel *kernel)
            0 : -1;
 }
 
+extern int cb_fts_core_walk_main(int argc, char *argv[]);
+extern int cb_fts_skip_walk_main(int argc, char *argv[]);
+extern int cb_fts_close_walk_main(int argc, char *argv[]);
+extern int cb_fts_cycle_walk_main(int argc, char *argv[]);
+extern int cb_fts_allocfail_walk_main(int argc, char *argv[]);
+
+static int fts_make_file(const struct cb_api_v1 *api, const char *path)
+{
+    int fd = api->open(path, CB_O_WRONLY | CB_O_CREAT, 0600);
+    if (fd < 0)
+        return -1;
+    return api->close(fd);
+}
+
+static int ftscoreprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsA", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/f1") < 0 ||
+        api->mkdir("/tmp/ftsA/d1", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/d1/f2") < 0 ||
+        api->mkdir("/tmp/ftsA/d1/d2", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsA/d1/d2/f3") < 0 ||
+        api->mkdir("/tmp/ftsB", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsB/f4") < 0)
+        return 800;
+    result = cb_libc_start(api, 0, NULL, cb_fts_core_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 810 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftscoreprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscoreprobe", 0,
+    64 * 1024, ftscoreprobe_main
+};
+
+static int ftsskipprobe_main(const struct cb_api_v1 *api, int argc,
+                             char *const argv[], char *const envp[])
+{
+    int result;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsskip", 0777) < 0 ||
+        api->mkdir("/tmp/ftsskip/keep", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsskip/keep/k1") < 0 ||
+        api->mkdir("/tmp/ftsskip/skip", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsskip/skip/s1") < 0)
+        return 820;
+    result = cb_libc_start(api, 0, NULL, cb_fts_skip_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 830 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftsskipprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftsskipprobe", 0,
+    64 * 1024, ftsskipprobe_main
+};
+
+static int ftscloseprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    int result;
+    int handles[CB_MAX_DIRS];
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+    if (api->mkdir("/tmp/ftsclose", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a/b", 0777) < 0 ||
+        api->mkdir("/tmp/ftsclose/a/b/c", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsclose/a/b/c/leaf") < 0)
+        return 840;
+    result = cb_libc_start(api, 0, NULL, cb_fts_close_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 850 + result;
+    /* Real evidence the three still-open frames (root, a, b) at the point
+       of the early fts_close were actually released, not leaked: every
+       CB_MAX_DIRS slot must still be available from scratch. */
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        handles[index] = api->opendir("/tmp");
+        if (handles[index] < 0)
+            return 860;
+    }
+    for (index = 0; index < CB_MAX_DIRS; ++index) {
+        if (api->closedir(handles[index]) < 0)
+            return 861;
+    }
+    return 0;
+}
+
+static const struct cb_program_v1 ftscloseprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscloseprobe", 0,
+    64 * 1024, ftscloseprobe_main
+};
+
+static int ftscycleprobe_main(const struct cb_api_v1 *api, int argc,
+                              char *const argv[], char *const envp[])
+{
+    int result;
+    char path[64];
+    int level;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    /* A genuine, reachable-from-root graph cycle turns out to be
+       unconstructible against this RAMFS backend at all -- see
+       tests/fts_cycle_walk.c's own comment and
+       notes/iterations/FTS-CORE-01.md for the verified reasoning
+       (attempted via a raw node_ops->rename splice of the mount root
+       into one of its own descendants; ramfs_rename rejects any node
+       with a NULL parent with EPERM, and no rename-based construction
+       on a non-root node can avoid disconnecting the cyclic component
+       from root instead, since RAMFS has no hardlink primitive). This
+       builds a real 8-level-deep, ordinary (acyclic) chain instead, to
+       prove cycle detection does not false-positive on legitimate deep
+       nesting. */
+    if (api->mkdir("/tmp/ftsdeep", 0777) < 0)
+        return 870;
+    strcpy(path, "/tmp/ftsdeep");
+    for (level = 0; level < 8; ++level) {
+        size_t len = strlen(path);
+        path[len] = '/';
+        path[len + 1] = (char)('a' + level);
+        path[len + 2] = '\0';
+        if (api->mkdir(path, 0777) < 0)
+            return 871;
+    }
+
+    result = cb_libc_start(api, 0, NULL, cb_fts_cycle_walk_main);
+    cb_libc_start(api, 0, NULL, dirent_noop_main);
+    if (result != 0)
+        return 880 + result;
+    return 0;
+}
+
+static const struct cb_program_v1 ftscycleprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftscycleprobe", 0,
+    64 * 1024, ftscycleprobe_main
+};
+
+static int ftsallocfailprobe_main(const struct cb_api_v1 *api, int argc,
+                                  char *const argv[], char *const envp[])
+{
+    int result;
+    int fail_at;
+    int handles[CB_MAX_DIRS];
+    int index;
+    (void)argc;
+    (void)argv;
+    (void)envp;
+
+    if (api->mkdir("/tmp/ftsallocroot", 0777) < 0 ||
+        fts_make_file(api, "/tmp/ftsallocroot/leaf") < 0)
+        return 890;
+
+    /* Covers fts_open's own allocation and entry_create's three logical
+       allocations (FTSENT, fts_path, fts_statp) for the root entry, each
+       of which makes two underlying cb_allocate calls (payload plus
+       bookkeeping), same accounting as direntlibcallocfailprobe_main
+       above. */
+    for (fail_at = 0; fail_at < 8; ++fail_at) {
+        allocation_failure_countdown = fail_at;
+        result = cb_libc_start(api, 0, NULL, cb_fts_allocfail_walk_main);
+        cb_libc_start(api, 0, NULL, dirent_noop_main);
+        allocation_failure_countdown = -1;
+        if (result != 0)
+            return 900 + fail_at;
+        for (index = 0; index < CB_MAX_DIRS; ++index) {
+            handles[index] = api->opendir("/tmp");
+            if (handles[index] < 0)
+                return 910;
+        }
+        for (index = 0; index < CB_MAX_DIRS; ++index) {
+            if (api->closedir(handles[index]) < 0)
+                return 911;
+        }
+    }
+    return 0;
+}
+
+static const struct cb_program_v1 ftsallocfailprobe_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "ftsallocfailprobe", 0,
+    64 * 1024, ftsallocfailprobe_main
+};
+
+static int register_fts_probes(struct cb_kernel *kernel)
+{
+    return cb_kernel_register(kernel, &ftscoreprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftsskipprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftscloseprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftscycleprobe_program) == 0 &&
+                   cb_kernel_register(kernel, &ftsallocfailprobe_program) == 0
+               ? 0
+               : -1;
+}
+
+static void test_fts(void)
+{
+    run_case("ftscoreprobe", "", 0, FIXTURE_FTS);
+    run_case("ftsskipprobe", "", 0, FIXTURE_FTS);
+    run_case("ftscloseprobe", "", 0, FIXTURE_FTS);
+    run_case("ftscycleprobe", "", 0, FIXTURE_FTS);
+    run_case("ftsallocfailprobe", "", 0, FIXTURE_FTS);
+}
+
 static void test_err(void)
 {
     run_case("errinterleave", "", 0, 1);
@@ -5725,6 +5947,7 @@ int main(int argc, char **argv)
     test_vfs_executable_nodes();
     test_vfs_mount_routing();
     test_vfs_rmdir_rename();
+    test_fts();
     expect_path("/", "/", "/");
     expect_path("/home/user", "../user/./file", "/home/user/file");
     expect_path("/tmp", "../../../../x", "/x");
