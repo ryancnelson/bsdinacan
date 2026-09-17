@@ -5923,31 +5923,24 @@ static int rm01cmdprobe_main(const struct cb_api_v1 *api, int argc,
     (void)argc;
     (void)wrapper_argv;
 
-    /* Deliberately ONE child per directory level here, not the more
-       realistic multi-child tree this was first written with. A
-       multi-child directory exposed a real, separate finding: VFS-03's
-       own design note (notes/iterations/VFS-03-design.md) explicitly,
-       deliberately chose an ordinal child_at() index re-walked from the
-       live list on every call, and explicitly accepts "skip a sibling
-       on concurrent removal" as within-spec, tested behavior for a
-       generic racing mutator. rm -r's own pattern -- the SAME task
-       removing the entry it just visited, via the SAME open directory
-       handle, before reading the next one -- hits exactly that accepted
-       skip case on every multi-child directory, silently leaving later
-       siblings (and their entire subtrees) never visited or removed.
-       That is a real, load-bearing gap in an already-accepted design's
-       stated tradeoff, not a coding mistake in this ID's own new code,
-       and reopening an explicitly-reasoned design decision is not this
-       ID's call to make unilaterally -- see notes/iterations/RM-01.md
-       and the report to the coordinator. A single-child-per-level tree
-       cannot trigger the skip (there is nothing after position 0 to
-       skip past), so it still proves rm_tree()'s own FTS_D/FTS_DP
-       pre/post-order dispatch and unlink()/rmdir() sequencing are
-       otherwise correct. */
+    /* Originally written as a single-child-per-level tree to work
+       around VFS-03's directory-cursor skip bug (see
+       notes/iterations/RM-01.md and notes/iterations/VFS-03.md): rm -r's
+       pattern of removing the entry it just visited, via the SAME open
+       directory handle, before reading the next one, hit VFS-03's
+       accepted "skip a sibling on concurrent removal" case on EVERY
+       multi-child directory, silently leaving later siblings (and their
+       entire subtrees) never visited or removed. That gap is now fixed
+       by VFS-05's look-ahead directory cursor (see
+       notes/iterations/VFS-05.md), so this restores the realistic
+       multi-child tree -- "top" is a second, later-visited sibling of
+       "a" at /tmp/rmtree's own level -- to actually prove rm -r handles
+       real, multi-entry directories end to end. */
     if (api->mkdir("/tmp/rmtree", 0777) < 0 ||
         api->mkdir("/tmp/rmtree/a", 0777) < 0 ||
         api->mkdir("/tmp/rmtree/a/b", 0777) < 0 ||
-        fts_make_file(api, "/tmp/rmtree/a/b/f") < 0)
+        fts_make_file(api, "/tmp/rmtree/a/b/f") < 0 ||
+        fts_make_file(api, "/tmp/rmtree/top") < 0)
         return 1000;
 
     if (api->spawn("rm", rm_argv_recursive, envp, NULL, 0, &pid) < 0)
