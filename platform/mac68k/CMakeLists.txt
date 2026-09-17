@@ -22,6 +22,13 @@ foreach(probe fwrite fread file stdin memory getopt truncate err warn strcpy ter
     target_include_directories(cb_${probe}_probe PRIVATE ${ROOT}/libc/include)
 endforeach()
 target_compile_definitions(cb_fread_probe PRIVATE main=cb_fread_probe_main)
+# libc_file_probe.c reads MAXBSIZE from compat/netbsd/include/sys/param.h, so it
+# needs the same include set the Linux build gives it in Makefile's
+# $(BUILD)/libc_file_probe.o rule (-Icompat/netbsd/include -Ilibc/include).
+# The two builds list include paths independently, so a probe that gains a
+# compat-header dependency compiles on Linux and fails only here. See
+# notes/iterations/MAC68K-INC-01.md.
+target_include_directories(cb_file_probe PRIVATE ${ROOT}/compat/netbsd/include)
 target_compile_definitions(cb_file_probe PRIVATE main=cb_file_probe_main)
 target_compile_definitions(cb_stdin_probe PRIVATE main=cb_stdin_probe_main)
 target_compile_definitions(cb_progname_probe PRIVATE main=cb_progname_probe_main)
