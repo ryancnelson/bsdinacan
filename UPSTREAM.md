@@ -1,5 +1,51 @@
 # Imported upstream source
 
+## Standing constraint: compiler idiom recognition on link-name-bound imports
+
+Any imported source whose function is bound to its private link name via
+the `__asm__("cb_libc_X")` declaration trick (as opposed to a plain
+preprocessor `#define X cb_libc_X`, which renames the source-level
+identifier itself before the compiler ever sees the standard library
+name) keeps its *source-level* name as the standard, compiler-recognized
+one — `memset`, `memcpy`, `memmove`, `memcmp`, `strcpy`, `strcmp` today.
+GCC's loop-idiom recognition (`-ftree-loop-distribute-patterns`, on by
+default from `-O2`) can rewrite a loop inside such a function's own body
+into a call back to that same standard name if the loop shape matches a
+known idiom (a constant-fill loop matching `memset` is the textbook
+case). Because the `__asm__` binding is in effect for the whole
+translation unit, that compiler-generated call resolves back to the
+function currently being compiled, producing unbounded self-recursion —
+a stack-overflow segfault at runtime, with no compile-time symptom.
+`memset.c` hit this exactly (see its entry below); fixed there with
+`-fno-builtin-memset` plus a GCC-only `-fno-tree-loop-distribute-patterns`
+(Clang rejects that flag outright, so it is conditional on `$(CC)` in the
+Makefile).
+
+**Checked empirically, not by analogy, whether the same risk is live in
+every other already-merged link-name-bound import** (`strcpy`, `strcmp`,
+`memcpy`, `memmove`, `memcmp`): compiled each with its current, unmodified
+Makefile flags and disassembled the result. None contain any call
+instruction at all — every one compiles to fully straight-line code, so
+the idiom-recognition rewrite never fires for any of their loop shapes.
+This is a property of those specific loops (byte-at-a-time copy/compare
+with a NUL or count termination condition, not a plain constant-fill),
+not a guarantee that would survive a future GCC version, a changed
+optimization level, or a future edit to any of these files. **No flags
+were added to their build rules**, since AGENTS.md's rule against libc
+surface unsupported by a measured diagnostic applies here too: adding
+`-fno-builtin-*` to functions with no measured self-recursion would be
+exactly the kind of unearned, speculative change this project avoids.
+
+**Recipe for any future import binding a new function to a compiler-
+recognized standard name via this `__asm__` trick:** disassemble the
+compiled object and grep for a call/branch-and-link instruction targeting
+either the function's own private symbol or the plain standard name
+before considering the import safe at whatever optimization level the
+Makefile actually uses. Do not infer safety from an import compiling and
+its own direct unit tests passing — the recursion is only reachable
+through GCC's own idiom-matching, which is independent of what the
+imported source or the tests do.
+
 ## NetBSD `yes`
 
 - Repository: `https://github.com/NetBSD/src`
