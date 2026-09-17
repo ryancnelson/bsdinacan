@@ -606,6 +606,61 @@ char *cb_libc_strncat(char *s1, const char *s2, size_t n)
     return s1;
 }
 
+size_t cb_libc_strspn(const char *s, const char *charset)
+{
+    const char *p = s;
+    if (s == NULL || charset == NULL)
+        return 0;
+    while (*p != '\0') {
+        const char *c = charset;
+        int match = 0;
+        while (*c != '\0') {
+            if (*p == *c) {
+                match = 1;
+                break;
+            }
+            ++c;
+        }
+        if (!match)
+            break;
+        ++p;
+    }
+    return (size_t)(p - s);
+}
+
+size_t cb_libc_strcspn(const char *s, const char *charset)
+{
+    const char *p = s;
+    if (s == NULL || charset == NULL)
+        return 0;
+    while (*p != '\0') {
+        const char *c = charset;
+        while (*c != '\0') {
+            if (*p == *c)
+                return (size_t)(p - s);
+            ++c;
+        }
+        ++p;
+    }
+    return (size_t)(p - s);
+}
+
+void *cb_libc_setmode(const char *mode_str)
+{
+    (void)mode_str;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_EINVAL);
+    else
+        *cb_libc_errno_location() = CB_EINVAL;
+    return NULL;
+}
+
+uint32_t cb_libc_getmode(const void *set, uint32_t mode)
+{
+    (void)set;
+    return mode;
+}
+
 int cb_libc_link(const char *name1, const char *name2)
 {
     (void)name1;

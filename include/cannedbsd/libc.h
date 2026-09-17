@@ -243,6 +243,10 @@ int cb_libc_mkfifo(const char *path, uint32_t mode);
 int cb_libc_mknod(const char *path, uint32_t mode, uint32_t dev);
 int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid);
 int cb_libc_fcntl(int fd, int cmd, ...);
+size_t cb_libc_strspn(const char *s, const char *charset);
+size_t cb_libc_strcspn(const char *s, const char *charset);
+void *cb_libc_setmode(const char *mode_str);
+uint32_t cb_libc_getmode(const void *set, uint32_t mode);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

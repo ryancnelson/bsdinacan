@@ -76,9 +76,13 @@ int strcmp(const char *left, const char *right) __asm__("cb_libc_strcmp");
 #define strlcpy cb_libc_strlcpy
 #define strrchr cb_libc_strrchr
 #define strncat cb_libc_strncat
+#define strspn cb_libc_strspn
+#define strcspn cb_libc_strcspn
 
 size_t cb_libc_strlcpy(char *dst, const char *src, size_t siz);
 char *cb_libc_strrchr(const char *text, int character);
 char *cb_libc_strncat(char *s1, const char *s2, size_t n);
+size_t cb_libc_strspn(const char *s, const char *charset);
+size_t cb_libc_strcspn(const char *s, const char *charset);
 
 #endif

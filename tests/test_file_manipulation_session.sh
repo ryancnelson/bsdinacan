@@ -144,4 +144,12 @@ check_stdin_session \
     "" \
     "interactive stdin session driving all six verbs"
 
+# 6. Session-level directory lifecycle, nested file population, directory inspection, and recursive removal (VFS-05)
+check_case \
+    'mkdir /tmp/proj; echo "manifest data" > /tmp/proj/manifest.txt; mkdir /tmp/proj/src; echo "source code" > /tmp/proj/src/main.c; ls /tmp/proj; ls /tmp/proj/src; cat /tmp/proj/manifest.txt; cat /tmp/proj/src/main.c; rm -r /tmp/proj; ls /tmp' \
+    0 \
+    "src\nmanifest.txt\nmain.c\nmanifest data\nsource code\n" \
+    "" \
+    "session-level directory lifecycle with recursive rm -r (VFS-05)"
+
 echo 'file manipulation session behavioral suite passed'

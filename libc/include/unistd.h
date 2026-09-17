@@ -49,6 +49,9 @@
 #define optarg (cb_libc_getopt_state_location()->optarg)
 #define getopt cb_libc_getopt
 
+#define setmode cb_libc_setmode
+#define getmode cb_libc_getmode
+
 int cb_libc_access(const char *path, int mode);
 int cb_libc_unlink(const char *path);
 int cb_libc_rmdir(const char *path);
@@ -60,5 +63,7 @@ int cb_libc_link(const char *name1, const char *name2);
 int cb_libc_symlink(const char *name1, const char *name2);
 ssize_t cb_libc_readlink(const char *path, char *buf, size_t bufsiz);
 int cb_libc_lchown(const char *path, uid_t uid, gid_t gid);
+void *cb_libc_setmode(const char *mode_str);
+mode_t cb_libc_getmode(const void *set, mode_t mode);
 
 #endif

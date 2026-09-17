@@ -362,4 +362,27 @@ for symbol in chflags chmod close errno_location fcpxattr fts_set \
     fi
 done
 
+mkdir_source=upstream/netbsd/bin/mkdir/mkdir.c
+mkdir_object=$build_path/netbsd_mkdir.o
+mkdir_hash=a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8
+
+if [[ $(sha256sum "$mkdir_source" | awk '{print $1}') != "$mkdir_hash" ]] ||
+   ! matches "$mkdir_hash" "$provenance_file"; then
+    echo 'FAIL: mkdir source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$mkdir_object" | matches '[[:space:]]T[[:space:]]+cb_mkdir_main$' ||
+   nm "$mkdir_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: mkdir entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in chmod err errno_location exit fprintf free getmode getopt \
+        getopt_state_location getprogname mkdir setlocale setmode setprogname \
+        stat stderr_stream strcspn strspn umask warn; do
+    if nm -u "$mkdir_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: mkdir imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
 echo 'pinned unmodified NetBSD source boundary passed'

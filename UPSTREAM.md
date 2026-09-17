@@ -726,3 +726,23 @@ directory traversal, VFS `mkdir`, and chunked 64KB read/write fallback loops
 when `mmap` returns `MAP_FAILED` (`ENOSYS`). It makes 0 calls to `vfork`,
 `fork`, `exec*`, `spawn`, `system`, or `popen`. Compiled with `-DSMALL
 -Dmain=cb_cp_main`.
+
+## NetBSD `mkdir`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mkdir/mkdir.c`
+- Local path: `upstream/netbsd/bin/mkdir/mkdir.c`
+- SHA-256: `a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8`
+- Embedded RCS identifier: `$NetBSD: mkdir.c,v 1.39 2021/09/13 22:46:02 kre Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1983, 1992, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/mkdir_module.c`. The build renames `main` to `cb_mkdir_main`.
+It depends on `mkdir(2)` (from `VFS-MKDIR-01`), `stat(2)` / `chmod(2)`,
+`umask(2)`, `strspn(3)` / `strcspn(3)`, and `setmode(3)` / `getmode(3)`
+(which returns `NULL` with `CB_EINVAL` when `-m` is passed since symbolic
+mode compilation is not yet implemented). `mkdir` and `mkdir -p` execute
+entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
+`system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.
