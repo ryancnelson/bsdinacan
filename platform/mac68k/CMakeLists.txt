@@ -100,6 +100,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
     ${ROOT}/tests/terminal_engine_probe.c
+    ${ROOT}/tests/signal_probe.c
     ${ROOT}/tests/tee_state_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c

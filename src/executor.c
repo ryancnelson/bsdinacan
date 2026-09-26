@@ -35,18 +35,27 @@ static const struct cb_executor_ops native_ops = {
     native_suspend,
     native_request_termination,
     native_instance_destroy,
-    native_program_destroy
+    native_program_destroy,
+    CB_EXECUTOR_COOPERATIVE_INTERRUPT
 };
 
 static int executor_valid(const struct cb_executor_ops *executor)
 {
     return executor != NULL && executor->abi_version == CB_ABI_VERSION_V1 &&
-           executor->struct_size >= sizeof(*executor) &&
+           executor->struct_size >= CB_EXECUTOR_V1_PREFIX_SIZE &&
            executor->prepare != NULL && executor->instance_create != NULL &&
            executor->start_or_resume != NULL && executor->suspend != NULL &&
            executor->request_termination != NULL &&
            executor->instance_destroy != NULL &&
            executor->program_destroy != NULL;
+}
+
+int cb_executor_supports_interrupt(const struct cb_executor_ops *executor)
+{
+    return executor != NULL && executor->abi_version == CB_ABI_VERSION_V1 &&
+           executor->struct_size >= offsetof(struct cb_executor_ops, capabilities) +
+                                    sizeof(executor->capabilities) &&
+           (executor->capabilities & CB_EXECUTOR_COOPERATIVE_INTERRUPT) != 0;
 }
 
 const struct cb_executor_ops *cb_native_executor(void)
@@ -164,6 +173,7 @@ static void native_entry(void *argument)
     int status;
     task->kernel->current = task;
     task->state = CB_TASK_RUNNING;
+    cb_task_deliver_interrupt(task);
     status = program->descriptor.start(&task->kernel->api, task->argc,
                                        task->argv, task->environment);
     task->kernel->api.exit(status);

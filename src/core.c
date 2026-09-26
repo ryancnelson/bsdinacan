@@ -8,6 +8,7 @@
 static struct cb_kernel *active_kernel;
 
 static void initialize_api(struct cb_kernel *kernel);
+static void api_exit(int status);
 
 struct cb_task_allocation {
     void *pointer;
@@ -520,6 +521,53 @@ static const struct cb_file_ops pipe_write_ops = {
     no_truncate
 };
 
+static int task_interrupt_supported(const struct cb_task *task)
+{
+    if (task->program == NULL ||
+        !cb_executor_supports_interrupt(task->program->executor)) return 0;
+    /* After program installation pending_program is NULL even though the state
+       stays EXEC_PENDING during instance creation. Validate the installed image. */
+    return task->state != CB_TASK_EXEC_PENDING || task->pending_program == NULL ||
+           cb_executor_supports_interrupt(task->pending_program->executor);
+}
+
+int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous)
+{
+    if (task == NULL || previous == NULL ||
+        (disposition != CB_INTERRUPT_DEFAULT && disposition != CB_INTERRUPT_IGNORE))
+        return -CB_EINVAL;
+    if (!task_interrupt_supported(task)) return -CB_ENOSYS;
+    *previous = task->interrupt_disposition;
+    task->interrupt_disposition = disposition;
+    if (disposition == CB_INTERRUPT_IGNORE) task->interrupt_pending = 0;
+    return 0;
+}
+
+int cb_kernel_request_interrupt(struct cb_kernel *kernel, cb_pid_t pid)
+{
+    struct cb_task *task;
+    if (kernel == NULL) return -CB_EINVAL;
+    for (task = kernel->tasks; task != NULL; task = task->next)
+        if (task->pid == pid) break;
+    if (task == NULL || task->state == CB_TASK_ZOMBIE || task->state == CB_TASK_DEAD)
+        return -CB_ENOENT;
+    if (!task_interrupt_supported(task)) return -CB_ENOSYS;
+    if (task->interrupt_disposition == CB_INTERRUPT_IGNORE) return 0;
+    task->interrupt_pending = 1;
+    if (task->state == CB_TASK_BLOCKED_PIPE || task->state == CB_TASK_BLOCKED_CONSOLE ||
+        task->state == CB_TASK_BLOCKED_WAIT || task->state == CB_TASK_BLOCKED_POLL)
+        task->state = CB_TASK_RUNNABLE;
+    return 0;
+}
+
+void cb_task_deliver_interrupt(struct cb_task *task)
+{
+    if (task->interrupt_pending && task->interrupt_disposition == CB_INTERRUPT_DEFAULT) {
+        task->interrupt_pending = 0;
+        api_exit(130);
+    }
+}
+
 void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
 {
     struct cb_kernel *kernel = task->kernel;
@@ -529,6 +577,7 @@ void cb_task_yield_as(struct cb_task *task, enum cb_task_state state)
     cb_executor_suspend(task->execution);
     kernel->current = task;
     task->state = CB_TASK_RUNNING;
+    cb_task_deliver_interrupt(task);
 }
 
 static void task_release_allocations(struct cb_task *task)
@@ -624,6 +673,8 @@ static struct cb_task *task_create(struct cb_kernel *kernel,
         goto fail;
     task->pid = ++kernel->next_pid;
     task->ppid = parent == NULL ? 0 : parent->pid;
+    task->interrupt_disposition = parent == NULL ? CB_INTERRUPT_DEFAULT :
+                                                       parent->interrupt_disposition;
     task->stdio_state.abi_version = CB_ABI_VERSION_V1;
     task->stdio_state.struct_size = sizeof(struct cb_stdio_state_v1);
     task->input_state.abi_version = CB_ABI_VERSION_V1;
@@ -918,6 +969,11 @@ static int api_exec(const char *program_name, char *const argv[],
         return -1;
     }
 
+    if ((task->interrupt_pending || task->interrupt_disposition == CB_INTERRUPT_IGNORE) &&
+        !cb_executor_supports_interrupt(node->executable->executor)) {
+        cb_task_set_error(task, CB_ENOSYS);
+        return -1;
+    }
     cb_vfs_node_retain(node);
 
     new_argv = argument_vector_copy(task->kernel, argv, &new_owned_argv);
@@ -931,6 +987,16 @@ static int api_exec(const char *program_name, char *const argv[],
         return -1;
     }
 
+    /* Allocation adapters may queue an interrupt on this serialized thread.
+       Recheck before publishing replacement ownership; rejection is atomic. */
+    if ((task->interrupt_pending || task->interrupt_disposition == CB_INTERRUPT_IGNORE) &&
+        !cb_executor_supports_interrupt(node->executable->executor)) {
+        argument_vector_destroy(task->kernel, new_argv, new_owned_argv);
+        string_vector_destroy(task->kernel, new_environment);
+        cb_vfs_node_release(node);
+        cb_task_set_error(task, CB_ENOSYS);
+        return -1;
+    }
     task->pending_executable_node = node;
     task->pending_program = node->executable;
     task->pending_argv = new_argv;
