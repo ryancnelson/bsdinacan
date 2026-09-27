@@ -1040,6 +1040,7 @@ ci:
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py
+	python3 -B tests/test_statics_repro_gate.py
 	$(MAKE) check-publication
 	$(MAKE) clean test
 	$(MAKE) sanitize
