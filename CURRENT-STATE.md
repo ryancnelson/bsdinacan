@@ -22,7 +22,7 @@ wiring predates current main.
 The Linux file-manipulation session exercises create, plain listing, copy,
 move, recursive deletion, inspection, and pipelines. The literal milestone
 of using unchanged NetBSD utilities for every verb remains unfinished: ls is
-still the owned placeholder and rejects options. Permissions and metadata
+still the owned placeholder and does not implement options. Permissions and metadata
 preservation remain deferred; do not treat the remeasurement note's cp -p
 scorecard as supported behavior. Its repeated-command evidence concerned wc,
 not general freedom from command-global state defects.
