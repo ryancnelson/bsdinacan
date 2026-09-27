@@ -13,15 +13,47 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments (2026-09-12):** SOLARIS-01 is accepted; FORMAT-01 design
-is integrated on main `206bfe4` (documentation only). Codex corrects the rejected
-SOLARIS-02 runner in work/SOLARIS-02-review and implements the reviewed SIG-01 core phase in its own worktree. Claude's and Antigravity's original worktrees are preserved. The locked
-desktop prevents restarting app workers or running Mac acceptance.
+**Coordination checkpoint (2026-09-27):** audited main `6cd71fe` passed exact
+Woodpecker #480 ci/mac68k/mac-automation. TERM-03, SIG-01 core, FORMAT-01,
+ECHO-02, WC-02, and Mac command build wiring are already integrated; older
+in-progress/ready-to-merge labels below are historical. Current main is not
+freshly guest-qualified. The last documented accepted Mac run is the
+67-record `adf62f1` milestone; current expectations contain 69 records and
+still omit file-manipulation milestone execution. See CURRENT-STATE.md.
 
-TERM-03 `fe082eb` has exact #405 all-three CI success after merging accepted
-Solaris source, but still requires fresh 68-record Mac and native Solaris
-qualification. No staged guest or fresh acceptance is claimed. Keep it off main
-until those gates pass. The accepted runtime remains the 67-record milestone.
+Codex reviews pending STATICS-RESET-01 `b2d003b`; LS-02 stays behind that
+prerequisite. A separate worker owns SOLARIS-WC-GATE-01 below. Claude and
+Antigravity worktrees are preserved; the locked desktop prevents verified
+new submissions. No app worker is claimed running from old UI evidence.
+
+### SOLARIS-WC-GATE-01 — update native wc acceptance contract
+
+- Status: In progress; Codex reviewer worker, work/SOLARIS-WC-GATE-01.
+- Base: main; dependencies: WC-02 and ECHO-02 (integrated).
+- Hypothesis: tools/solaris9-build.sh rejects correct padded NetBSD wc output
+  because it still compares against the former unpadded count.
+- Red test: exercise the runner assertion with the current exact output and
+  observe rejection; include incorrect-output controls.
+- Acceptance: require exactly seven spaces and 5 for the existing fixture,
+  retain wrong-output rejection, and run applicable CI. Offline checks do not
+  qualify Solaris execution; native run remains a serialized outstanding gate.
+- Scope: native assertion and focused regression coverage only; no runtime or
+  utility implementation changes, and no shared-rig operations by the worker.
+
+### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
+
+- Status: Blocked on STATICS-RESET-01 review/integration and guest availability.
+- Base: main; dependencies: STATICS-RESET-01 and existing file utilities.
+- Hypothesis: compilation-only coverage cannot demonstrate the newly integrated
+  mkdir/cp/mv/rm/ls milestone works inside System 7.
+- Red test: establish a failing behavioral control for each newly covered
+  operation; do not describe absent test registration as a runtime failure.
+- Acceptance: deterministic shared cases create a directory/file, list, copy,
+  move, inspect and remove it, asserting contents, statuses and cleanup;
+  preserve existing cases. Exact CI and fresh full Mac transcript/screenshot/
+  normal shutdown are required, plus applicable Solaris qualification.
+- Scope: shared acceptance cases and expected transcript wiring; keep native
+  ls import and unrelated libc additions in their own backlog items.
 
 Solaris testing is required for shared behavior changes under the transition
 policy in `notes/CI.md`; skipped and historical runs are not passing evidence.

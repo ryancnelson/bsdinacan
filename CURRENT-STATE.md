@@ -1,35 +1,63 @@
 # Current State — cannedBSD
 
-**Last verified:** 2026-09-08
+**Last repository/CI audit:** 2026-09-27 (guest evidence is dated separately below)
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Coordination checkpoint, 2026-09-12
+## Coordination checkpoint, 2026-09-27
 
-Main `206bfe4cb4bbe355faf29d214016b71927715430` includes the reviewed
-FORMAT-01 design after exact #408 ci, mac68k and mac-automation succeeded.
-This changes documentation only; signed-decimal formatting is not implemented.
-The accepted runtime remains the qualified 67-record Solaris/Mac milestone.
+Audited main: `6cd71fefc50167e1161c590a2f8f515bfb861e1a`.
+Exact Woodpecker #480 succeeded in `ci`, `mac68k`, and `mac-automation`.
+These results establish Linux checks, Mac compilation, and automation harness
+checks; they do not establish a fresh System 7 or Solaris run of this main.
 
-TERM-03 `fe082ebc52aef40e65a03d16d4c967ac57720852` combines the reviewed
-engine with accepted Solaris changes. Exact #405 passed all three workflows;
-artifact checksum is verified. Its 68-record Mac execution and native Solaris
-qualification remain pending. No new guest was staged or launched while the
-host desktop is locked; newest accepted guest evidence remains run-rcnizgak.
+Main now includes TERM-03, SIG-01 core, FORMAT-01 implementation, and twelve
+pinned NetBSD utilities: echo, yes, printenv, dirname, basename, head, wc, cat,
+cp, mv, rm, and mkdir. The owned ls, tr, true, and false commands remain.
+Standard echo now runs the upstream implementation; the netbsdecho alias was
+removed. Program capacity is 72. Do not merge the obsolete combined
+`ec8f729` branch: its TERM/SIG work is already integrated and its utility
+wiring predates current main.
 
-SOLARIS-02 `f3a38276f0616afe59f47ce34ab2a7a57f4de8e0` passed existing #406
-CI, but is rejected for live use after independent offline reproductions.
-The driver can release ownership on timeout, bypass the manual owner record,
-and treat transport failure as completion. Other reproduced faults concern
-staging-output parsing, console echoes and source overwrite before reservation.
-The new tests were not wired into existing CI and omit these driver paths.
-A Codex worker owns corrections in separate work/SOLARIS-02-review, preserving
-Claude's source branch. Live rig operations remain blocked until review and
-meaningful offline controls pass. Automated Solaris CI is not accepted.
+The Linux file-manipulation session exercises create, plain listing, copy,
+move, recursive deletion, inspection, and pipelines. The literal milestone
+of using unchanged NetBSD utilities for every verb remains unfinished: ls is
+still the owned placeholder and rejects options. Permissions and metadata
+preservation remain deferred; do not treat the remeasurement note's cp -p
+scorecard as supported behavior. Its repeated-command evidence concerned wc,
+not general freedom from command-global state defects.
 
-The desktop remains locked, preventing new directions to Claude/Antigravity
-and Mac acceptance. Codex workers continue offline runner fixes and the reviewed SIG-01 core
-state/request implementation in a new isolated worktree; their running status does not imply either app agent was restarted.
+Current Mac expectations contain 69 PASS records plus ALL PASS. They do not
+yet execute the mkdir/cp/mv/rm/ls milestone. Latest accepted Mac evidence
+located in tracked project notes remains `adf62f1`, #398, run-rcnizgak,
+67 PASS records, 22.16 seconds, with inspected screenshot and normal shutdown;
+the detailed checksum is retained below. Separate TERM `fe082eb` and SIG
+`ea667d6` iteration notes record later Solaris qualification, but neither
+qualifies current main's combined utility changes. Fresh current-main Mac
+and Solaris acceptance remain outstanding.
+
+Immediate work:
+
+- Review unmerged STATICS-RESET-01 `b2d003b` (#485 green), which addresses
+  command heap/state defects. Keep LS-02 behind that prerequisite and required
+  guest qualification; passing Linux milestone examples do not close it.
+- SOLARIS-WC-GATE-01 corrects the native runner's stale unpadded wc assertion.
+  Current upstream wc returns seven spaces followed by 5 for the fixture.
+  Validate the assertion offline before an ownership-coordinated native run.
+- MAC-MILESTONE-TEST-01 adds observable file-manipulation cases to the shared
+  Mac suite after the state fixes, then qualifies an exact fresh artifact.
+
+The host desktop was locked at this checkpoint: no new Claude/Antigravity
+submission or Mac run is claimed. Shared Solaris rig ownership must be
+confirmed before console/media operations. The reviewed SOLARIS-02 repair
+`f43c31a` passed #416 and offline driver review; a live trial and integration
+are still pending. Original `f3a3827` remains rejected for live use.
+
+## Historical qualification records
+
+The dated entries below describe their own commits, not current-main
+qualification. They supersede neither the outstanding gates nor the source
+inventory above.
 
 ## Accepted synthetic tee-state proof, 2026-09-08
 
