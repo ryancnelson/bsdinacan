@@ -72,7 +72,7 @@ test "$output" = HELLO || { print -r -- "acceptance output: <$output>"; exit 1; 
 output=$(./build/bsdinacan -c 'false; echo $?')
 test "$output" = 1 || { print -r -- "exit-status acceptance output: <$output>"; exit 1; }
 output=$(./build/bsdinacan -c 'echo -n hello | wc -c')
-test "$output" = 5 || { print -r -- "libc acceptance output: <$output>"; exit 1; }
+test "$output" = '       5' || { print -r -- "libc acceptance output: <$output>"; exit 1; }
 
 file build/bsdinacan
 print -r -- 'SOLARIS9_CANNEDBSD_TEST=PASS'

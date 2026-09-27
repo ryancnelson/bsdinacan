@@ -912,6 +912,7 @@ check-linux-write: $(BUILD)/test_linux_write
 	$(BUILD)/test_linux_write
 
 ci:
+	python3 -B tests/test_solaris9_build_acceptance.py
 	$(MAKE) check-build-parity
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
