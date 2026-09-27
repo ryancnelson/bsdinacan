@@ -21,14 +21,15 @@ freshly guest-qualified. The last documented accepted Mac run is the
 67-record `adf62f1` milestone; current expectations contain 69 records and
 still omit file-manipulation milestone execution. See CURRENT-STATE.md.
 
-Codex reviews pending STATICS-RESET-01 `b2d003b`; LS-02 stays behind that
-prerequisite. A separate worker owns SOLARIS-WC-GATE-01 below. Claude and
+Review blocks STATICS-RESET-01 `b2d003b` on retained-buffer defects and a
+false-success detector; LS-02 stays behind that prerequisite. A separate worker owns SOLARIS-WC-GATE-01 below. Claude and
 Antigravity worktrees are preserved; the locked desktop prevents verified
 new submissions. No app worker is claimed running from old UI evidence.
 
 ### SOLARIS-WC-GATE-01 — update native wc acceptance contract
 
-- Status: In progress; Codex reviewer worker, work/SOLARIS-WC-GATE-01.
+- Status: Reviewed `628e9a0`, exact #489 ci/mac68k/mac-automation green;
+  native Solaris execution pending before integration. Branch preserved.
 - Base: main; dependencies: WC-02 and ECHO-02 (integrated).
 - Hypothesis: tools/solaris9-build.sh rejects correct padded NetBSD wc output
   because it still compares against the former unpadded count.
@@ -39,6 +40,38 @@ new submissions. No app worker is claimed running from old UI evidence.
   qualify Solaris execution; native run remains a serialized outstanding gate.
 - Scope: native assertion and focused regression coverage only; no runtime or
   utility implementation changes, and no shared-rig operations by the worker.
+
+### STATICS-REPRO-GATE-02 — make state regression checks fail honestly
+
+- Status: In progress; Codex worker, work/STATICS-REPRO-GATE-02.
+- Base: exact STATICS-RESET-01 `b2d003b`; dependencies: candidate repro suite.
+- Hypothesis: matching only the absence of selected error strings treats a
+  failed or nonfunctional target as passing.
+- Red test: PROGRAM_PATH pointing to false or true makes the old script report
+  all five cases fixed; both controls must be rejected.
+- Acceptance: require successful command execution and positive fixture output
+  in every case, retaining wrong-state/error checks. Distinguish the untested
+  cross-mount mv path from the exercised same-mount behavior.
+- Scope: regression script and harness controls only. Do not merge this entire
+  prerequisite branch until its independent runtime blockers are repaired.
+
+### STATICS-CACHE-02 — repair retained command buffer lifecycle
+
+- Status: Ready for a distinct worker; runtime prerequisite for STATICS-RESET-01.
+- Base: exact STATICS-RESET-01 `b2d003b`; coordinate with STATICS-REPRO-GATE-02,
+  which owns the shell regression detector.
+- Hypothesis: preserving function-local pointers without their size/ownership
+  lifecycle does not isolate commands across invocations or kernel teardown.
+- Red test: grow cat -B from 2048 to 4096 over a 3002-byte fixture; separately
+  run/destroy/recreate a kernel and repeat a heap-buffer cat invocation.
+- Acceptance: correct contents and statuses without invalid memory accesses;
+  correct nonzero defaults after recreation; interleaved tasks, allocation
+  failures, immediate cleanup and unchanged upstream hashes checked. Require
+  full exact CI, fresh Mac acceptance and native Solaris qualification.
+- Scope: command-state ownership and reset mechanism; inspect compiler-generated
+  symbols/toolchain support before choosing a fix, preserve pinned sources,
+  and do not substitute indefinite allocation retention for proper cleanup.
+- Evidence: notes/iterations/STATICS-RESET-REVIEW-01.md.
 
 ### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
 

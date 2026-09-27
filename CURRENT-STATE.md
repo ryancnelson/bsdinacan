@@ -38,12 +38,15 @@ and Solaris acceptance remain outstanding.
 
 Immediate work:
 
-- Review unmerged STATICS-RESET-01 `b2d003b` (#485 green), which addresses
-  command heap/state defects. Keep LS-02 behind that prerequisite and required
+- Repair review blockers in unmerged STATICS-RESET-01 `b2d003b` (#485 green):
+  changing cat buffer sizes overflows its retained allocation; the regression
+  detector also reports success for nonfunctional programs. See
+  `notes/iterations/STATICS-RESET-REVIEW-01.md`. Keep LS-02 behind that prerequisite and required
   guest qualification; passing Linux milestone examples do not close it.
-- SOLARIS-WC-GATE-01 corrects the native runner's stale unpadded wc assertion.
+- SOLARIS-WC-GATE-01 `628e9a0` corrects the native runner's stale unpadded wc assertion
+  and passed independent review plus exact #489 all-three CI.
   Current upstream wc returns seven spaces followed by 5 for the fixture.
-  Validate the assertion offline before an ownership-coordinated native run.
+  Offline controls passed; native execution remains pending before integration.
 - MAC-MILESTONE-TEST-01 adds observable file-manipulation cases to the shared
   Mac suite after the state fixes, then qualifies an exact fresh artifact.
 
