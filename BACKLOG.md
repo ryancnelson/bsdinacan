@@ -13,18 +13,19 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Coordination checkpoint (2026-09-28):** main includes test-only MAC-FILEPROBE-01
-`c8e8dd0`, exact #495 all-three CI green and independently verified fresh Mac
-acceptance: 69 PASS plus ALL PASS, normal shutdown and slot release in 26.28 seconds.
-The suite still omits file-manipulation milestone execution. Current-runtime
+**Coordination checkpoint (2026-09-29):** main is `7a8b0fb`; TEST-ENTRY-01
+passed exact #502 all three workflows and independent review. Latest accepted
+Mac runtime artifact remains #495, 69 PASS plus ALL PASS with normal shutdown.
+The guest is now reserved for Ryan's interactive session. Current-runtime
 Solaris acceptance remains pending. See CURRENT-STATE.md for evidence/limits.
 
-Claude owns STATICS-CACHE-02 in its new worktree; the inherited state-repair
-candidate remains rejected until its lifecycle defects are fixed and qualified.
-Antigravity owns only preparatory MAC-MILESTONE-TEST-01 documentation in a
-separate worktree. Both assignments were submitted and observed running.
-STATICS-REPRO-GATE-02 is reviewed and available as a detector prerequisite;
-it does not qualify the underlying runtime. Preserve earlier worktrees.
+Sprint priority: upstream ls, then tee, then quality review. Claude's
+STATICS-CACHE-02/LS-02 candidate `5ba7741` has #508 success and is under
+independent review. SIG-02 `7712111` has #507 success but requires a repair to
+rename's old-size ABI check. Neither runtime candidate is accepted. Antigravity's
+MAC-MILESTONE-TEST-01 proposal is reviewed documentation only; its latest assigned
+work is a read-only ls audit. The desktop is locked, so renewed app submissions
+have not been verified. Preserve all existing worktrees.
 
 ### MAC-FILEPROBE-01 — portable timestamp test expectations
 
@@ -43,8 +44,8 @@ it does not qualify the underlying runtime. Preserve earlier worktrees.
 
 ### TEST-ENTRY-01 — extract the existing fclose probe callback correction
 
-- Status: Coordinator candidate `7a8b0fb`; independent review clean, #502
-  running. This exact file correction already existed in `b2d003b`; it is
+- Status: Done, `7a8b0fb` merged; independent review clean, exact #502
+  all three workflows passed and the Linux sanitizer log was inspected. This exact file correction already existed in `b2d003b`; it is
   extracted without the blocked runtime rather than implemented again.
 - Base: `9d13844`; dependencies: none.
 - Hypothesis: a probe defined as `main(void)` is called through the incompatible
@@ -58,7 +59,7 @@ it does not qualify the underlying runtime. Preserve earlier worktrees.
 
 ### CI-SANITIZER-02 — fail the Linux gate on undefined behavior
 
-- Status: Ready for bounded design; Antigravity investigating read-only.
+- Status: Ready; deferred behind the ls/tee sprint and included in its quality review.
   Implementation must consume TEST-ENTRY-01 before running the full gate.
 - Base: accepted TEST-ENTRY-01 or its exact candidate by coordinator assignment.
 - Dependencies: TEST-ENTRY-01; no shared runtime or ABI changes.
@@ -105,7 +106,8 @@ it does not qualify the underlying runtime. Preserve earlier worktrees.
 
 ### STATICS-CACHE-02 — repair retained command buffer lifecycle
 
-- Status: In progress; Claude in work/STATICS-CACHE-02. Runtime prerequisite
+- Status: Candidate `5ba7741`, exact #508 all three workflows passed; independent
+  review and guest qualification pending. Claude owns work/STATICS-CACHE-02. Runtime prerequisite
   for STATICS-RESET-01 remains unaccepted.
 - Base: exact STATICS-RESET-01 `b2d003b`; coordinate with STATICS-REPRO-GATE-02,
   which owns the shell regression detector.
@@ -2431,12 +2433,27 @@ accepted. Future stream or integer extensions still require explicit design.
   The unchanged tee -i proof is downstream TEE-01 acceptance; synthetic
   real-request behavior establishes this prerequisite without importing tee.
 
+### SIG-02 — expose cooperative interrupts through the private signal veneer
+
+- Status: Candidate `7712111`, exact #507 all-three CI success; independent
+  review found a rename old-size ABI guard regression. Repair before integration.
+- Base: `7a8b0fb`; dependencies: integrated SIG-01 core.
+- Scope: private SIGINT default/ignore dispositions and previous-disposition
+  return through an appended versioned callback; no arbitrary signal handlers.
+- Hypothesis: real per-task dispositions support tee -i without host signals.
+- Red/acceptance: reject unsupported handlers/capabilities without mutation;
+  exercise default versus ignored delivery, peer isolation, spawn/exec and old
+  table lengths. Preserve rename on tables predating the new callback.
+- Integration: append LS-02 wall_clock_millis before SIG-02 set_interrupt;
+  rebuild and independently review the exact combined ABI. Fresh Mac and
+  applicable Solaris acceptance remain outstanding.
+
 ### TEE-01 — import unchanged NetBSD tee with isolated execution state
 
 - **Status:** Blocked; unassigned
 - **Base:** freshly fetched main
 - **Depends on:** STAT-01, WRITE-02-linux, WRITE-02-portable, TEE-STATE-01,
-  SIG-01, SOLARIS-01
+  SIG-01, SIG-02, SOLARIS-01
 - **Scope:** import pinned tee byte-for-byte, retaining license and hash; connect
   the reviewed executor state wrapper and real interrupt disposition. Keep all
   adaptation outside upstream source. No unrelated libc expansion.

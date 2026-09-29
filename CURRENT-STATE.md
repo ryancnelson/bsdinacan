@@ -1,6 +1,6 @@
 # Current State — cannedBSD
 
-**Last repository/CI audit:** 2026-09-28 (guest evidence is dated separately below)
+**Last repository/CI audit:** 2026-09-29 (guest evidence is dated separately below)
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
@@ -19,35 +19,41 @@ on the classic Mac adapter, whose documented unavailable-clock value is zero.
 The correction uses exact injected zero/nonzero clock fixtures and changes no
 production runtime, ABI or adapter. See notes/iterations/MAC-FILEPROBE-01.md.
 
-Main documentation/evidence checkpoint `9d13844` passed exact #499 all-three
-CI and independent review before integration. That workflow still reports a
-pre-existing incorrect-function-type UBSan diagnostic: successful CI is not a
-claim of clean sanitizer output. TEST-ENTRY-01 extracts the existing test-only
-callback correction; CI-SANITIZER-02 will make unexpected diagnostics fatal.
-Neither candidate is accepted merely because it has been queued.
+Main includes TEST-ENTRY-01 `7a8b0fb`, independently reviewed with exact #502
+ci/mac68k/mac-automation success. The complete Linux log no longer contains the
+incorrect-function-type UBSan diagnostic seen in #499. The correction affects
+only a Linux core-test callback; this is not fresh production guest qualification.
+CI-SANITIZER-02 remains queued to make unexpected sanitizer diagnostics fatal.
 
-Current-runtime Solaris qualification is still outstanding. This test-only
-correction is not production Solaris acceptance or a waiver for later runtime
-changes. File-manipulation milestone execution is still absent from the 69
-Mac records. Source inventory and remaining utility limits below still apply.
+Current sprint order is **upstream ls, then tee, then a quality review**. Focused
+regressions can replace redundant development-wide reruns; final exact-commit CI,
+independent review and fresh Mac artifact acceptance remain required.
 
-Verified app assignments, each in its own worktree:
-
-- Claude is implementing STATICS-CACHE-02, including changed buffer sizes,
-  kernel recreation, defaults, cleanup and interleaving. It may consume reviewed
-  detector commit `1e3b58b` (#492 all-three green); root independently reran the
-  detector's five methods/30 fault subtests. No cache repair is accepted yet.
-- Antigravity is revising documentation for MAC-MILESTONE-TEST-01; implementation
-  remains blocked. Initial proposal `406c9da` was rejected because cases wrongly
-  shared filesystem state across fresh kernels and omitted transcript-budget
-  accounting. Its revision remains under review; no milestone execution claimed.
+- Claude's STATICS-CACHE-02/LS-02 candidate `5ba7741` passed exact #508 all
+  three workflows. It merges current main and repairs command static ownership,
+  mixed-mode ls state, dot traversal and several ls options. Independent review
+  is in progress; no runtime integration or guest acceptance is claimed.
+- SIG-02 candidate `7712111` passed exact #507 all three workflows. It connects
+  the private signal veneer to the existing cooperative interrupt mechanism.
+  Independent review found an old-size rename ABI guard regression; repair is
+  required before integration. The combined ABI must append wall_clock_millis
+  before set_interrupt and be rebuilt and qualified together.
+- Antigravity's MAC-MILESTONE-TEST-01 proposal `b3b97bb` passed exact #503 and
+  documentation review. Its ten proposed cases are not implemented or executed.
+  Antigravity was subsequently assigned a read-only ls completeness audit.
 - SOLARIS-WC-GATE-01 `628e9a0` is reviewed with #489 green but remains off main
-  pending native execution and coordinated rig ownership.
+  pending native execution and coordinated rig ownership. Current-runtime
+  Solaris qualification is still outstanding.
 
-The desktop is accessible again and both app assignments were submitted and
-observed running. Guest slot is free after the accepted run. Historical locked
-state and superseded assignments in the September 27 checkpoint below describe
-that earlier audit only.
+Ryan's interactive Basilisk session was launched from the #495 artifact and
+reached the shell after 69 PASS records and ALL PASS. It remains reserved for
+Ryan; this session is not an autorun/shutdown acceptance record. Do not drive,
+shut down or release the guest slot without checking its ownership.
+
+At the September 29 audit the host Mac was locked and automatic unlock failed.
+No new Claude/Antigravity UI submission is claimed. Repository review continues;
+the user has been asked to unlock the desktop. The older app/guest states below
+are historical, not evidence of current accessibility or a free guest slot.
 
 ## Historical coordination checkpoint, 2026-09-27
 

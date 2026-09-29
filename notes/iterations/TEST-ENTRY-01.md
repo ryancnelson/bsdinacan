@@ -1,6 +1,6 @@
 # TEST-ENTRY-01 — extract the existing fclose probe callback correction
 
-- Status: candidate; exact CI and independent review pending.
+- Status: merged as `7a8b0fb`; exact #502 all-three CI and independent review passed.
 - Base: `9d13844fd298b198f77f4f4b1ed966e0b1421564`.
 - Branch: `work/TEST-ENTRY-01`.
 - Hypothesis: the fclose probe defines `main(void)` but its module declares and
@@ -46,9 +46,9 @@ outstanding production gate.
 
 ## Remaining validation
 
-- Exact Woodpecker ci/mac68k/mac-automation: pending.
-- Independent review: pending.
-- Full sanitizer log: inspect for disappearance of the incorrect-function-type
-  diagnostic; known ASan context-switch warnings are a separate issue.
+- Exact Woodpecker #502 ci/mac68k/mac-automation: success.
+- Independent review: clean.
+- Full Linux log inspected: no incorrect-function-type or other UBSan runtime
+  diagnostic remained. Known ASan context-switch warnings are a separate issue.
 - Follow-up: make unexpected UBSan diagnostics fail the Linux gate, with a
   negative control; do not simply suppress the diagnostic or broaden exceptions.
