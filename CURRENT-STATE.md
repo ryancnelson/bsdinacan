@@ -1,10 +1,48 @@
 # Current State — cannedBSD
 
-**Last repository/CI audit:** 2026-09-27 (guest evidence is dated separately below)
+**Last repository/CI audit:** 2026-09-28 (guest evidence is dated separately below)
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Coordination checkpoint, 2026-09-27
+## Coordination checkpoint, 2026-09-28
+
+Main now includes test-only correction `c8e8dd03c49f1e4683a7f639d891ae93a64b435c`.
+Exact Woodpecker #495 ci/mac68k/mac-automation passed, followed by independent
+review and fresh Basilisk II run-rvwzs3ee: **69 PASS records plus ALL PASS**,
+full expected transcript and screenshot verified, normal application/guest
+shutdown, disks closed and slot released in **26.28 seconds**. Archive SHA256:
+`ee6b08d3e337ccd17c20fea38c42fe5f4f4fcbd54a19ebf09a2fe1166d430e9f`.
+This replaces the older 67-record run as the latest accepted Mac evidence.
+The preceding exact-main #491 artifact failed after 61 PASS at fileprobe;
+its evidence is preserved. The probe incorrectly required nonzero timestamps
+on the classic Mac adapter, whose documented unavailable-clock value is zero.
+The correction uses exact injected zero/nonzero clock fixtures and changes no
+production runtime, ABI or adapter. See notes/iterations/MAC-FILEPROBE-01.md.
+
+Current-runtime Solaris qualification is still outstanding. This test-only
+correction is not production Solaris acceptance or a waiver for later runtime
+changes. File-manipulation milestone execution is still absent from the 69
+Mac records. Source inventory and remaining utility limits below still apply.
+
+Verified app assignments, each in its own worktree:
+
+- Claude is implementing STATICS-CACHE-02, including changed buffer sizes,
+  kernel recreation, defaults, cleanup and interleaving. It may consume reviewed
+  detector commit `1e3b58b` (#492 all-three green); root independently reran the
+  detector's five methods/30 fault subtests. No cache repair is accepted yet.
+- Antigravity is revising documentation for MAC-MILESTONE-TEST-01; implementation
+  remains blocked. Initial proposal `406c9da` was rejected because cases wrongly
+  shared filesystem state across fresh kernels and omitted transcript-budget
+  accounting. Its revision remains under review; no milestone execution claimed.
+- SOLARIS-WC-GATE-01 `628e9a0` is reviewed with #489 green but remains off main
+  pending native execution and coordinated rig ownership.
+
+The desktop is accessible again and both app assignments were submitted and
+observed running. Guest slot is free after the accepted run. Historical locked
+state and superseded assignments in the September 27 checkpoint below describe
+that earlier audit only.
+
+## Historical coordination checkpoint, 2026-09-27
 
 Audited main: `6cd71fefc50167e1161c590a2f8f515bfb861e1a`.
 Exact Woodpecker #480 succeeded in `ci`, `mac68k`, and `mac-automation`.

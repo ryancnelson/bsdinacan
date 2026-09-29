@@ -13,18 +13,33 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Coordination checkpoint (2026-09-27):** audited main `6cd71fe` passed exact
-Woodpecker #480 ci/mac68k/mac-automation. TERM-03, SIG-01 core, FORMAT-01,
-ECHO-02, WC-02, and Mac command build wiring are already integrated; older
-in-progress/ready-to-merge labels below are historical. Current main is not
-freshly guest-qualified. The last documented accepted Mac run is the
-67-record `adf62f1` milestone; current expectations contain 69 records and
-still omit file-manipulation milestone execution. See CURRENT-STATE.md.
+**Coordination checkpoint (2026-09-28):** main includes test-only MAC-FILEPROBE-01
+`c8e8dd0`, exact #495 all-three CI green and independently verified fresh Mac
+acceptance: 69 PASS plus ALL PASS, normal shutdown and slot release in 26.28 seconds.
+The suite still omits file-manipulation milestone execution. Current-runtime
+Solaris acceptance remains pending. See CURRENT-STATE.md for evidence/limits.
 
-Review blocks STATICS-RESET-01 `b2d003b` on retained-buffer defects and a
-false-success detector; LS-02 stays behind that prerequisite. A separate worker owns SOLARIS-WC-GATE-01 below. Claude and
-Antigravity worktrees are preserved; the locked desktop prevents verified
-new submissions. No app worker is claimed running from old UI evidence.
+Claude owns STATICS-CACHE-02 in its new worktree; the inherited state-repair
+candidate remains rejected until its lifecycle defects are fixed and qualified.
+Antigravity owns only preparatory MAC-MILESTONE-TEST-01 documentation in a
+separate worktree. Both assignments were submitted and observed running.
+STATICS-REPRO-GATE-02 is reviewed and available as a detector prerequisite;
+it does not qualify the underlying runtime. Preserve earlier worktrees.
+
+### MAC-FILEPROBE-01 — portable timestamp test expectations
+
+- Status: Done, test-only `c8e8dd0` merged after exact #495 all-three CI,
+  independent review and fresh 69-record Mac run-rvwzs3ee.
+- Base: `b98b708`; dependencies: FS-STAT-01.
+- Hypothesis: nonzero timestamp assertions reject classic Mac's documented
+  unavailable-clock zero even when translation is correct.
+- Red: fresh #491 Mac failed fileprobe after 61 PASS; injecting the same zero
+  wall clock into Linux's complete fileprobe produced status 57 before the fix.
+- Acceptance: complete fileprobe under zero/nonzero fixture clocks, exact
+  seconds/nanoseconds/macros through libc, full core and fresh Mac pass.
+- Scope: shared tests only; no production behavior or ABI changes. Combined
+  current-runtime Solaris acceptance remains outstanding. Full evidence in
+  notes/iterations/MAC-FILEPROBE-01.md.
 
 ### SOLARIS-WC-GATE-01 — update native wc acceptance contract
 
@@ -43,7 +58,8 @@ new submissions. No app worker is claimed running from old UI evidence.
 
 ### STATICS-REPRO-GATE-02 — make state regression checks fail honestly
 
-- Status: In progress; Codex worker, work/STATICS-REPRO-GATE-02.
+- Status: Reviewed `1e3b58b`, exact #492 all-three CI green; available for
+  Claude to consume, not independently merged with its blocked prerequisite.
 - Base: exact STATICS-RESET-01 `b2d003b`; dependencies: candidate repro suite.
 - Hypothesis: matching only the absence of selected error strings treats a
   failed or nonfunctional target as passing.
@@ -57,7 +73,8 @@ new submissions. No app worker is claimed running from old UI evidence.
 
 ### STATICS-CACHE-02 — repair retained command buffer lifecycle
 
-- Status: Ready for a distinct worker; runtime prerequisite for STATICS-RESET-01.
+- Status: In progress; Claude in work/STATICS-CACHE-02. Runtime prerequisite
+  for STATICS-RESET-01 remains unaccepted.
 - Base: exact STATICS-RESET-01 `b2d003b`; coordinate with STATICS-REPRO-GATE-02,
   which owns the shell regression detector.
 - Hypothesis: preserving function-local pointers without their size/ownership
@@ -75,7 +92,8 @@ new submissions. No app worker is claimed running from old UI evidence.
 
 ### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
 
-- Status: Blocked on STATICS-RESET-01 review/integration and guest availability.
+- Status: Antigravity preparing/revising documentation only in
+  work/MAC-MILESTONE-TEST-01. Implementation blocked on state-repair integration.
 - Base: main; dependencies: STATICS-RESET-01 and existing file utilities.
 - Hypothesis: compilation-only coverage cannot demonstrate the newly integrated
   mkdir/cp/mv/rm/ls milestone works inside System 7.
