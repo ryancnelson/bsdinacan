@@ -41,6 +41,38 @@ it does not qualify the underlying runtime. Preserve earlier worktrees.
   current-runtime Solaris acceptance remains outstanding. Full evidence in
   notes/iterations/MAC-FILEPROBE-01.md.
 
+### TEST-ENTRY-01 — extract the existing fclose probe callback correction
+
+- Status: Coordinator candidate `7a8b0fb`; independent review clean, #502
+  running. This exact file correction already existed in `b2d003b`; it is
+  extracted without the blocked runtime rather than implemented again.
+- Base: `9d13844`; dependencies: none.
+- Hypothesis: a probe defined as `main(void)` is called through the incompatible
+  `int (int, char **)` callback type, producing the recurring UBSan diagnostic.
+- Red: compiling the actual probe against its module prototype reports
+  conflicting types; current exact CI logs report incorrect function type.
+- Acceptance: matching signature, unchanged eight behavioral assertions,
+  exact all-three CI and inspection of the sanitizer log. Test-only source
+  is absent from the Mac application; no production qualification claim.
+- Evidence: notes/iterations/TEST-ENTRY-01.md on the candidate branch.
+
+### CI-SANITIZER-02 — fail the Linux gate on undefined behavior
+
+- Status: Ready for bounded design; Antigravity investigating read-only.
+  Implementation must consume TEST-ENTRY-01 before running the full gate.
+- Base: accepted TEST-ENTRY-01 or its exact candidate by coordinator assignment.
+- Dependencies: TEST-ENTRY-01; no shared runtime or ABI changes.
+- Hypothesis: recoverable UBSan diagnostics currently leave `make ci` green;
+  #499 demonstrates an incorrect-function-type report despite workflow success.
+- Red: an intentionally undefined, instrumented control emits a UBSan report
+  but exits successfully under the current sanitizer configuration.
+- Acceptance: that same control fails with the gate configuration; a clean
+  control succeeds; full Linux gate passes with no unexpected UBSan reports.
+  Cover sanitize and build-mode verification, retaining address sanitizer and
+  all existing tests. Do not suppress diagnostics or broaden warning exceptions.
+- Scope: Linux sanitizer configuration and its focused regression control.
+  Keep production source and Mac/Solaris toolchain flags unchanged.
+
 ### SOLARIS-WC-GATE-01 — update native wc acceptance contract
 
 - Status: Reviewed `628e9a0`, exact #489 ci/mac68k/mac-automation green;
@@ -230,7 +262,7 @@ Gaps and observations:
 
 ### ECHO-02 — retire the `echo` placeholder the way `cat`'s import did
 
-- Status: Done; ready for merge.
+- Status: Done; merged to main.
 - Base: main (`652e869`)
 - Depends: none
 - Hypothesis: `echo` is the only verb where a pinned import was registered
@@ -283,9 +315,11 @@ Gaps and observations:
 
 ### LS-02 — unchanged NetBSD `ls` with the long form
 
-- Status: Blocked
+- Status: Existing candidate `54a00df` held behind STATICS-RESET-01 /
+  STATICS-CACHE-02 repairs and exact cross-platform qualification. Do not start
+  a duplicate import; current main still uses the LS-01 owned command.
 - Base: main
-- Depends: FS-STAT-01, FTS-CHILDREN-01
+- Depends: FS-STAT-01, FTS-CHILDREN-01, STATICS-CACHE-02
 - Hypothesis: `LS-01` deliberately shipped an owned single-column command
   because no public `struct stat` existed. `FS-STAT-01` and
   `FTS-CHILDREN-01` were queued to remove exactly that constraint, so the
@@ -302,7 +336,7 @@ Gaps and observations:
 
 ### WC-02 — unchanged NetBSD `wc`
 
-- **Status:** Done; ready for merge.
+- **Status:** Done; merged to main.
 - **Base:** main
 - **Depends:** LIBC-STRTOL-01 (Done), FS-STAT-01 (Done)
 - **Scope:** Import pinned NetBSD `usr.bin/wc/wc.c` (SHA-256: `e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f`) byte-for-byte unmodified. Retire bootstrap `commands/wc.c` in the same commit. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
@@ -357,7 +391,7 @@ Gaps and observations:
 
 ### MKDIR-CMD-01 — a `mkdir` command so directories are reachable
 
-- **Status:** Done; ready for merge.
+- **Status:** Done; merged to main.
 - **Base:** main
 - **Depends:** VFS-MKDIR-01 (Done)
 - **Scope:** Import pinned NetBSD `bin/mkdir/mkdir.c` (SHA-256: `a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8`) byte-for-byte unmodified. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
@@ -508,8 +542,9 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### STAT-02 — wire the `sys/stat.h` veneer
 
-- **Status:** Ready; unassigned. **This is the one that closes a real gap
-  rather than adding surface.**
+- **Status:** Implemented and merged via `f932161` (implementation `8290a9e`,
+  refinement `015bcc2`). The original scope below records the preimplementation
+  gap; it is not a new claimable task.
 - **Depends on:** FILEUTIL-01 (Done)
 - **Scope:** the runtime ABI already provides `stat`, `fstat` and `cb_stat_v1`,
   but `libc/include/sys/stat.h` is a two-line stub — the `struct stat` gap is
@@ -652,9 +687,10 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### FTS-CHILDREN-01 — `fts_children` for `ls` only
 
-- **Status:** Blocked on FTS-CORE-01
+- **Status:** Bundled in held LS-02 candidate `54a00df`, not on main.
+  Coordinate with that existing work; do not duplicate its implementation.
 - **Base:** main
-- **Depends on:** FTS-CORE-01
+- **Depends on:** FTS-CORE-01 (implemented), STATICS-CACHE-02 qualification
 - **Scope:** `fts_children` alone, measured as called only from `ls.c:429` and
   `ls.c:472`. Deliberately separate so RM-01 and CP-01 never wait on it.
 
@@ -860,7 +896,9 @@ CP-01 measured surface spans multiple subsystems. In accordance with the CAT-01 
 
 ### LS-01 — single-column `ls` without terminal width or `-l`
 
-- **Status:** **Ready — claimable now.** The audit measured all five pinned `ls`
+- **Status:** Implemented and merged via `4445cab` (`8ca0562`). Current main
+  uses this owned command; its option limitations remain. Historical rationale:
+  the audit measured all five pinned `ls`
   translation units as gated on `fts.h` (four directly, `print.c` via the
   ACL-skip fallthrough), which triggers this entry's own written contingency.
   This therefore proceeds as a **cannedBSD-owned command over the existing

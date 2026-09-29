@@ -19,6 +19,13 @@ on the classic Mac adapter, whose documented unavailable-clock value is zero.
 The correction uses exact injected zero/nonzero clock fixtures and changes no
 production runtime, ABI or adapter. See notes/iterations/MAC-FILEPROBE-01.md.
 
+Main documentation/evidence checkpoint `9d13844` passed exact #499 all-three
+CI and independent review before integration. That workflow still reports a
+pre-existing incorrect-function-type UBSan diagnostic: successful CI is not a
+claim of clean sanitizer output. TEST-ENTRY-01 extracts the existing test-only
+callback correction; CI-SANITIZER-02 will make unexpected diagnostics fatal.
+Neither candidate is accepted merely because it has been queued.
+
 Current-runtime Solaris qualification is still outstanding. This test-only
 correction is not production Solaris acceptance or a waiver for later runtime
 changes. File-manipulation milestone execution is still absent from the 69
