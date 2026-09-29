@@ -1396,14 +1396,11 @@ static int format_output(int descriptor, const char *format,
                 ++cursor;
             }
             if (*cursor == '\'') {
-                /* pinned ls/print.c's -M (thousands-separator) column
-                   width prepass and rendering both use "%'*llu " /
-                   "total %'llu\n" -- a real, reachable call site (-M
-                   is not excluded from the accepted matrix), so this
-                   groups digits by 3 for real rather than leaving -M
-                   silently incomplete (ls.c voids every printf() return
-                   value here, so an EINVAL would corrupt output rather
-                   than visibly fail). */
+                /* Pinned ls/print.c's -M uses "%'*llu " and "total
+                   %'llu\n". POSIX groups with the locale's thousands_sep,
+                   which is empty in the C locale -- the only one here --
+                   so the flag is accepted and groups nothing, as NetBSD
+                   printf does under LANG=C (STATICS-CACHE-02). */
                 use_commas = 1;
                 ++cursor;
             }
@@ -1453,10 +1450,6 @@ static int format_output(int descriptor, const char *format,
                 /* 2^3 < 10: ceil(bits/3) bounds decimal digits for the
                    widest length modifier (long long); reserve a sign. */
                 char number[(sizeof(long long) * CHAR_BIT + 2) / 3 + 2];
-                /* Grouped copy: the digits above plus a comma every 3
-                   digits (at most 6 for a 64-bit value) -- built only
-                   when use_commas is set. */
-                char grouped[sizeof(number) + 8];
                 char *end = number + sizeof(number);
                 char *digits = end;
                 size_t length;
@@ -1486,21 +1479,6 @@ static int format_output(int descriptor, const char *format,
                 if (negative)
                     *--digits = '-';
                 length = (size_t)(end - digits);
-                if (use_commas && length > 3) {
-                    char *write_ptr = grouped + sizeof(grouped);
-                    size_t digit_count = 0;
-                    const char *read_ptr = end;
-                    *--write_ptr = '\0'; /* placeholder; not counted */
-                    while (read_ptr > digits) {
-                        --read_ptr;
-                        *--write_ptr = *read_ptr;
-                        ++digit_count;
-                        if (digit_count % 3 == 0 && read_ptr > digits)
-                            *--write_ptr = ',';
-                    }
-                    digits = write_ptr;
-                    length = (size_t)(grouped + sizeof(grouped) - 1 - write_ptr);
-                }
                 while (width > length) {
                     if (add_output(descriptor, " ", 1, &total) < 0)
                         return -1;
@@ -1694,21 +1672,14 @@ int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...)
     return total;
 }
 
-/* LS-02: ls -h (SI-scaled sizes) is outside the accepted matrix -- see
-   util.h's own comment. Always fails; ls.c's own err(1,...) at its one
-   call site makes -h fail loudly rather than print a fabricated size. */
-int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
-                            const char *suffix, int scale, int flags)
+/* STATICS-CACHE-02: the C locale's numeric conventions, the only ones
+   this runtime has. Borrowed and never modified, like setlocale()'s. */
+struct cb_libc_lconv *cb_libc_localeconv(void)
 {
-    (void)buffer;
-    (void)length;
-    (void)quantity;
-    (void)suffix;
-    (void)scale;
-    (void)flags;
-    if (bound_api != NULL && bound_api->set_errno != NULL)
-        bound_api->set_errno(CB_ENOSYS);
-    return -1;
+    static char decimal_point[] = ".";
+    static char empty[] = "";
+    static struct cb_libc_lconv c_locale = { decimal_point, empty, empty };
+    return &c_locale;
 }
 
 /* LS-02: the single C locale's 1:1 wide-character mapping; the matching

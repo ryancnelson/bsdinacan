@@ -154,13 +154,13 @@ check_case \
     "cross-directory hierarchy manipulation session"
 
 # 4. Status code propagation and error recovery within a single session
-# LS-02: real ls's ENOENT diagnostic reads fts_name (the basename), not
-# the operand path -- see notes/iterations/LS-02.md.
+# ls names a missing operand as given (NetBSD fts_open keeps the whole
+# argument in fts_name; corrected in STATICS-CACHE-02).
 check_case \
     'echo file1 > /tmp/f1; cp /tmp/f1 /tmp/f2; echo $?; ls /tmp/nonexistent; echo $?; cat /tmp/f2; echo $?; rm /tmp/f1 /tmp/f2; echo $?' \
     0 \
     "0\n1\nfile1\n0\n0\n" \
-    "ls: nonexistent: no such file or directory\n" \
+    "ls: /tmp/nonexistent: no such file or directory\n" \
     "status code propagation and non-fatal error recovery within session"
 
 # 5. Interactive stdin session driving the full verb suite with prompt assertions

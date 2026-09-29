@@ -289,6 +289,23 @@ cross-task isolation under forced interleaving, retained `dirname`
 results alongside a `basename` call in the same task, and `ENOSYS` on an
 old or field-absent runtime table.
 
+## NetBSD `humanize_number`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream/local path: `lib/libc/gen/humanize_number.c` /
+  `upstream/netbsd/lib/libc/gen/humanize_number.c`
+- SHA-256: `2f311138d6388adbd8ce03e1d0d2d197712f287dd41d15b7ed3e7ec3c09da77e`
+- Embedded RCS identifier: `$NetBSD: humanize_number.c,v 1.19 2024/01/20 14:52:47 christos Exp $`
+- License: file-specific two-clause NetBSD Foundation license, retained
+  verbatim.
+
+The imported file is byte-for-byte unchanged (STATICS-CACHE-02, for
+`ls -h`). `libc/include/stdlib.h` supplies NetBSD's own `HN_*` values and
+maps the definition to `cb_libc_humanize_number`. It needs `snprintf`
+`%d`/`%s`/`PRId64`, `strlen`, and `localeconv()->decimal_point`, which is
+`"."` in the only (C) locale.
+
 ## NetBSD `basename` (command)
 
 - Repository: `https://github.com/NetBSD/src`
@@ -809,11 +826,12 @@ tracked since node creation (whatever the creating `mkdir`/`open` call
 passed) via `strmode(3)`, not a fabricated value; permission enforcement
 itself remains deferred for this milestone, same as every other command.
 `uid`/`gid` are 0 for the same already-committed reason as `FS-STAT-01`.
-`-h`/`-i` and any option depending on `TIOCGWINSZ` (terminal width,
-multi-column layout sizing beyond the fixed 80-column fallback) fail
-honestly (`ENOSYS`/`ENOTTY`) rather than fabricate a terminal geometry or
-humanized size; termcap is out of scope. Compiled with `-DSMALL
--Dmain=cb_ls_main`.
+Since STATICS-CACHE-02, `-h` uses the pinned `humanize_number.c` (entry above), and
+the option-by-option support and limitation matrix is in
+`notes/iterations/STATICS-CACHE-02.md`. `-X` fails with `ENOSYS`
+(`FTS_XDEV` has no mount-crossing detection yet). Terminal geometry stays
+at ls.c's own 80-column default, because the console reports no
+`TIOCGWINSZ`. Compiled with `-DSMALL -Dls_main=cb_ls_main`.
 
 ## NetBSD `mkdir`
 

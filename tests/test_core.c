@@ -4283,6 +4283,70 @@ static const struct cb_program_v1 ls_interleave_program = {
     64 * 1024, ls_interleave_main
 };
 
+/* STATICS-CACHE-02: the same forced interleave with different option
+   sets. ls.c selects its comparator (`sortfcn`) and display routine
+   (`printfcn`) in main and uses them only after fts traversal, which
+   yields in readdir here: -1r must still sort in reverse and print one
+   name per line while -m in the other task sorts forward and streams. */
+static int ls_mixed_interleave_main(const struct cb_api_v1 *api, int argc,
+                                    char *const argv[], char *const envp[])
+{
+    char *argv_alpha[] = {(char *)"ls", (char *)"-1r", (char *)"/tmp/lsmix-alpha", NULL};
+    char *argv_beta[] = {(char *)"ls", (char *)"-m", (char *)"/tmp/lsmix-beta", NULL};
+    static const char *const files[] = {
+        "/tmp/lsmix-alpha/alpha-one", "/tmp/lsmix-alpha/alpha-two",
+        "/tmp/lsmix-beta/beta-one", "/tmp/lsmix-beta/beta-two",
+    };
+    size_t i;
+    int fd, status;
+    (void)argc;
+    (void)argv;
+
+    if (api->mkdir("/tmp/lsmix-alpha", 0755) < 0 ||
+        api->mkdir("/tmp/lsmix-beta", 0755) < 0)
+        return 920;
+    for (i = 0; i < sizeof(files) / sizeof(files[0]); ++i) {
+        if ((fd = api->open(files[i], CB_O_WRONLY | CB_O_CREAT, 0600)) < 0 ||
+            api->close(fd) < 0)
+            return 921;
+    }
+
+    ls_delegate = api;
+    ls_test_api = *api;
+    ls_test_api.readdir = ls_yielding_readdir;
+    ls_last_task = -1;
+    ls_switches = 0;
+
+    if (api->spawn("lsinterleavechild", argv_alpha, envp, NULL, 0,
+                   &ls_children[0]) < 0 ||
+        api->spawn("lsinterleavechild", argv_beta, envp, NULL, 0,
+                   &ls_children[1]) < 0)
+        return 922;
+    if (api->waitpid(ls_children[0], &status) != ls_children[0] || status != 0)
+        return 923;
+    if (api->waitpid(ls_children[1], &status) != ls_children[1] || status != 0)
+        return 924;
+    if (ls_switches < 2)
+        return 925;
+    /* Each listing is written whole after its traversal, so each must
+       appear exactly as that task's own options produce it. */
+    if (strstr(captured_streams[1], "alpha-two\nalpha-one\n") == NULL)
+        return 926;
+    if (strstr(captured_streams[1], "beta-one, beta-two\n") == NULL)
+        return 927;
+
+    captured_size = 0;
+    captured[0] = '\0';
+    captured_stream_sizes[1] = 0;
+    captured_streams[1][0] = '\0';
+    return 0;
+}
+
+static const struct cb_program_v1 ls_mixed_interleave_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "lsmixedinterleave", 0,
+    64 * 1024, ls_mixed_interleave_main
+};
+
 static int dirname_noop_main(int argc, char *argv[])
 {
     (void)argc;
@@ -4902,7 +4966,8 @@ static void run_case(const char *command, const char *expected_output,
            heap-use-after-free this ID was supposed to fix, not guessed. */
         if (cb_kernel_register_executor(kernel, cb_ls_static_reset_executor(),
                                         &ls_interleave_child_program) < 0 ||
-            cb_kernel_register(kernel, &ls_interleave_program) < 0)
+            cb_kernel_register(kernel, &ls_interleave_program) < 0 ||
+            cb_kernel_register(kernel, &ls_mixed_interleave_program) < 0)
             fail("ls interleave test program registration");
     } else if (fixture == FIXTURE_FTS) {
         if (register_fts_probes(kernel) != 0)
@@ -6282,9 +6347,10 @@ static void test_err(void)
     /* %*lld: the "%*lld, %*lld " device-number column shape. */
     run_case("formatprobe l A", "  -42", 0, FIXTURE_ERR);
     expect_streams("  -42", "");
-    /* "'" thousands-separator flag: ls -M's "%'*llu "/"total %'llu\n". */
-    run_case("formatprobe c A", "1,234,567|     999|42", 0, FIXTURE_ERR);
-    expect_streams("1,234,567|     999|42", "");
+    /* "'" flag: ls -M's "%'*llu "/"total %'llu\n". The C locale has no
+       thousands separator, so nothing is inserted. */
+    run_case("formatprobe c A", "1234567|     999|42", 0, FIXTURE_ERR);
+    expect_streams("1234567|     999|42", "");
 
     /* FS-STAT-01: an old, pre-append cb_stat_v1 struct_size must fall
        back to the original fixed sentinels rather than leak whatever
@@ -6538,6 +6604,12 @@ int main(int argc, char **argv)
         puts("tee state tests passed");
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--ls-interleave") == 0) {
+        run_case("lsinterleave", "", 0, FIXTURE_LS);
+        run_case("lsmixedinterleave", "", 0, FIXTURE_LS);
+        puts("ls interleave tests passed");
+        return 0;
+    }
     if (argc == 3 && strcmp(argv[1], "--statics-cache-case") == 0) {
         int result = cb_statics_cache_probe(cb_linux_host_ops(),
                                             (size_t)strtoul(argv[2], NULL, 10));
@@ -6634,6 +6706,7 @@ int main(int argc, char **argv)
         run_case("truncateinterleave", "", 0, 1);
     run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
     run_case("lsinterleave", "", 0, FIXTURE_LS);
+    run_case("lsmixedinterleave", "", 0, FIXTURE_LS);
         puts("truncate tests passed");
         return 0;
     }
@@ -6806,6 +6879,7 @@ int main(int argc, char **argv)
     run_case("truncateinterleave", "", 0, 1);
     run_case("renameallocprobe", "", 0, FIXTURE_VFS04);
     run_case("lsinterleave", "", 0, FIXTURE_LS);
+    run_case("lsmixedinterleave", "", 0, FIXTURE_LS);
     run_case("libcdirnameprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnameoldtableprobe", "", 0, FIXTURE_DIRNAME);
     run_case("dirnamenulltableprobe", "", 0, FIXTURE_DIRNAME);

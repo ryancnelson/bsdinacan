@@ -27,6 +27,12 @@ enum cb_libc_open_flag {
 
 enum cb_libc_locale_category { CB_LIBC_LC_ALL = 0 };
 char *cb_libc_setlocale(int category, const char *locale);
+struct cb_libc_lconv {
+    char *decimal_point;
+    char *thousands_sep;
+    char *grouping;
+};
+struct cb_libc_lconv *cb_libc_localeconv(void);
 
 typedef int (*cb_libc_main_fn)(int argc, char *argv[]);
 struct cb_libc_file;

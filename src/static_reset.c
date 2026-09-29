@@ -353,6 +353,15 @@ extern int f_accesstime, f_column, f_columnacross, f_flags, f_grouponly,
    printcol() allocate its own array. */
 extern void *cb_ls_printcol_array;
 extern int cb_ls_printcol_lastentries;
+/* STATICS-CACHE-02: ls.c's `static void (*printfcn)(DISPLAY *)` and
+   `static int (*sortfcn)(const FTSENT *, const FTSENT *)`, chosen from
+   the options in main and called after an fts traversal that can yield,
+   and print.c's `static time_t now` (uint32_t, libc/include/time.h), set
+   by printlong() before output that can yield. Declared through a plain
+   function-pointer type for the same reason as `array` above. */
+extern void (*cb_ls_printfcn)(void);
+extern void (*cb_ls_sortfcn)(void);
+extern uint32_t cb_ls_print_now;
 static const struct cb_static_slot ls_slots[] = {
     { &cb_ls_output, sizeof(cb_ls_output) },
     { &blocksize, sizeof(blocksize) },
@@ -389,6 +398,9 @@ static const struct cb_static_slot ls_slots[] = {
     { &f_leafonly, sizeof(f_leafonly) },
     { &cb_ls_printcol_array, sizeof(cb_ls_printcol_array) },
     { &cb_ls_printcol_lastentries, sizeof(cb_ls_printcol_lastentries) },
+    { &cb_ls_printfcn, sizeof(cb_ls_printfcn) },
+    { &cb_ls_sortfcn, sizeof(cb_ls_sortfcn) },
+    { &cb_ls_print_now, sizeof(cb_ls_print_now) },
 };
 static const struct cb_static_reset_ops ls_static_reset_ops = {
     { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
@@ -415,6 +427,9 @@ extern int cb_cat_bflag, cb_cat_eflag, cb_cat_fflag, cb_cat_lflag,
            cb_cat_nflag, cb_cat_sflag, cb_cat_tflag, cb_cat_vflag,
            cb_cat_rval;
 extern size_t cb_cat_bsize;
+/* cat.c's `static const char *filename`, read by warn() after reads that
+   can yield to another cat task. */
+extern const char *cb_cat_filename;
 extern char *cb_cat_raw_cat_buf;
 /* 1024 is libc/include/stdio.h's BUFSIZ, fb_buf's declared size. */
 extern char cb_cat_raw_cat_fb_buf[1024];
@@ -429,6 +444,7 @@ static const struct cb_static_slot cat_slots[] = {
     { &cb_cat_vflag, sizeof(cb_cat_vflag) },
     { &cb_cat_rval, sizeof(cb_cat_rval) },
     { &cb_cat_bsize, sizeof(cb_cat_bsize) },
+    { &cb_cat_filename, sizeof(cb_cat_filename) },
     { &cb_cat_raw_cat_buf, sizeof(cb_cat_raw_cat_buf) },
     { cb_cat_raw_cat_fb_buf, sizeof(cb_cat_raw_cat_fb_buf) },
 };

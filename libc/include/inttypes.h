@@ -22,5 +22,8 @@ intmax_t cb_libc_strtoimax(const char *restrict nptr, char **restrict endptr,
    actually typedef'd to on the host -- the pairing is internally
    consistent because this veneer controls both sides. */
 #define PRIu64 "llu"
+/* STATICS-CACHE-02: pinned humanize_number.c formats int64_t via PRId64;
+   same pairing as PRIu64 above. */
+#define PRId64 "lld"
 
 #endif

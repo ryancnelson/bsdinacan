@@ -123,6 +123,9 @@ static FTSENT *entry_create(const char *parent_path, const char *name,
     for (i = 0; i < entry->fts_pathlen; ++i)
         if (entry->fts_path[i] == '/')
             slash = &entry->fts_path[i];
+    /* As NetBSD fts_load(): a root keeps "/" rather than an empty name. */
+    if (slash == entry->fts_path && entry->fts_pathlen == 1)
+        slash = NULL;
     entry->fts_name = slash != NULL ? (char *)slash + 1 : entry->fts_path;
     entry->fts_namelen = cb_libc_strlen(entry->fts_name);
     entry->fts_level = level;
@@ -332,6 +335,22 @@ static FTSENT *sort_children(struct cb_fts *fts, FTSENT *head)
 /* FTS-CHILDREN-01. See the FTSENT fts_link/fts_parent doc comment and
    struct cb_fts_frame's children_snapshot/next_child doc comment in
    fts.h and above. */
+/* STATICS-CACHE-02: a directory child's fts_path is "parent/name" in one
+   buffer. While the child sits in a fts_children() list, the separator is
+   replaced by a NUL so fts_path reads as the parent path, which is what
+   NetBSD fts_build() leaves there and what ls -P prints before "/name".
+   fts_name points past the separator and is unaffected. Only children
+   (created with a parent path) are ever passed here. */
+static void children_path_to_parent(FTSENT *entry)
+{
+    entry->fts_path[entry->fts_pathlen - entry->fts_namelen - 1] = '\0';
+}
+
+static void children_path_restore(FTSENT *entry)
+{
+    entry->fts_path[entry->fts_pathlen - entry->fts_namelen - 1] = '/';
+}
+
 FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
 {
     FTSENT *head = NULL, *tail = NULL;
@@ -351,6 +370,13 @@ FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
                 free_child_list(head);
                 return NULL;
             }
+            /* STATICS-CACHE-02: an operand previewed before fts_read()
+               keeps its whole spelling as fts_name, as NetBSD
+               fts_open()'s fts_alloc(sp, *argv, len) does; ls lists and
+               diagnoses operands by this name. fts_read() roots are
+               trimmed to the last component, as fts_load() does. */
+            entry->fts_name = entry->fts_path;
+            entry->fts_namelen = entry->fts_pathlen;
             classify_peek(ftsp, entry);
             if (tail == NULL)
                 head = entry;
@@ -379,8 +405,16 @@ FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
                     free_child_list(head);
                     return NULL;
                 }
-                classify_peek(ftsp, entry);
+                /* Never a descent candidate, so no cycle or directory
+                   classification: just the stat ls -la displays. */
+                if (cb_libc_stat(entry->fts_path, entry->fts_statp) < 0) {
+                    entry->fts_info = FTS_NS;
+                    entry->fts_errno = errno;
+                } else {
+                    entry->fts_info = FTS_DOT;
+                }
                 entry->fts_parent = top->entry;
+                children_path_to_parent(entry);
                 if (tail == NULL)
                     head = entry;
                 else
@@ -397,6 +431,7 @@ FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
             }
             classify_peek(ftsp, entry);
             entry->fts_parent = top->entry;
+            children_path_to_parent(entry);
             if (tail == NULL)
                 head = entry;
             else
@@ -449,6 +484,7 @@ FTSENT *cb_libc_fts_read(FTS *ftsp)
                    redo rather than special-case skipping it. */
                 FTSENT *child = top->next_child;
                 top->next_child = child->fts_link;
+                children_path_restore(child);
                 if (child->fts_info == FTS_D)
                     classify(ftsp, child);
                 if (child->fts_info != FTS_D)

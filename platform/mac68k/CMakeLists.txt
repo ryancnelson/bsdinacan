@@ -95,6 +95,10 @@ add_library(cb_basename OBJECT ${ROOT}/upstream/netbsd/lib/libc/gen/basename.c)
 target_include_directories(cb_basename PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_basename PRIVATE basename=cb_libc_basename_upstream)
+add_library(cb_humanize_number OBJECT
+    ${ROOT}/upstream/netbsd/lib/libc/gen/humanize_number.c)
+target_include_directories(cb_humanize_number PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 add_library(cb_strtoimax OBJECT
     ${ROOT}/upstream/netbsd/common/lib/libc/stdlib/strtoimax.c)
 target_include_directories(cb_strtoimax PRIVATE
@@ -248,7 +252,12 @@ add_application(CannedBSD CREATOR "CnBD"
 # OBJECT library instead.
 add_custom_command(TARGET CannedBSD PRE_LINK
     COMMAND ${CMAKE_OBJCOPY} --redefine-sym output=cb_ls_output
-        --globalize-symbol=cb_ls_output $<TARGET_OBJECTS:cb_ls>
+        --globalize-symbol=cb_ls_output
+        --redefine-sym printfcn=cb_ls_printfcn --globalize-symbol=cb_ls_printfcn
+        --redefine-sym sortfcn=cb_ls_sortfcn --globalize-symbol=cb_ls_sortfcn
+        $<TARGET_OBJECTS:cb_ls>
+    COMMAND ${CMAKE_OBJCOPY} --redefine-sym now=cb_ls_print_now
+        --globalize-symbol=cb_ls_print_now $<TARGET_OBJECTS:cb_ls_print>
     COMMAND ${CMAKE_OBJCOPY}
         --redefine-sym dflag=cb_rm_dflag --redefine-sym eval=cb_rm_eval
         --redefine-sym fflag=cb_rm_fflag --redefine-sym iflag=cb_rm_iflag
@@ -271,11 +280,13 @@ add_custom_command(TARGET CannedBSD PRE_LINK
         --redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag
         --redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag
         --redefine-sym rval=cb_cat_rval --redefine-sym bsize=cb_cat_bsize
+        --redefine-sym filename=cb_cat_filename
         --globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag
         --globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag
         --globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag
         --globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag
         --globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize
+        --globalize-symbol=cb_cat_filename
         $<TARGET_OBJECTS:cb_cat>
     # STATICS-CACHE-02: function-local cache statics; the helper finds the
     # compiler-chosen local name (Retro68 GCC: var.N, Clang: func.var).
@@ -306,6 +317,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strchr>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_dirname>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_basename>)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_humanize_number>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strtoimax>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_strrchr>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memset>)

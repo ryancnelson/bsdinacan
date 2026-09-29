@@ -181,3 +181,157 @@ is recorded as a follow-up, not fixed here.
   - Destroying a kernel while a cat task is suspended mid-pipeline is not
     separately exercised here. The live slots hold defaults in that state
     by construction.
+
+## Round 2: main merge, review blocker, LS-02 audit
+
+Assigned after #505 by the coordinator: merge current `origin/main` into this
+branch, fix the independent review blocker, audit the LS-02 import, record an
+option matrix, and run one complete final CI.
+
+### Merge
+
+`origin/main` `9d13844` was merged first, then `7a8b0fb` (TEST-ENTRY-01's
+fclose probe fix, identical to this branch's copy, so it merged cleanly).
+Conflicts and how they were resolved:
+
+- **Shared-symbol collision, `cb_libc_mbrtowc`.** WC-02 (main) and LS-02
+  (this branch) both implemented it, with different `mbstate_t`/`wint_t`
+  types. Main's definition and types were kept (unsigned, guarded `wint_t`
+  and `mbstate_t` in `cannedbsd/libc.h`); LS-02's copy was deleted. LS-02's
+  `wcrtomb`, `iswprint` and `wcwidth` were retyped to match.
+- **Formatter.** WC-02's separate `%u`/`%lu`/`%llu` branch in
+  `format_output` became unreachable after LS-02's unified parser (which
+  consumes the length modifier first), so it was removed.
+- `sys/types.h`, `programs.c`, the Makefile/CMake object lists, the
+  format-probe table, and the source-pin tests were unioned.
+- The session, mkdir and file-manipulation expectations were rewritten from
+  the built binary for upstream ls and upstream wc together, and each was
+  checked by hand.
+
+### Review blocker: `printfcn`/`sortfcn`
+
+ls.c chooses `printfcn`/`sortfcn` in main but calls them only after an fts
+traversal that can yield. They are now slots, renamed by objcopy (Makefile and
+CMake), together with print.c's `now` and cat.c's `filename`, which follow the
+same assign-then-yield pattern.
+
+- New control: `test_core` `lsmixedinterleave` runs `ls -1r` and `ls -m`
+  forced to interleave in readdir, and requires each task's exact output.
+- Red, before the slots: `./build/test_core --ls-interleave` exited 1 with
+  child status 927 (reported as 159). The `-m` task printed a reverse,
+  one-per-line listing (`beta-two\nbeta-one`), i.e. the other task's
+  comparator and display routine.
+- Green after: `ls interleave tests passed`.
+
+### ls fixes found by the audit
+
+Each fix has a red observed first with the expected NetBSD result.
+
+1. **`ls -Ra` walked out of the tree.** FTS_SEEDOT's `.` and `..` were
+   classified as ordinary directories and descended into, producing "directory
+   causes a cycle" and listings of `/bin` and `/home`. They are now
+   `FTS_DOT`: stat'd for `-la`, never descended into or cycle-checked.
+2. **`ls -P` printed `./x/x`.** ls prints `fts_path "/" fts_name`, and NetBSD
+   `fts_build()` leaves the parent's path in a listed child's `fts_path`.
+   Children in a `fts_children()` list now read their parent path;
+   `fts_read()` restores the full path when it returns that entry.
+3. **Operands were printed by basename** (`ls /bin/wc` gave `wc`, `ls -d /`
+   printed an empty line). NetBSD `fts_open()` keeps the whole argument in
+   `fts_name` (`fts.c:165`), and only `fts_read()`'s `fts_load()` trims it,
+   keeping `/` as `/`. Both rules are now implemented. Two existing
+   expectations that asserted the basename (`ls /bin/wc`, and the ENOENT
+   diagnostic in the ls and session suites) were replaced, not deleted.
+4. **`-h` failed with ENOSYS.** The pinned, unchanged NetBSD
+   `lib/libc/gen/humanize_number.c` (`2f311138…`) is imported, with NetBSD's
+   own `HN_*` values. LS-02's `HN_AUTOSCALE 0` would have silently disabled
+   autoscaling. Supporting additions: `PRId64` and a C-locale `localeconv()`
+   (`decimal_point "."`, `thousands_sep ""`, `grouping ""`); naming any other
+   `lconv` member fails to compile. The previous test asserted the ENOSYS
+   failure; it now asserts `2.9K`, `3B` and `total 0B`. The ENOSYS behaviour
+   is the prior evidence here, not a separate test-first run.
+5. **`%'` inserted commas.** POSIX groups with the locale's `thousands_sep`,
+   which is empty in the C locale (the only locale here), so `ls -lM` now
+   prints `1400000`, as NetBSD printf does under `LANG=C`. This contract
+   change replaces the `formatprobe c` assertion (`1,234,567` became
+   `1234567`, count 21 became 19).
+
+### 32-bit format and calling-convention audit
+
+The printf, fprintf, snprintf, warn, warnx, err and errx veneers were
+redeclared with `format(printf)` through `-include`, audit-only and never part
+of the build. ls.c, print.c, util.c and cmp.c were then compiled `-Wformat=2`
+with Retro68 m68k GCC 16.1 (ILP32) and Alpine GCC 14.2 (LP64). Every warning
+is a same-width alias with no va_arg width mismatch:
+
+- m68k: `%u` receives `uint32_t`, which newlib defines as `unsigned long`
+  (both 32 bits), at ls.c 581, 588 and 645.
+- LP64: `%llu` (`PRIu64`) receives `uint64_t`, which is `unsigned long`
+  (both 64 bits), at print.c 146 and 377.
+
+`time_t` is `uint32_t` in this libc, so dates beyond 2106 are unrepresentable.
+
+### ls option matrix (pinned NetBSD ls, this runtime)
+
+"Tested" names a case in `tests/test_ls_behavior.sh` (or `test_core`);
+"observed" means checked in the audit runs but not asserted by a test.
+
+| Option | Status | Notes |
+|---|---|---|
+| (none), `-C` | works, tested | 80-column layout; the console reports no `TIOCGWINSZ` |
+| `-1` | works, tested | also the default when stdout is a pipe |
+| `-A` | works, observed | implied anyway: the runtime reports uid 0, and NetBSD root implies `-A` |
+| `-a` | works, tested | `.`/`..` included |
+| `-B` `-b` `-q` `-w` | work, tested | `-q` is the default on the console, raw bytes go to a pipe |
+| `-c` `-u` | work, observed | FS-STAT-01 ctime/atime |
+| `-d` | works, tested | including `/` and trailing-slash operands |
+| `-F` `-p` | work, tested | `*` on command nodes, `/` on directories |
+| `-f` | works, tested | unsorted, `.`/`..` first |
+| `-g` `-n` `-o` | work, observed | uid/gid are always 0; `-o` shows `-` (no file flags) |
+| `-h` | works, tested | pinned humanize_number |
+| `-i` | works, observed | real RAMFS inode numbers |
+| `-k` `-s` | work, tested | **st_blocks is always 0 (RAMFS)**, so block counts and `total` are 0 |
+| `-L` | accepted | RAMFS has no symlinks, so it has no effect |
+| `-l` | works, tested | mode/nlink/uid/gid/size are real; the date column is wall-clock |
+| `-M` | works, tested | C locale: no separator inserted |
+| `-m` `-x` | work, tested | upstream `-x` pads the last column |
+| `-O` | upstream behaviour, observed | suppresses headers and totals only |
+| `-P` | works, tested | full paths; upstream column widths ignore the path, so use with `-1`/`-l` |
+| `-R` | works, tested | with and without `-a` |
+| `-r` `-S` `-t` | work, tested | mtime ties fall back to name order |
+| `-T` | works, observed | full date and time |
+| `-W` | accepted | RAMFS has no whiteouts |
+| `-X` | **unsupported, tested** | fails with `ls: function not implemented`, status 1 (`FTS_XDEV`; see FTS-XDEV-01 in fts.h) |
+| invalid | tested | upstream usage message, status 1 |
+
+Other limits:
+
+- Diagnostics use this libc's lowercase `strerror` text (for example "no such
+  file or directory"), which differs from NetBSD's capitalization.
+- `-P` with non-directory operands prints `operand/operand`. NetBSD reads its
+  shared path buffer there; this was not verified against a NetBSD host.
+- No test compares output against a real NetBSD host. Every expectation above
+  comes from reading the pinned sources.
+
+### Round 2 shared symbols and headers
+
+- libc:
+  - added: `cb_libc_localeconv`, `struct cb_libc_lconv`;
+  - replaced: `cb_libc_humanize_number`, now the pinned upstream object
+    instead of the ENOSYS stub;
+  - removed: LS-02's duplicate `cb_libc_mbrtowc`;
+  - retyped: `cb_libc_wcrtomb` and `cb_libc_iswprint`;
+  - changed: `format_output`'s `'` flag.
+- Headers:
+  - `libc/include/stdlib.h`: `HN_*` values and `humanize_number`;
+  - `libc/include/util.h`: now includes stdlib.h;
+  - `libc/include/inttypes.h`: `PRId64`;
+  - `libc/include/locale.h`: `lconv`, `localeconv`;
+  - `libc/include/wchar.h`, `wctype.h`: merged;
+  - `libc/include/fts.h`: `FTS_DOT`, documented `fts_path` meaning;
+  - `include/cannedbsd/libc.h`.
+- fts: `cb_libc_fts_children` (dot entries, parent path, operand names) and
+  `cb_libc_fts_read` (restores the path).
+- New renamed command globals: `cb_ls_printfcn`, `cb_ls_sortfcn`,
+  `cb_ls_print_now`, `cb_cat_filename`.
+- No change to `include/cannedbsd/abi.h`, the signal veneer, or anything
+  tee-related.

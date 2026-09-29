@@ -35,4 +35,18 @@ int cb_libc_atoi(const char *nptr);
    not an approximation. */
 #define MB_CUR_MAX 1
 
+/* STATICS-CACHE-02: humanize_number(3) is the pinned, unchanged NetBSD
+   lib/libc/gen/humanize_number.c, built under this link name. The flag
+   and scale values are NetBSD's own (include/stdlib.h at b890038f):
+   HN_AUTOSCALE is a scale bit tested by that code, not zero. */
+#define HN_DECIMAL      0x01
+#define HN_NOSPACE      0x02
+#define HN_B            0x04
+#define HN_DIVISOR_1000 0x08
+#define HN_GETSCALE     0x10
+#define HN_AUTOSCALE    0x20
+int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
+                            const char *suffix, int scale, int flags);
+#define humanize_number cb_libc_humanize_number
+
 #endif

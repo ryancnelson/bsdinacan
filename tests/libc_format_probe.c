@@ -111,12 +111,13 @@ int main(int argc, char **argv)
         return count == 5 && errno == ENOENT ? 0 : 21;
     }
     if (argv[1][0] == 'c') {
-        /* The "'" thousands-separator flag ls -M's "%'*llu " and
-           "total %'llu\n" call sites use -- grouped by 3 from the
-           right, real digit-grouping, not merely accepted-and-ignored
-           syntax (see cb_libc.c's format_output comment on why). */
+        /* The "'" flag ls -M's "%'*llu " and "total %'llu\n" call
+           sites use. The C locale's thousands_sep is empty, so POSIX
+           grouping inserts nothing (STATICS-CACHE-02 replaced an
+           earlier comma-grouping assertion that did not match NetBSD
+           printf under LANG=C). */
         count = printf("%'llu|%'*llu|%'llu", 1234567ULL, 8, 999ULL, 42ULL);
-        return count == 21 && errno == ENOENT ? 0 : 22;
+        return count == 19 && errno == ENOENT ? 0 : 22;
     }
     if (argv[1][0] == 'w') {
         errno = EBADF;

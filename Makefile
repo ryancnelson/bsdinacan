@@ -117,6 +117,7 @@ NETBSD_STRRCHR_OBJECT := $(BUILD)/netbsd_strrchr.o
 NETBSD_MEMSET_OBJECT := $(BUILD)/netbsd_memset.o
 NETBSD_DIRNAME_OBJECT := $(BUILD)/netbsd_dirname.o
 NETBSD_BASENAME_OBJECT := $(BUILD)/netbsd_basename.o
+NETBSD_HUMANIZE_NUMBER_OBJECT := $(BUILD)/netbsd_humanize_number.o
 NETBSD_STRTOIMAX_OBJECT := $(BUILD)/netbsd_strtoimax.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
@@ -139,6 +140,7 @@ LIBC_OBJECTS += $(NETBSD_MEMSET_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRCPY_OBJECT)
 LIBC_OBJECTS += $(NETBSD_DIRNAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_BASENAME_OBJECT)
+LIBC_OBJECTS += $(NETBSD_HUMANIZE_NUMBER_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
 LIBC_OBJECTS += $(FTS_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
@@ -219,7 +221,9 @@ $(LS_COMMAND_OBJECT): upstream/netbsd/bin/ls/ls.c upstream/netbsd/bin/ls/ls.h \
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
 		-DSMALL -Dls_main=cb_ls_main \
 		-c upstream/netbsd/bin/ls/ls.c -o $@
-	objcopy --redefine-sym output=cb_ls_output --globalize-symbol=cb_ls_output $@
+	objcopy --redefine-sym output=cb_ls_output --globalize-symbol=cb_ls_output \
+		--redefine-sym printfcn=cb_ls_printfcn --globalize-symbol=cb_ls_printfcn \
+		--redefine-sym sortfcn=cb_ls_sortfcn --globalize-symbol=cb_ls_sortfcn $@
 
 $(LS_PRINT_OBJECT): upstream/netbsd/bin/ls/print.c upstream/netbsd/bin/ls/ls.h \
 		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
@@ -240,6 +244,7 @@ $(LS_PRINT_OBJECT): upstream/netbsd/bin/ls/print.c upstream/netbsd/bin/ls/ls.h \
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
 		-DSMALL \
 		-c upstream/netbsd/bin/ls/print.c -o $@
+	objcopy --redefine-sym now=cb_ls_print_now --globalize-symbol=cb_ls_print_now $@
 	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol array cb_ls_printcol_array
 	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol lastentries cb_ls_printcol_lastentries
 
@@ -341,8 +346,8 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 # STATICS-RESET-01: cat.c's own getopt flags and its accumulated
 # exit-status variable (rval) need per-invocation isolation -- objcopy,
 # not -D, for the same reason ls.c's own build rule comment explains.
-# filename is left unmanaged: always reassigned before every read/warn()
-# use within the same invocation, so no reset is needed.
+# filename is managed too (STATICS-CACHE-02): it is assigned before each
+# file and read by warn() after reads that can yield to another cat task.
 # STATICS-CACHE-02: bsize and raw_cat()'s own function-local `static char
 # *buf` and `static char fb_buf[BUFSIZ]` are managed together as per-task
 # slots: buf is sized from bsize, and may point at fb_buf, so no one of the
@@ -358,11 +363,13 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 		--redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag \
 		--redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag \
 		--redefine-sym rval=cb_cat_rval --redefine-sym bsize=cb_cat_bsize \
+		--redefine-sym filename=cb_cat_filename \
 		--globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag \
 		--globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag \
 		--globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag \
 		--globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag \
-		--globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize $@
+		--globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize \
+		--globalize-symbol=cb_cat_filename $@
 	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat buf cb_cat_raw_cat_buf
 	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat fb_buf cb_cat_raw_cat_fb_buf
 
@@ -724,6 +731,15 @@ $(NETBSD_BASENAME_OBJECT): upstream/netbsd/lib/libc/gen/basename.c \
 		include/cannedbsd/libc.h libc/include/string.h libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
 		-Dbasename=cb_libc_basename_upstream -c $< -o $@
+
+# STATICS-CACHE-02: ls -h. The pinned file is unchanged; stdlib.h's own
+# macro gives its definition the cb_libc_humanize_number link name.
+$(NETBSD_HUMANIZE_NUMBER_OBJECT): upstream/netbsd/lib/libc/gen/humanize_number.c \
+		compat/netbsd/include/namespace.h compat/netbsd/include/assert.h \
+		include/cannedbsd/libc.h libc/include/inttypes.h libc/include/locale.h \
+		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
+		libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -c $< -o $@
 
 $(NETBSD_STRTOIMAX_OBJECT): upstream/netbsd/common/lib/libc/stdlib/strtoimax.c \
 		upstream/netbsd/common/lib/libc/stdlib/_strtol.h \

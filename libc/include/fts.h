@@ -10,7 +10,9 @@
  * FTS-CHILDREN-01, bin/ls/ls.c/print.c/cmp.c/util.c) for every
  * fts_/FTS_/FTSENT reference they actually make. Values/fields no pinned
  * consumer references (FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT's real-BSD
- * split, FTS_DOT, FTS_INIT, FTS_NSOK, fts_cycle) are deliberately absent.
+ * split, FTS_INIT, FTS_NSOK, fts_cycle) are deliberately absent. FTS_DOT
+ * is present since STATICS-CACHE-02: ls -Ra must not descend into the "."
+ * and ".." entries FTS_SEEDOT synthesizes.
  *
  * fts_children/fts_link/fts_parent and FTS_SEEDOT's "."/".." synthesis
  * are FTS-CHILDREN-01's addition, ls-only per the same grep.
@@ -34,6 +36,8 @@
                            real BSD splits this into FTS_F/FTS_SL/etc; no
                            pinned consumer switches on those, so cannedBSD
                            does not distinguish them (design note S3) */
+#define FTS_DOT     9  /* "." or ".." synthesized by FTS_SEEDOT; carries a
+                           valid fts_statp but is never descended into */
 
 /* fts_open() options. */
 #define FTS_PHYSICAL  0x0001
@@ -71,7 +75,11 @@ typedef struct cb_ftsent {
     int fts_level;
     long fts_number;           /* caller-owned scratch, never touched */
     void *fts_pointer;         /* caller-owned scratch, never touched */
-    char *fts_path;            /* NUL-terminated, from one of path_argv */
+    char *fts_path;            /* NUL-terminated, from one of path_argv.
+                                  In a fts_children() list it reads as the
+                                  parent's path (as after NetBSD's
+                                  fts_build()); fts_read() restores the
+                                  full path when it returns that entry. */
     size_t fts_pathlen;
     char *fts_accpath;         /* == fts_path; FTS_NOCHDIR is the only mode */
     char *fts_name;            /* last component of fts_path */
