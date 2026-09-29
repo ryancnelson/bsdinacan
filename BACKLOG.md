@@ -126,6 +126,30 @@ have not been verified. Preserve all existing worktrees.
   and do not substitute indefinite allocation retention for proper cleanup.
 - Evidence: notes/iterations/STATICS-RESET-REVIEW-01.md.
 
+### LS-ROOT-ORDER-01 — respect sorted directory operands during traversal
+
+- Status: Assigned to an isolated Codex repair worker; Claude's tree preserved.
+- Base: exact LS/cache candidate `5ba7741`; dependencies: its FTS implementation.
+- Hypothesis: sorting root_children has no effect when fts_read rebuilds roots
+  from the original argv order.
+- Red: exact-source isolated FTS harness previews a,z but traverses z,a.
+  Add actual ls multi-directory normal/reverse ordering regression before repair.
+- Acceptance: root directory sections follow the supplied comparator, while
+  children, recursion, errors and repeated executions retain their contracts.
+  Require exact CI, independent review and fresh guest qualification on integration.
+- Scope: owned FTS traversal and focused tests; unchanged upstream sources.
+
+### SIG-02-ABI-FIX — retain rename compatibility after appending signal support
+
+- Status: Assigned to an isolated Codex repair worker.
+- Base: exact SIG-02 `7712111`; dependency: SIG-02 candidate.
+- Hypothesis: rename's sizeof(full API) check wrongly requires a later callback.
+- Red: a genuinely old-size API allocation including rename is rejected ENOSYS.
+- Acceptance: field-specific minimum length accepts old rename tables and still
+  rejects missing/short callbacks. Focused red/green, exact CI and independent
+  review; production guest qualification stays with the integrated candidate.
+- Scope: rename capability guard and regression only.
+
 ### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
 
 - Status: Proposal `b3b97bb` reviewed, exact #503 all three workflows passed.
