@@ -75,14 +75,14 @@ check_case() {
 # as special, and never interprets backslash sequences. There is no
 # usage/invalid-option error path at all, unlike dirname/basename.
 
-check_case 'netbsdecho' 0 "\n" "" "no arguments"
-check_case 'netbsdecho ""' 0 "\n" "" "single empty argument"
-check_case "netbsdecho ' '" 0 " \n" "" "single space argument"
+check_case 'echo' 0 "\n" "" "no arguments"
+check_case 'echo ""' 0 "\n" "" "single empty argument"
+check_case "echo ' '" 0 " \n" "" "single space argument"
 
-check_case 'netbsdecho -n foo bar' 0 "foo bar" "" "-n suppresses the trailing newline"
+check_case 'echo -n foo bar' 0 "foo bar" "" "-n suppresses the trailing newline"
 
-check_case 'netbsdecho -- foo' 0 "-- foo\n" "" "-- is an ordinary operand, not an end-of-options marker"
-check_case 'netbsdecho -e foo' 0 "-e foo\n" "" "-e is an ordinary operand, not an escape flag"
+check_case 'echo -- foo' 0 "-- foo\n" "" "-- is an ordinary operand, not an end-of-options marker"
+check_case 'echo -e foo' 0 "-e foo\n" "" "-e is an ordinary operand, not an escape flag"
 
 # The two source characters backslash-n inside the single-quoted operand
 # must reach argv, and echo's own control flow, completely literally: this
@@ -90,8 +90,13 @@ check_case 'netbsdecho -e foo' 0 "-e foo\n" "" "-e is an ordinary operand, not a
 # quotes. printf's own %b then turns only the *trailing* "\n" this test
 # supplies into a real newline, matching echo's own unconditional final
 # putchar('\n').
-check_case "netbsdecho 'a\\nb'" 0 "a\\\\nb\n" "" "backslash sequences are printed literally, not interpreted"
+check_case "echo 'a\\nb'" 0 "a\\\\nb\n" "" "backslash sequences are printed literally, not interpreted"
 
-check_case 'netbsdecho one two three' 0 "one two three\n" "" "multiple operands are space-joined"
+check_case 'echo one two three' 0 "one two three\n" "" "multiple operands are space-joined"
+
+# Pinned NetBSD echo checks ferror(stdout) after fflush(stdout) and invokes
+# err(1, "write error"), which emits "<progname>: write error: broken pipe\n"
+# when stdout cannot accept writes (e.g. broken pipe into a reader that exits).
+check_case 'echo hello | false' 1 "" "echo: write error: broken pipe\n" "broken pipe write error diagnostic"
 
 echo 'echo behavioral matrix passed'

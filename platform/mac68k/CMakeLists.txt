@@ -13,9 +13,11 @@ target_compile_definitions(cb_dirname_command PRIVATE main=cb_dirname_main)
 add_library(cb_basename_command OBJECT ${ROOT}/upstream/netbsd/usr.bin/basename/basename.c)
 target_include_directories(cb_basename_command PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_basename_command PRIVATE main=cb_basename_main)
-add_library(cb_wc OBJECT ${ROOT}/commands/wc.c)
-target_include_directories(cb_wc PRIVATE ${ROOT}/libc/include)
+add_library(cb_wc OBJECT ${ROOT}/upstream/netbsd/usr.bin/wc/wc.c)
+target_include_directories(cb_wc PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
 target_compile_definitions(cb_wc PRIVATE main=cb_wc_main)
+target_compile_options(cb_wc PRIVATE -include ${ROOT}/compat/netbsd/include/cannedbsd_wc_state.h)
 add_library(cb_yes OBJECT ${ROOT}/upstream/netbsd/usr.bin/yes/yes.c)
 target_include_directories(cb_yes PRIVATE ${ROOT}/libc/include)
 target_compile_definitions(cb_yes PRIVATE main=cb_yes_main)
@@ -60,7 +62,7 @@ target_compile_definitions(cb_head PRIVATE main=cb_head_main)
 target_compile_options(cb_head PRIVATE -fstack-usage)
 add_library(cb_echo OBJECT ${ROOT}/upstream/netbsd/bin/echo/echo.c)
 target_include_directories(cb_echo PRIVATE ${ROOT}/libc/include)
-target_compile_definitions(cb_echo PRIVATE main=cb_netbsdecho_main)
+target_compile_definitions(cb_echo PRIVATE main=cb_echo_main)
 # See UPSTREAM.md's echo entry: the pinned source's main is marked
 # /* ARGSUSED */ (lint-only) because it never reads argc.
 target_compile_options(cb_echo PRIVATE -Wno-unused-parameter)
@@ -186,6 +188,11 @@ target_include_directories(cb_cp_utils PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/cp)
 target_compile_definitions(cb_cp_utils PRIVATE SMALL)
 
+add_library(cb_mkdir OBJECT ${ROOT}/upstream/netbsd/bin/mkdir/mkdir.c)
+target_include_directories(cb_mkdir PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include)
+target_compile_definitions(cb_mkdir PRIVATE main=cb_mkdir_main)
+
 add_application(CannedBSD CREATOR "CnBD"
     main.c host_mac.c autorun.c root_dispatch.c context.S test_context.c application.r
     ${ROOT}/src/core.c ${ROOT}/src/terminal.c ${ROOT}/src/executor.c ${ROOT}/src/programs.c
@@ -200,6 +207,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/mv_module.c
     ${ROOT}/commands/cat_module.c
     ${ROOT}/commands/cp_module.c
+    ${ROOT}/commands/mkdir_module.c
     ${ROOT}/tests/terminal_engine_probe.c
     ${ROOT}/tests/signal_probe.c
     ${ROOT}/tests/tee_state_probe.c
@@ -291,7 +299,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OB
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
-    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_ls_print> $<TARGET_OBJECTS:cb_ls_cmp> $<TARGET_OBJECTS:cb_ls_util> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils>
+    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_ls_print> $<TARGET_OBJECTS:cb_ls_cmp> $<TARGET_OBJECTS:cb_ls_util> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils> $<TARGET_OBJECTS:cb_mkdir>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)

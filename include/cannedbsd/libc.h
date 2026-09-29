@@ -118,19 +118,6 @@ int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...);
 int cb_libc_ioctl(int fd, unsigned long request, ...);
 int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
                             const char *suffix, int scale, int flags);
-/* wchar_t is a compiler builtin, already visible here via <stddef.h>
-   (included transitively through cannedbsd/abi.h) -- spelled directly
-   so this declaration is identical to libc/include/wchar.h's, not just
-   convertible to it (an int/wchar_t mismatch is a real conflicting-type
-   error on targets where wchar_t is unsigned, e.g. this project's own
-   Alpine/musl build). mbstate_t is this project's own opaque struct
-   (see wchar.h) and not visible here, so it stays spelled as void *;
-   wint_t (see wctype.h) is typedef'd equal to int, so cb_libc_iswprint's
-   plain int spelling here already matches it exactly. */
-size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, void *ps);
-size_t cb_libc_wcrtomb(char *s, wchar_t wc, void *ps);
-int cb_libc_iswprint(int wc);
-int cb_libc_wcwidth(wchar_t wc);
 size_t cb_libc_strvis(char *dst, const char *src, int flags);
 const char *cb_libc_getenv(const char *name);
 int cb_libc_atoi(const char *nptr);
@@ -281,6 +268,26 @@ int cb_libc_mkfifo(const char *path, uint32_t mode);
 int cb_libc_mknod(const char *path, uint32_t mode, uint32_t dev);
 int cb_libc_lchown(const char *path, uint32_t uid, uint32_t gid);
 int cb_libc_fcntl(int fd, int cmd, ...);
+size_t cb_libc_strspn(const char *s, const char *charset);
+size_t cb_libc_strcspn(const char *s, const char *charset);
+void *cb_libc_setmode(const char *mode_str);
+uint32_t cb_libc_getmode(const void *set, uint32_t mode);
+#ifndef _MBSTATE_T_DECLARED
+typedef struct {
+    int __state;
+} mbstate_t;
+#define _MBSTATE_T_DECLARED
+#endif
+
+/* wint_t is unsigned int (libc/include/wchar.h); it is spelled out here
+   so these declarations match without that header. wchar_t is the
+   compiler builtin from <stddef.h>. */
+int cb_libc_iswspace(unsigned int wc);
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps);
+/* LS-02: ls util.c's printescaped() path. */
+size_t cb_libc_wcrtomb(char *s, wchar_t wc, mbstate_t *ps);
+int cb_libc_iswprint(unsigned int wc);
+int cb_libc_wcwidth(wchar_t wc);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);

@@ -29,6 +29,9 @@ static int entry(const struct cb_api_v1 *api, int argc,
     int status, fd;
     void *head;
     unsigned char byte;
+    if (argc == 2 && (strcmp(argv[1], "timestamp-zero") == 0 ||
+                      strcmp(argv[1], "timestamp-known") == 0))
+        return cb_file_call(api, argv[1]);
     if (argc == 2 && strcmp(argv[1], "after") == 0) {
         if (state->input_streams != NULL || state->stdin_closed ||
             cb_file_call(api, "clean-stdin") != 0) return 41;

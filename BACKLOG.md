@@ -13,15 +13,98 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Current assignments (2026-09-12):** SOLARIS-01 is accepted; FORMAT-01 design
-is integrated on main `206bfe4` (documentation only). Codex corrects the rejected
-SOLARIS-02 runner in work/SOLARIS-02-review and implements the reviewed SIG-01 core phase in its own worktree. Claude's and Antigravity's original worktrees are preserved. The locked
-desktop prevents restarting app workers or running Mac acceptance.
+**Coordination checkpoint (2026-09-28):** main includes test-only MAC-FILEPROBE-01
+`c8e8dd0`, exact #495 all-three CI green and independently verified fresh Mac
+acceptance: 69 PASS plus ALL PASS, normal shutdown and slot release in 26.28 seconds.
+The suite still omits file-manipulation milestone execution. Current-runtime
+Solaris acceptance remains pending. See CURRENT-STATE.md for evidence/limits.
 
-TERM-03 `fe082eb` has exact #405 all-three CI success after merging accepted
-Solaris source, but still requires fresh 68-record Mac and native Solaris
-qualification. No staged guest or fresh acceptance is claimed. Keep it off main
-until those gates pass. The accepted runtime remains the 67-record milestone.
+Claude owns STATICS-CACHE-02 in its new worktree; the inherited state-repair
+candidate remains rejected until its lifecycle defects are fixed and qualified.
+Antigravity owns only preparatory MAC-MILESTONE-TEST-01 documentation in a
+separate worktree. Both assignments were submitted and observed running.
+STATICS-REPRO-GATE-02 is reviewed and available as a detector prerequisite;
+it does not qualify the underlying runtime. Preserve earlier worktrees.
+
+### MAC-FILEPROBE-01 — portable timestamp test expectations
+
+- Status: Done, test-only `c8e8dd0` merged after exact #495 all-three CI,
+  independent review and fresh 69-record Mac run-rvwzs3ee.
+- Base: `b98b708`; dependencies: FS-STAT-01.
+- Hypothesis: nonzero timestamp assertions reject classic Mac's documented
+  unavailable-clock zero even when translation is correct.
+- Red: fresh #491 Mac failed fileprobe after 61 PASS; injecting the same zero
+  wall clock into Linux's complete fileprobe produced status 57 before the fix.
+- Acceptance: complete fileprobe under zero/nonzero fixture clocks, exact
+  seconds/nanoseconds/macros through libc, full core and fresh Mac pass.
+- Scope: shared tests only; no production behavior or ABI changes. Combined
+  current-runtime Solaris acceptance remains outstanding. Full evidence in
+  notes/iterations/MAC-FILEPROBE-01.md.
+
+### SOLARIS-WC-GATE-01 — update native wc acceptance contract
+
+- Status: Reviewed `628e9a0`, exact #489 ci/mac68k/mac-automation green;
+  native Solaris execution pending before integration. Branch preserved.
+- Base: main; dependencies: WC-02 and ECHO-02 (integrated).
+- Hypothesis: tools/solaris9-build.sh rejects correct padded NetBSD wc output
+  because it still compares against the former unpadded count.
+- Red test: exercise the runner assertion with the current exact output and
+  observe rejection; include incorrect-output controls.
+- Acceptance: require exactly seven spaces and 5 for the existing fixture,
+  retain wrong-output rejection, and run applicable CI. Offline checks do not
+  qualify Solaris execution; native run remains a serialized outstanding gate.
+- Scope: native assertion and focused regression coverage only; no runtime or
+  utility implementation changes, and no shared-rig operations by the worker.
+
+### STATICS-REPRO-GATE-02 — make state regression checks fail honestly
+
+- Status: Reviewed `1e3b58b`, exact #492 all-three CI green; available for
+  Claude to consume, not independently merged with its blocked prerequisite.
+- Base: exact STATICS-RESET-01 `b2d003b`; dependencies: candidate repro suite.
+- Hypothesis: matching only the absence of selected error strings treats a
+  failed or nonfunctional target as passing.
+- Red test: PROGRAM_PATH pointing to false or true makes the old script report
+  all five cases fixed; both controls must be rejected.
+- Acceptance: require successful command execution and positive fixture output
+  in every case, retaining wrong-state/error checks. Distinguish the untested
+  cross-mount mv path from the exercised same-mount behavior.
+- Scope: regression script and harness controls only. Do not merge this entire
+  prerequisite branch until its independent runtime blockers are repaired.
+
+### STATICS-CACHE-02 — repair retained command buffer lifecycle
+
+- Status: In progress; Claude in work/STATICS-CACHE-02. Runtime prerequisite
+  for STATICS-RESET-01 remains unaccepted.
+- Base: exact STATICS-RESET-01 `b2d003b`; coordinate with STATICS-REPRO-GATE-02,
+  which owns the shell regression detector.
+- Hypothesis: preserving function-local pointers without their size/ownership
+  lifecycle does not isolate commands across invocations or kernel teardown.
+- Red test: grow cat -B from 2048 to 4096 over a 3002-byte fixture; separately
+  run/destroy/recreate a kernel and repeat a heap-buffer cat invocation.
+- Acceptance: correct contents and statuses without invalid memory accesses;
+  correct nonzero defaults after recreation; interleaved tasks, allocation
+  failures, immediate cleanup and unchanged upstream hashes checked. Require
+  full exact CI, fresh Mac acceptance and native Solaris qualification.
+- Scope: command-state ownership and reset mechanism; inspect compiler-generated
+  symbols/toolchain support before choosing a fix, preserve pinned sources,
+  and do not substitute indefinite allocation retention for proper cleanup.
+- Evidence: notes/iterations/STATICS-RESET-REVIEW-01.md.
+
+### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
+
+- Status: Antigravity preparing/revising documentation only in
+  work/MAC-MILESTONE-TEST-01. Implementation blocked on state-repair integration.
+- Base: main; dependencies: STATICS-RESET-01 and existing file utilities.
+- Hypothesis: compilation-only coverage cannot demonstrate the newly integrated
+  mkdir/cp/mv/rm/ls milestone works inside System 7.
+- Red test: establish a failing behavioral control for each newly covered
+  operation; do not describe absent test registration as a runtime failure.
+- Acceptance: deterministic shared cases create a directory/file, list, copy,
+  move, inspect and remove it, asserting contents, statuses and cleanup;
+  preserve existing cases. Exact CI and fresh full Mac transcript/screenshot/
+  normal shutdown are required, plus applicable Solaris qualification.
+- Scope: shared acceptance cases and expected transcript wiring; keep native
+  ls import and unrelated libc additions in their own backlog items.
 
 Solaris testing is required for shared behavior changes under the transition
 policy in `notes/CI.md`; skipped and historical runs are not passing evidence.
@@ -111,9 +194,79 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 5. **`cp` and `mkdir` both fail honestly** with `sh: cp: no such file or
    directory` and status 127. The honest-failure rule holds at the shell layer.
 
+### Measured milestone status at `bae004b` (2026-09-17)
+
+Second end-to-end exploratory measurement of the milestone's acceptance sentence,
+taken by driving `build/bsdinacan` with scripted interactive sessions in the
+Alpine 3.22 gate environment following the landing of `CP-01` (`a9a936d`),
+`FS-STAT-01` (`e6dcb3d`), `FORMAT-01` (`a007331`), `MKDIR-CMD-01` (`5039fda`),
+`BUILD-SYNC-01` (`8791698`), `WC-02` (`bae004b`), and `MILESTONE-E2E-01` (merge `c2ff582`, branch commit `2d3bd32`).
+
+Working, exit status 0, verified via scripted sessions:
+
+- create — `echo hello > /f1`, `echo append >> /f1`, `mkdir -p /a/b/c` (4-level directory hierarchies created cleanly)
+- list — `ls /dir` (single column plain listing)
+- copy — `cp /f1 /f2`, `cp -r /dir1 /dir2` (pinned NetBSD `cp` with recursive tree replication)
+- move — `mv /f2 /f3`, `mv /dir2 /dir3` (pinned NetBSD `mv` handling file renames and directory moves)
+- delete — `rm /f3`, `rm -r /dir3` (pinned NetBSD `rm` with multi-level recursive removal via `VFS-05` look-ahead cursor)
+- inspect — `cat /f1` (with `-n`, `-b`, `-s`, `-ns`), `head -n 2 /f1`, `wc /f1 /f2` (with `-l`, `-w`, `-c`, `-m`, `-L`, multi-file totals)
+- statics isolation — `wc /f1 /f2` executed repeatedly in a single continuous guest session produces identical counts without state accumulation across calls
+- pipelines and data flow — `cat /f1 | tr a-z A-Z`, `cat /f1 | wc -w` composable across guest processes
+
+Gaps and observations:
+
+1. **`list` (`ls`) remains the sole owned stand-in command.** `ls -l`, `ls -a`, `ls -F`
+   fail honestly with `usage: ls [file]` and exit status 1. All other milestone
+   verbs (`cat`, `wc`, `mkdir`, `head`, `rm`, `mv`, `cp`) run pinned NetBSD source.
+   `LS-02` remains held behind `STATICS-RESET-01`.
+2. **`echo` registration duality:** `/bin/echo` resolves to bootstrap `echo_main`
+   (`src/programs.c:44-64`), while pinned NetBSD `echo.c` is registered as
+   `netbsdecho` (`src/programs.c:178`). Standard arguments and `-n` flags produce
+   identical output, but this is the only verb where the pinned import was aliased
+   rather than directly replacing the bootstrap program.
+3. **Honest failure invariant holds across the entire surface:** non-existent paths,
+   unsupported options, and missing parents without `-p` produce diagnostics on
+   stderr and exit status 1 without crashes or silent passes.
+
+### ECHO-02 — retire the `echo` placeholder the way `cat`'s import did
+
+- Status: Done; ready for merge.
+- Base: main (`652e869`)
+- Depends: none
+- Hypothesis: `echo` is the only verb where a pinned import was registered
+  under an aliased name instead of replacing its bootstrap placeholder.
+  `src/programs.c:159` registers the owned `echo_main` as `"echo"`, so
+  `/bin/echo` is the placeholder, while the pinned NetBSD import is registered
+  as `netbsdecho` at `:178`. `CAT-01` faced the identical situation and retired
+  the placeholder in the same commit, because registering both names hit
+  `EEXIST` and aborted kernel boot. Two conventions now exist for one
+  situation, and the one a user reaches is the placeholder.
+- Measured at `bae004b` under `MILESTONE-REMEASURE-01`: standard arguments and
+  `-n` produce identical output from both, so there is no behavioural
+  divergence to fix today. This is a convention and provenance problem, not a
+  correctness one, which is why it is `Ready` rather than urgent.
+- Red test: a behavioural case asserting that `/bin/echo` is served by the
+  pinned import (`echo hello | false` asserting `echo: write error: broken pipe\n`
+  stderr diagnostic and exit status 1). Failed against bootstrap `echo_main`
+  which writes nothing to stderr on write error.
+- Acceptance: retired the owned `echo_main` placeholder in `src/programs.c`,
+  registered the pinned import as `"echo"` via `cb_echo_program` (`commands/echo_module.c`),
+  compiled via `-Dmain=cb_echo_main` across Linux `Makefile` and mac68k `CMakeLists.txt`,
+  updated `tests/test_echo_behavior.sh`, `tests/test_echo_state.c`, and
+  `platform/mac68k/acceptance_cases.def`. All three CI workflows green.
+  See `notes/iterations/ECHO-02.md`.
+
+### MILESTONE-REMEASURE-01 — exploratory re-measurement of file manipulation milestone at `bae004b`
+
+- **Status:** Done; recorded in `BACKLOG.md` and `notes/iterations/MILESTONE-REMEASURE-01.md`.
+- **Base:** main (`bae004b`)
+- **Depends:** MILESTONE-E2E-01 (Done), WC-02 (Done), MKDIR-CMD-01 (Done)
+- **Scope:** Full exploratory session drive of `build/bsdinacan` across all six milestone verbs (`create`, `list`, `copy`, `move`, `delete`, `inspect`) and targeted test areas (`cat -n/-b`, `wc` multi-file/multi-invocation statics isolation, `mkdir -p` / `rm -r` look-ahead cursor, `echo` vs `netbsdecho` registration, `ls` option rejection, missing path diagnostics, and pipeline composition). Zero ABI, runtime, or utility source changes.
+- **Accept:** Full exploratory test suite pass, recorded exact outputs and exit statuses, scorecard updated, and zero regressions against `make ci`.
+
 ### MILESTONE-E2E-01 — commit the six-verb session acceptance test
 
-- Status: Ready
+- Status: Done (at 883f3f5)
 - Base: main
 - Depends: none
 - Hypothesis: the milestone's acceptance sentence has no automated test, so a
@@ -151,22 +304,30 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### WC-02 — unchanged NetBSD `wc`
 
-- Status: Ready
-- Base: main
-- Depends: LIBC-STRTOL-01 (Done), FS-STAT-01
-- Hypothesis: the current `wc` is the bootstrap command recorded in
-  `UPSTREAM.md`'s `strcmp` entry and supports only `-c`. The pinned `wc.c` needs
-  little beyond what `CAT-01` already landed, making it the cheapest conversion
-  of an owned stand-in into a real import.
-- Red test: `cat /f1 | wc -l` must print a line count rather than
-  `usage: wc -c [file]`.
-- Acceptance: byte-for-byte import with a SHA-256 `UPSTREAM.md` entry, the
-  bootstrap command retired in the same commit, and `-c`/`-l`/`-w` measured
-  against the host `wc` on identical input.
+- **Status:** Done; ready for merge.
+- **Base:** main
+- **Depends:** LIBC-STRTOL-01 (Done), FS-STAT-01 (Done)
+- **Scope:** Import pinned NetBSD `usr.bin/wc/wc.c` (SHA-256: `e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f`) byte-for-byte unmodified. Retire bootstrap `commands/wc.c` in the same commit. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
+- **Hypothesis:** The bootstrap `wc` supported only `-c` with custom formatting. The pinned `wc.c` requires only minimal `wchar`/`wctype` shims (`mbrtowc`, `iswspace`), `sys/file.h`, and `sys/types.h` typedefs (`quad_t`, `u_quad_t`), enabling full `-c`, `-l`, `-w`, `-m`, `-L`, multi-file, and standard formatting over `FS-STAT-01`.
+- **Veneer & Libc Support:**
+  - Added `libc/include/wchar.h` with `mbstate_t`, `wint_t`, `wchar_t`, and `cb_libc_mbrtowc`.
+  - Added `libc/include/wctype.h` with `wint_t` and `cb_libc_iswspace`.
+  - Added `compat/netbsd/include/sys/file.h` (`#include <fcntl.h>`).
+  - Added `quad_t` and `u_quad_t` typedefs in `compat/netbsd/include/sys/types.h`.
+  - Implemented ASCII/C-locale single-byte `cb_libc_mbrtowc` and `cb_libc_iswspace` in `libc/cb_libc.c` (declared in `include/cannedbsd/libc.h`).
+- **File-scope Statics Audit:** Audited all file-scope statics in `wc.c` (`tlinect`, `twordct`, `tcharct`, `tlongest`, `doline`, `doword`, `dobyte`, `dochar`, `dolongest`, `rval`); all are scalar integer/boolean counts with zero pointer statics and no heap caching across calls (zero heap-use-after-free risk).
+- **Wiring & Parity:**
+  - Registered `cb_wc_program` via `commands/wc_module.c`.
+  - Added `netbsd_wc.o` to `Makefile` and `cb_wc` to `platform/mac68k/CMakeLists.txt` in the same commit, satisfying `BUILD-SYNC-01` parity.
+- **Red Test:** `cat /f1 | wc -l` failed with usage error (`usage: wc -c [file]`) before the import; passed with exact line count afterwards.
+- **Acceptance:** Full behavioral test matrix in `tests/test_wc_behavior.sh` (12 test cases covering `-c`, `-l`, `-w`, `-L`, default invocation, pipelines, multiple files + total, missing file diagnostics, invalid options, and empty files). Session integration extended in `tests/test_file_manipulation_session.sh` exercising `cat <file> | wc -l`. Source pin and private symbol boundaries verified in `tests/test_netbsd_source.sh`. Full `make ci` green. See `notes/iterations/WC-02.md`.
 
 ### BUILD-SYNC-01 — stop the Linux and mac68k builds diverging by hand
 
-- Status: Ready
+- Status: Done; `check-build-parity` in the `ci` target, implemented as the
+  check rather than the refactor this item's acceptance allowed. All three
+  invariants were falsified by reintroducing the exact defect each exists for;
+  see `notes/iterations/BUILD-SYNC-01.md` for the three red outputs.
 - Base: main
 - Depends: MAC68K-CMD-01 (the instance that motivates it)
 - Hypothesis: `Makefile` and `platform/mac68k/CMakeLists.txt` enumerate each
@@ -198,20 +359,19 @@ Gaps the measurement exposed, none of which were visible from per-item tests:
 
 ### MKDIR-CMD-01 — a `mkdir` command so directories are reachable
 
-- Status: Blocked
-- Base: main
-- Depends: VFS-MKDIR-01
-- Hypothesis: `VFS-MKDIR-01` restores `cb_libc_mkdir` for `cp`'s benefit, but a
-  libc entry point no shell command reaches leaves directory behavior
-  untestable from a session. Exposing it as a command is what makes `rmdir`,
-  `rm -r` and directory listing observable end to end.
-- Red test: `mkdir /d1` followed by `ls /` must show `d1`; today `mkdir` exits
-  127.
-- Acceptance: prefer the pinned NetBSD `mkdir.c` if it imports without new libc
-  surface; if it does not, state the measured reason and land an owned command
-  documented as such, the way `commands/ls.c` is. Then extend
-  `MILESTONE-E2E-01` to create a directory, move a file into it, list it and
-  remove it recursively — which is the first real consumer of `VFS-05`.
+- **Status:** Done; ready for merge.
+- **Base:** main
+- **Depends:** VFS-MKDIR-01 (Done)
+- **Scope:** Import pinned NetBSD `bin/mkdir/mkdir.c` (SHA-256: `a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8`) byte-for-byte unmodified. Zero kernel ABI growth (`include/cannedbsd/abi.h` unchanged).
+- **Hypothesis:** `VFS-MKDIR-01` restored `cb_libc_mkdir` for `cp`'s benefit, but a libc entry point no shell command reaches left directory behavior untestable from a session. Exposing it as a command makes `mkdir`, `mkdir -p`, `rmdir`, `rm -r` and directory listing observable end to end.
+- **Veneer & Libc Support:**
+  - Added `cb_libc_strspn` and `cb_libc_strcspn` in `libc/cb_libc.c` (declared in `libc/include/string.h`) for `mkdir.c`'s `mkpath` helper.
+  - Added `cb_libc_setmode` and `cb_libc_getmode` in `libc/cb_libc.c` (declared in `libc/include/unistd.h`). `setmode` sets `errno = CB_EINVAL` and returns `NULL`, causing `mkdir -m` to honestly and cleanly fail with exit status 1 while unflagged `mkdir` and `mkdir -p` succeed completely without calling `setmode`.
+- **Wiring & Parity:**
+  - Registered `cb_mkdir_program` in `commands/mkdir_module.c` and `src/programs.c`.
+  - Added `netbsd_mkdir.o` to `Makefile` and `cb_mkdir` to `platform/mac68k/CMakeLists.txt` in the same commit.
+- **Red Test:** `tests/test_mkdir_behavior.sh` and extended session test in `tests/test_file_manipulation_session.sh` failed as expected (`expected status 0, got 127` / output mismatch) before wiring `cb_mkdir_program`.
+- **Acceptance:** Full behavioral test matrix in `tests/test_mkdir_behavior.sh` (single directory, multiple directories, `-p` nested paths, existing directories, trailing slashes, `-m` rejection, permissions errors) and 6th session test in `tests/test_file_manipulation_session.sh` verifying directory creation, nested file population, directory listing, and recursive deletion via `rm -r` (`VFS-05` / `fts`). Full `make ci` green. See `notes/iterations/MKDIR-CMD-01.md`.
 
 ### FILEUTIL-01 — measure the file-manipulation utility set
 

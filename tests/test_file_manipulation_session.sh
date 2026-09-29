@@ -101,7 +101,7 @@ check_stdin_session() {
 # 1. Full end-to-end lifecycle session exercising all 6 milestone verbs in a single guest session:
 #    - create: echo redirect (create /tmp/alpha, /tmp/beta)
 #    - list: ls (/tmp)
-#    - inspect: cat, head, wc (cat /tmp/alpha, head -n 1 /tmp/alpha, wc -c /tmp/beta)
+#    - inspect: cat, head, wc (cat /tmp/alpha, head -n 1 /tmp/alpha, wc -c /tmp/beta, cat /tmp/alpha | wc -l)
 #    - copy: cp (cp /tmp/alpha /tmp/alpha_bak, cp -r /home/user /tmp/user_copy)
 #    - move: mv (mv /tmp/alpha_bak /tmp/alpha_moved)
 #    - delete: rm (rm /tmp/beta, rm -r /tmp/user_copy, rm /tmp/alpha /tmp/alpha_moved)
@@ -122,9 +122,9 @@ check_stdin_session() {
 # directory operand (the old "\n/tmp:\n" lines were the leak, not real
 # behavior) and packs multiple names per line once column mode applies.
 check_case \
-    'echo "first line of alpha" > /tmp/alpha; echo "second line of alpha" >> /tmp/alpha; echo "data content for beta" > /tmp/beta; ls /tmp; cat /tmp/alpha; head -n 1 /tmp/alpha; wc -c /tmp/beta; cp /tmp/alpha /tmp/alpha_bak; cp -r /home/user /tmp/user_copy; ls /tmp; cat /tmp/alpha_bak; mv /tmp/alpha_bak /tmp/alpha_moved; ls /tmp; cat /tmp/alpha_moved; rm /tmp/beta; rm -r /tmp/user_copy; ls /tmp; rm /tmp/alpha /tmp/alpha_moved; ls /tmp' \
+    'echo "first line of alpha" > /tmp/alpha; echo "second line of alpha" >> /tmp/alpha; echo "data content for beta" > /tmp/beta; ls /tmp; cat /tmp/alpha; head -n 1 /tmp/alpha; wc -c /tmp/beta; cat /tmp/alpha | wc -l; cp /tmp/alpha /tmp/alpha_bak; cp -r /home/user /tmp/user_copy; ls /tmp; cat /tmp/alpha_bak; mv /tmp/alpha_bak /tmp/alpha_moved; ls /tmp; cat /tmp/alpha_moved; rm /tmp/beta; rm -r /tmp/user_copy; ls /tmp; rm /tmp/alpha /tmp/alpha_moved; ls /tmp' \
     0 \
-    "alpha beta\nfirst line of alpha\nsecond line of alpha\nfirst line of alpha\n22\nalpha     alpha_bak beta      user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved  beta         user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved\n" \
+    "alpha beta\nfirst line of alpha\nsecond line of alpha\nfirst line of alpha\n      22 /tmp/beta\n       2\nalpha     alpha_bak beta      user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved  beta         user_copy\nfirst line of alpha\nsecond line of alpha\nalpha        alpha_moved\n" \
     "" \
     "full lifecycle session through all six file manipulation verbs"
 
@@ -169,8 +169,17 @@ check_case \
 check_stdin_session \
     'echo "hello from stdin" > /tmp/session_file\ncat /tmp/session_file\nhead -n 1 /tmp/session_file\nwc -c /tmp/session_file\ncp /tmp/session_file /tmp/session_copy\nmv /tmp/session_copy /tmp/session_moved\nls /tmp\nrm /tmp/session_file /tmp/session_moved\nls /tmp\n' \
     0 \
-    "cannedBSD$ cannedBSD$ hello from stdin\ncannedBSD$ hello from stdin\ncannedBSD$ 17\ncannedBSD$ cannedBSD$ cannedBSD$ session_file    session_moved\ncannedBSD$ cannedBSD$ cannedBSD$ " \
+    "cannedBSD$ cannedBSD$ hello from stdin\ncannedBSD$ hello from stdin\ncannedBSD$       17 /tmp/session_file\ncannedBSD$ cannedBSD$ cannedBSD$ session_file    session_moved\ncannedBSD$ cannedBSD$ cannedBSD$ " \
     "" \
     "interactive stdin session driving all six verbs"
+
+# 6. Session-level directory lifecycle, nested file population, directory inspection, and recursive removal (VFS-05)
+# Upstream ls (LS-02) sorts by name and packs the two entries on one line.
+check_case \
+    'mkdir /tmp/proj; echo "manifest data" > /tmp/proj/manifest.txt; mkdir /tmp/proj/src; echo "source code" > /tmp/proj/src/main.c; ls /tmp/proj; ls /tmp/proj/src; cat /tmp/proj/manifest.txt; cat /tmp/proj/src/main.c; rm -r /tmp/proj; ls /tmp' \
+    0 \
+    "manifest.txt src\nmain.c\nmanifest data\nsource code\n" \
+    "" \
+    "session-level directory lifecycle with recursive rm -r (VFS-05)"
 
 echo 'file manipulation session behavioral suite passed'

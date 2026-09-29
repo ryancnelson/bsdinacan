@@ -33,7 +33,7 @@ int main(int argc, char **argv)
         "prefix:%hd", "prefix:%zd", "prefix:%jd",
         "prefix:%x", "prefix:%f", "prefix:%p", "prefix:%c",
         "prefix:%0d", "prefix:%", "prefix:%999999999999999999999999999d",
-        "prefix:%4%",
+        "prefix:%4%", "prefix:%o",
         "prefix:%.1s", "prefix:%33s",
         /* LS-02: "'" (thousands separator) is only valid paired with
            %u/%llu/%lu (pinned ls/print.c's own "%'*llu " and

@@ -6,6 +6,8 @@
 /* C/POSIX only. Successful results are borrowed and must not be modified.
  * Empty requests consult the current task environment, never the host. */
 #define LC_ALL CB_LIBC_LC_ALL
+#ifndef setlocale
 #define setlocale cb_libc_setlocale
+#endif
 
 #endif

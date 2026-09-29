@@ -17,6 +17,9 @@ static struct cb_task *owner;
 static int fail_after, mode, exec_fail_at, phase, require_clear;
 static int opened[2], open_count, close_count, allocation_count, read_count;
 static size_t allocated_before;
+static int use_fixture_clock;
+static uint64_t fixture_time;
+static uint64_t fixture_clock(void) { return fixture_time; }
 enum { PAYLOAD, BOOKKEEPING, CLOSE_ERROR, READ_ERROR, DENIED, EXHAUST,
        EXEC, FAILED_EXEC, FAILED_PREPARE, EXIT, LIVE };
 static void fail(const char *text)
@@ -269,6 +272,7 @@ static void run(const struct cb_program_v1 *descriptor, const char *command)
     base = cb_linux_host_ops(); host.allocate = allocate; host.resize = resize; host.release = release;
     block_count = 0; fail_after = -1; phase = require_clear = 0;
     open_count = close_count = allocation_count = read_count = 0;
+    if (use_fixture_clock) host.wall_clock_millis = fixture_clock;
     kernel = cb_kernel_create(&host);
     if (kernel == NULL) fail("create");
     cb_register_base_programs(kernel);
@@ -295,5 +299,16 @@ void cb_test_file(void)
     }
     run(&cb_file_probe_program, "fileprobe");
     run(&cb_file_compat_program, "filecompat");
+    /* Classic Mac intentionally has no UTC wall-clock source. Exercise its
+       zero sentinel and a deterministic nonzero clock without changing the
+       monotonic scheduler clock or relying on host uptime/current time. */
+    use_fixture_clock = 1;
+    fixture_time = 0;
+    run(&cb_file_probe_program, "fileprobe");
+    run(&cb_file_probe_program, "fileprobe timestamp-zero");
+    fixture_time = 1234567;
+    run(&cb_file_probe_program, "fileprobe");
+    run(&cb_file_probe_program, "fileprobe timestamp-known");
+    use_fixture_clock = 0;
     puts("file ownership tests passed");
 }

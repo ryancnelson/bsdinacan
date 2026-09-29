@@ -18,6 +18,23 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "timestamp-zero") == 0 ||
+        strcmp(mode, "timestamp-known") == 0) {
+        struct stat sb;
+        int known = strcmp(mode, "timestamp-known") == 0;
+        time_t seconds = known ? 1234 : 0;
+        long nanoseconds = known ? 567000000L : 0;
+        if (stat("/", &sb) != 0) return 119;
+        if (sb.st_atimespec.tv_sec != seconds ||
+            sb.st_atimespec.tv_nsec != nanoseconds) return 120;
+        if (sb.st_mtimespec.tv_sec != seconds ||
+            sb.st_mtimespec.tv_nsec != nanoseconds) return 121;
+        if (sb.st_ctimespec.tv_sec != seconds ||
+            sb.st_ctimespec.tv_nsec != nanoseconds) return 122;
+        if (sb.st_atime != seconds || sb.st_mtime != seconds ||
+            sb.st_ctime != seconds) return 123;
+        return 0;
+    }
     if (strcmp(mode, "cp-stub-probe") == 0) {
         char buf[64];
         struct timespec ts[2] = {{0, 0}, {0, 0}};
@@ -60,17 +77,11 @@ int main(int argc, char **argv)
         if (PATH_MAX != 1024) return 117;
         if (MAXBSIZE != 65536) return 118;
 
-        /* FS-STAT-01: timestamps are real host wall-clock values now,
-           not the fixed-zero stub this asserted before that ID landed --
-           "/" genuinely has a non-zero creation time. st_atime is itself
-           a macro expanding to st_atimespec.tv_sec, so comparing the two
-           is a tautology, not a check; assert non-zero-ness through
-           both spellings instead. */
+        /* A host without reliable UTC (classic Mac) reports zero. Exact
+           metadata translation, including the timestamp macros, is checked
+           above with injected zero and nonzero wall clocks. This portable
+           smoke probe must not assume that every adapter has UTC time. */
         if (stat("/", &sb) != 0) return 119;
-        if (sb.st_atimespec.tv_sec == 0) return 120;
-        if (sb.st_mtimespec.tv_sec == 0) return 121;
-        if (sb.st_ctimespec.tv_sec == 0) return 122;
-        if (sb.st_atime == 0 || sb.st_mtime == 0 || sb.st_ctime == 0) return 123;
 
         /* fcntl and flock declarations */
         {

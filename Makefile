@@ -48,7 +48,7 @@ CORE_SOURCES := \
 	commands/echo_module.c commands/head_module.c \
 	commands/ls_module.c commands/mv_module.c \
 	commands/rm_module.c commands/cat_module.c \
-	commands/cp_module.c \
+	commands/cp_module.c commands/mkdir_module.c \
 	src/core.c src/terminal.c \
 	src/executor.c \
 	src/host_linux.c \
@@ -60,7 +60,7 @@ CORE_SOURCES := \
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
 TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/statics_cache_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
-WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
+WC_COMMAND_OBJECT := $(BUILD)/netbsd_wc.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
 DIRNAME_COMMAND_OBJECT := $(BUILD)/dirname_command.o
@@ -75,6 +75,7 @@ MV_COMMAND_OBJECT := $(BUILD)/netbsd_mv.o
 CAT_COMMAND_OBJECT := $(BUILD)/netbsd_cat.o
 CP_COMMAND_OBJECT := $(BUILD)/netbsd_cp.o
 CP_UTILS_OBJECT := $(BUILD)/netbsd_cp_utils.o
+MKDIR_COMMAND_OBJECT := $(BUILD)/netbsd_mkdir.o
 ECHO_COMMAND_OBJECT := $(BUILD)/netbsd_echo.o
 EXITPROBE_COMMAND_OBJECT := $(BUILD)/exitprobe_command.o
 GETOPTPROBE_COMMAND_OBJECT := $(BUILD)/getoptprobe_command.o
@@ -142,7 +143,7 @@ LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
 LIBC_OBJECTS += $(FTS_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
 
-.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication print-program
+.PHONY: all clean test sanitize analyze ci check-architecture check-build-modes check-publication check-build-parity print-program
 
 all: $(PROGRAM)
 
@@ -152,11 +153,23 @@ print-program:
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(WC_COMMAND_OBJECT): commands/wc.c include/cannedbsd/abi.h \
-		include/cannedbsd/libc.h libc/include/fcntl.h libc/include/stdlib.h \
-		libc/include/errno.h libc/include/string.h libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_wc_main \
-		-c commands/wc.c -o $@
+$(WC_COMMAND_OBJECT): upstream/netbsd/usr.bin/wc/wc.c \
+		compat/netbsd/include/cannedbsd_wc_state.h \
+		compat/netbsd/include/sys/file.h \
+		compat/netbsd/include/sys/param.h \
+		compat/netbsd/include/sys/types.h \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/ctype.h libc/include/err.h libc/include/errno.h \
+		libc/include/fcntl.h libc/include/locale.h \
+		libc/include/stdio.h \
+		libc/include/stdlib.h libc/include/string.h \
+		libc/include/sys/cdefs.h libc/include/sys/stat.h \
+		libc/include/sys/types.h libc/include/unistd.h \
+		libc/include/wchar.h libc/include/wctype.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-include compat/netbsd/include/cannedbsd_wc_state.h \
+		-Dmain=cb_wc_main \
+		-c $< -o $@
 
 # LS-02. Prerequisites: FS-STAT-01 (real device/nlink/uid/gid/timestamps
 # in cb_stat_v1), FTS-CORE-01 (fts_open/fts_read/fts_close), FTS-CHILDREN-01
@@ -385,6 +398,17 @@ $(CP_UTILS_OBJECT): upstream/netbsd/bin/cp/utils.c upstream/netbsd/bin/cp/extern
 		-DSMALL \
 		-c upstream/netbsd/bin/cp/utils.c -o $@
 
+$(MKDIR_COMMAND_OBJECT): upstream/netbsd/bin/mkdir/mkdir.c \
+		include/cannedbsd/abi.h include/cannedbsd/libc.h \
+		libc/include/sys/cdefs.h compat/netbsd/include/sys/param.h \
+		libc/include/sys/stat.h compat/netbsd/include/sys/types.h \
+		libc/include/err.h libc/include/errno.h libc/include/locale.h \
+		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
+		libc/include/unistd.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		-Dmain=cb_mkdir_main \
+		-c upstream/netbsd/bin/mkdir/mkdir.c -o $@
+
 $(YES_COMMAND_OBJECT): upstream/netbsd/usr.bin/yes/yes.c \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/sys/cdefs.h | $(BUILD)
@@ -420,7 +444,7 @@ $(ECHO_COMMAND_OBJECT): upstream/netbsd/bin/echo/echo.c \
 		libc/include/stdlib.h libc/include/string.h \
 		libc/include/sys/cdefs.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Wno-unused-parameter \
-		-Dmain=cb_netbsdecho_main \
+		-Dmain=cb_echo_main \
 		-c upstream/netbsd/bin/echo/echo.c -o $@
 
 $(PRINTENV_COMMAND_OBJECT): upstream/netbsd/usr.bin/printenv/printenv.c \
@@ -754,16 +778,16 @@ $(LIBC_TRUNCATE_TEST_OBJECT): tests/libc_truncate_probe.c \
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_truncate_probe_main \
 		-c $< -o $@
 
-$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h src/terminal.h | $(BUILD)
+$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h src/terminal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) \
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
 		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def platform/mac68k/acceptance_output.h src/internal.h src/terminal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 
@@ -798,6 +822,12 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
+# Compares this Makefile against platform/mac68k/CMakeLists.txt. Needs no
+# compiler and no toolchain, so it runs first in ci and fails in under a
+# second. See tests/test_build_parity.py for why each invariant exists.
+check-build-parity:
+	python3 tests/test_build_parity.py
+
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
 		$(LIBC_STDIO_TEST_OBJECT) check-architecture
@@ -817,6 +847,8 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	PROGRAM_PATH='$(PROGRAM)' tests/test_mv_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cat_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_cp_behavior.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_mkdir_behavior.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_wc_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_file_manipulation_session.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_statics_repro.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
@@ -826,7 +858,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	$(PROGRAM) -c 'echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x'
 	$(PROGRAM) -c 'cd /tmp; pwd'
 	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
-		test "$$output" = 5 || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
+		test "$$output" = "       5" || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
 
 sanitize:
 	$(MAKE) clean
@@ -836,9 +868,9 @@ analyze:
 	$(CC) $(CPPFLAGS) -std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only libc/cb_libc.c \
 		$(sort $(PROGRAM_SOURCES) $(TEST_SOURCES))
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_wc_main \
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Dmain=cb_wc_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
-		-fanalyzer -fsyntax-only commands/wc.c
+		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/wc/wc.c
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_yes_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/yes/yes.c
@@ -860,7 +892,7 @@ analyze:
 	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_basename_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/usr.bin/basename/basename.c
-	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_netbsdecho_main \
+	$(CC) $(CPPFLAGS) -Ilibc/include -Dmain=cb_echo_main \
 		-Wno-unused-parameter \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/bin/echo/echo.c
@@ -1049,6 +1081,7 @@ check-linux-write: $(BUILD)/test_linux_write
 	$(BUILD)/test_linux_write
 
 ci:
+	$(MAKE) check-build-parity
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py

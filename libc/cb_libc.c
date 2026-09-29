@@ -606,6 +606,61 @@ char *cb_libc_strncat(char *s1, const char *s2, size_t n)
     return s1;
 }
 
+size_t cb_libc_strspn(const char *s, const char *charset)
+{
+    const char *p = s;
+    if (s == NULL || charset == NULL)
+        return 0;
+    while (*p != '\0') {
+        const char *c = charset;
+        int match = 0;
+        while (*c != '\0') {
+            if (*p == *c) {
+                match = 1;
+                break;
+            }
+            ++c;
+        }
+        if (!match)
+            break;
+        ++p;
+    }
+    return (size_t)(p - s);
+}
+
+size_t cb_libc_strcspn(const char *s, const char *charset)
+{
+    const char *p = s;
+    if (s == NULL || charset == NULL)
+        return 0;
+    while (*p != '\0') {
+        const char *c = charset;
+        while (*c != '\0') {
+            if (*p == *c)
+                return (size_t)(p - s);
+            ++c;
+        }
+        ++p;
+    }
+    return (size_t)(p - s);
+}
+
+void *cb_libc_setmode(const char *mode_str)
+{
+    (void)mode_str;
+    if (bound_api != NULL && bound_api->set_errno != NULL)
+        bound_api->set_errno(CB_EINVAL);
+    else
+        *cb_libc_errno_location() = CB_EINVAL;
+    return NULL;
+}
+
+uint32_t cb_libc_getmode(const void *set, uint32_t mode)
+{
+    (void)set;
+    return mode;
+}
+
 int cb_libc_link(const char *name1, const char *name2)
 {
     (void)name1;
@@ -1656,24 +1711,9 @@ int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
     return -1;
 }
 
-/* LS-02: single, immutable C locale (see wchar.h's own comment) -- a
-   real 1:1 byte<->wide-character mapping, genuinely stateless (mbstate_t
-   carries no real state to track), not a fabricated multibyte decoder.
-   Consuming the terminating NUL returns 0 per POSIX's own mbrtowc
-   contract, not 1. */
-size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, void *ps)
-{
-    (void)ps;
-    if (s == NULL)
-        return 0; /* stateless: "reset" always already holds */
-    if (n == 0)
-        return (size_t)-2;
-    if (pwc != NULL)
-        *pwc = (unsigned char)s[0];
-    return s[0] == '\0' ? 0 : 1;
-}
-
-size_t cb_libc_wcrtomb(char *s, wchar_t wc, void *ps)
+/* LS-02: the single C locale's 1:1 wide-character mapping; the matching
+   cb_libc_mbrtowc is WC-02's, below. */
+size_t cb_libc_wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
 {
     (void)ps;
     if (s == NULL)
@@ -1682,7 +1722,7 @@ size_t cb_libc_wcrtomb(char *s, wchar_t wc, void *ps)
     return 1;
 }
 
-int cb_libc_iswprint(int wc)
+int cb_libc_iswprint(unsigned int wc)
 {
     return wc >= 0x20 && wc <= 0x7E;
 }
@@ -1691,7 +1731,7 @@ int cb_libc_wcwidth(wchar_t wc)
 {
     if (wc == 0)
         return 0;
-    return cb_libc_iswprint((int)wc) ? 1 : -1;
+    return cb_libc_iswprint((unsigned int)wc) ? 1 : -1;
 }
 
 /* LS-02: values must match libc/include/vis.h exactly; not visible here
@@ -2386,4 +2426,29 @@ size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_l
     }
 
     return (total_bytes - remaining) / size;
+}
+
+int cb_libc_iswspace(unsigned int wc)
+{
+    if (wc <= 0x7f) {
+        return cb_libc_isspace((int)wc);
+    }
+    return 0;
+}
+
+size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
+{
+    (void)ps;
+    if (s == NULL)
+        return 0;
+    if (n == 0)
+        return (size_t)-2;
+    if (*s == '\0') {
+        if (pwc != NULL)
+            *pwc = L'\0';
+        return 0;
+    }
+    if (pwc != NULL)
+        *pwc = (wchar_t)(unsigned char)*s;
+    return 1;
 }

@@ -204,7 +204,7 @@ if [[ ! -f $provenance_file ]] ||
 fi
 if [[ ! -f $echo_object ]] ||
         ! nm "$echo_object" |
-            matches '[[:space:]]T[[:space:]]+cb_netbsdecho_main$'; then
+            matches '[[:space:]]T[[:space:]]+cb_echo_main$'; then
     echo "FAIL: pinned NetBSD echo was not compiled as a command object" >&2
     exit 1
 fi
@@ -430,6 +430,52 @@ for symbol in errx free fwrite iswprint malloc mbrtowc memset printf \
         stdout_stream strlen strvis wcrtomb wcwidth; do
     if nm -u "$ls_util_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
         echo "FAIL: ls util.c imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
+mkdir_source=upstream/netbsd/bin/mkdir/mkdir.c
+mkdir_object=$build_path/netbsd_mkdir.o
+mkdir_hash=a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8
+
+if [[ $(sha256sum "$mkdir_source" | awk '{print $1}') != "$mkdir_hash" ]] ||
+   ! matches "$mkdir_hash" "$provenance_file"; then
+    echo 'FAIL: mkdir source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$mkdir_object" | matches '[[:space:]]T[[:space:]]+cb_mkdir_main$' ||
+   nm "$mkdir_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: mkdir entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in chmod err errno_location exit fprintf free getmode getopt \
+        getopt_state_location getprogname mkdir setlocale setmode setprogname \
+        stat stderr_stream strcspn strspn umask warn; do
+    if nm -u "$mkdir_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: mkdir imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+
+wc_source=upstream/netbsd/usr.bin/wc/wc.c
+wc_object=$build_path/netbsd_wc.o
+wc_hash=e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f
+
+if [[ $(sha256sum "$wc_source" | awk '{print $1}') != "$wc_hash" ]] ||
+   ! matches "$wc_hash" "$provenance_file"; then
+    echo 'FAIL: wc source/provenance pin differs' >&2
+    exit 1
+fi
+if ! nm "$wc_object" | matches '[[:space:]]T[[:space:]]+cb_wc_main$' ||
+   nm "$wc_object" | matches '[[:space:]]T[[:space:]]+main$'; then
+    echo 'FAIL: wc entry point is not privately renamed' >&2
+    exit 1
+fi
+for symbol in close exit fprintf fstat getopt getopt_state_location \
+        getprogname iswspace mbrtowc memset open printf putchar read \
+        setlocale setprogname stderr_stream warn warnx; do
+    if nm -u "$wc_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: wc imports host-facing $symbol" >&2
         exit 1
     fi
 done

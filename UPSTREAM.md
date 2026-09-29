@@ -435,15 +435,15 @@ The imported file is byte-for-byte unchanged. The build renames `main` to `cb_di
 The imported file is byte-for-byte unchanged, matching the hash already
 measured in `notes/iterations/utility-roadmap-20260908.md`. It is compiled
 as its own command object (`netbsd_echo.o`, private link name
-`cb_netbsdecho_main`) once `PROGNAME-01` and `STDOUT-01` landed on `main`
-and were merged into this branch, exactly as `dirname`/`basename`/`yes`
-already do: `setprogname`, `setlocale`, `strcmp`, `printf`, `putchar`,
-`fflush`, `ferror`, and `err` all resolve to this project's private
-`cb_libc_*` veneers, never the host's. It registers under the distinct
-command name `netbsdecho`, per the design's item 3, rather than replacing
-the existing shell builtin `echo`. See `notes/iterations/ECHO-01.md` for
-the full integration record, including the executable exact-output/status
-test matrix and the write-failure/task-isolation coverage.
+`cb_echo_main`) once `PROGNAME-01` and `STDOUT-01` landed on `main`,
+exactly as `dirname`/`basename`/`yes` already do: `setprogname`, `setlocale`,
+`strcmp`, `printf`, `putchar`, `fflush`, `ferror`, and `err` all resolve
+to this project's private `cb_libc_*` veneers, never the host's.
+Under `ECHO-02`, it registers as the standard `echo` command
+(`cb_echo_program`), retiring the bootstrap placeholder in `src/programs.c`.
+See `notes/iterations/ECHO-01.md` and `notes/iterations/ECHO-02.md` for the
+integration records, including the executable exact-output/status test
+matrix and the write-failure/task-isolation coverage.
 
 The pinned source's `main` never reads `argc` (marked `/* ARGSUSED */`,
 a lint-only annotation with no effect on GCC/Clang warnings), so its
@@ -814,3 +814,53 @@ multi-column layout sizing beyond the fixed 80-column fallback) fail
 honestly (`ENOSYS`/`ENOTTY`) rather than fabricate a terminal geometry or
 humanized size; termcap is out of scope. Compiled with `-DSMALL
 -Dmain=cb_ls_main`.
+
+## NetBSD `mkdir`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `bin/mkdir/mkdir.c`
+- Local path: `upstream/netbsd/bin/mkdir/mkdir.c`
+- SHA-256: `a3abf691d386bd2b8a23483e0dd7abb314403b281031d3b58cd3abec4e0926d8`
+- Embedded RCS identifier: `$NetBSD: mkdir.c,v 1.39 2021/09/13 22:46:02 kre Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1983, 1992, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/mkdir_module.c`. The build renames `main` to `cb_mkdir_main`.
+It depends on `mkdir(2)` (from `VFS-MKDIR-01`), `stat(2)` / `chmod(2)`,
+`umask(2)`, `strspn(3)` / `strcspn(3)`, and `setmode(3)` / `getmode(3)`
+(which returns `NULL` with `CB_EINVAL` when `-m` is passed since symbolic
+mode compilation is not yet implemented). `mkdir` and `mkdir -p` execute
+entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
+`system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.
+
+## NetBSD `wc`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/wc/wc.c`
+- Local path: `upstream/netbsd/usr.bin/wc/wc.c`
+- SHA-256: `e45048c833937e53fb48928ba5ab008ffab0c01bcd7c97f13eee4e4b122b1d4f`
+- Embedded RCS identifier: `$NetBSD: wc.c,v 1.37 2024/01/14 17:39:19 christos Exp $`
+- License: file-specific three-clause Regents of the University of California
+  license (1980, 1991, 1993), retained verbatim in the imported file.
+
+The imported file is byte-for-byte unchanged. Registered via
+`commands/wc_module.c` (retiring the bootstrap `commands/wc.c` command in the same
+commit). The build renames `main` to `cb_wc_main`.
+
+It depends on `fstat(2)` (leveraging `FS-STAT-01` metadata for the regular-file
+`st_size` fast path on `-c`), `read(2)`, `open(2)`, `close(2)`, `getopt(3)`,
+`setlocale(3)`, `mbrtowc(3)` / `iswspace(3)` (provided by `libc/include/wchar.h`
+and `libc/include/wctype.h`), `warn(3)` / `warnx(3)`, and
+`compat/netbsd/include/sys/file.h`.
+
+**File-scope statics audit:** All file-scope statics (`tlinect`, `twordct`,
+`tcharct`, `tlongest`, `doline`, `doword`, `dobyte`, `dochar`, `dolongest`,
+`rval`) are scalar integer and boolean counters; zero pointer statics exist
+across the translation unit, with no heap or pointer caching across calls (zero
+heap use-after-free risk).
+
+Executes entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
+`system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.

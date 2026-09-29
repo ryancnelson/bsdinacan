@@ -334,7 +334,7 @@ static void test_allocation_cleanup(void)
             "echo -n hello | wc -c") < 0)
         fail("allocation cleanup boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n       5\n") != 0)
         fail("allocation cleanup acceptance behavior");
     cb_kernel_destroy(kernel);
     if (allocation_balance != 0)
@@ -361,7 +361,7 @@ static void test_uninitialized_host_memory(void)
             "echo -n hello | wc -c") < 0)
         fail("dirty-memory boot");
     status = cb_kernel_run(kernel);
-    if (status != 0 || strcmp(captured, "HELLO\n5\n") != 0)
+    if (status != 0 || strcmp(captured, "HELLO\n       5\n") != 0)
         fail("dirty-memory acceptance behavior");
     cb_kernel_destroy(kernel);
 }
@@ -4614,7 +4614,7 @@ static int register_conv_probes(struct cb_kernel *kernel)
            0 : -1;
 }
 
-/* Adding netbsdecho as a 13th base command (cb_register_base_programs)
+/* Adding a 13th base command (cb_register_base_programs)
  * would have pushed FIXTURE_FULL's shared baseline plus its own explicit
  * list past CB_MAX_PROGRAMS's 64-slot ceiling. Scoping yesreader/yesprobe
  * out of FIXTURE_FULL and into their own fixture frees exactly the one
@@ -6684,14 +6684,15 @@ int main(int argc, char **argv)
     run_case("echo one > /tmp/x; echo two >> /tmp/x; cat /tmp/x",
              "one\ntwo\n", 0, 0);
     run_case("cd /tmp; pwd", "/tmp\n", 0, 0);
-    run_case("echo -n hello | wc -c", "5\n", 0, 0);
-    run_case("echo -n | wc -c", "0\n", 0, 0);
-    run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "6\n", 0, 0);
+    run_case("echo -n hello | wc -c", "       5\n", 0, 0);
+    run_case("echo -n | wc -c", "       0\n", 0, 0);
+    run_case("echo -n sixsix > /tmp/wc; wc -c /tmp/wc", "       6 /tmp/wc\n", 0, 0);
     run_case("wc -c /missing",
              "wc: /missing: no such file or directory\n", 1, 0);
     expect_streams("", "wc: /missing: no such file or directory\n");
-    run_case("wc", "usage: wc -c [file]\n", 2, 0);
-    expect_streams("", "usage: wc -c [file]\n");
+    run_case("wc -z",
+             "wc: illegal option -- z\nusage: wc [-c | -m] [-Llw] [file ...]\n", 1, 0);
+    expect_streams("", "wc: illegal option -- z\nusage: wc [-c | -m] [-Llw] [file ...]\n");
     run_case("export WORD=works; echo $WORD", "works\n", 0, 0);
     run_case("echo input > /tmp/in; cat < /tmp/in", "input\n", 0, 0);
     run_case("echo '' \"\" a\\ b 'c d' \"e f\" ';' '|'",
@@ -6735,9 +6736,11 @@ int main(int argc, char **argv)
     run_case("true | false; echo $?; false | true; echo $?", "1\n0\n", 0, 0);
     run_case("exit 7 | cat; echo $?", "0\n", 0, 0);
     run_case("echo hi | missing-command | cat; echo $?",
-             "sh: missing-command: no such file or directory\n127\n", 0, 0);
+             "sh: missing-command: no such file or directory\n"
+             "echo: write error: broken pipe\n127\n", 0, 0);
     expect_streams("127\n",
-                   "sh: missing-command: no such file or directory\n");
+                   "sh: missing-command: no such file or directory\n"
+                   "echo: write error: broken pipe\n");
     run_case("echo unterminated'", "sh: syntax error\n", 2, 0);
     expect_streams("", "sh: syntax error\n");
     run_case("echo trailing\\", "sh: syntax error\n", 2, 0);
@@ -6752,8 +6755,12 @@ int main(int argc, char **argv)
     run_case("cat /missing; echo $?",
              "cat: /missing: no such file or directory\n1\n", 0, 0);
     expect_streams("1\n", "cat: /missing: no such file or directory\n");
-    run_case("echo abc | tr z-a A-Z", "usage: tr string1 string2\n", 2, 0);
-    expect_streams("", "usage: tr string1 string2\n");
+    run_case("echo abc | tr z-a A-Z",
+             "usage: tr string1 string2\n"
+             "echo: write error: broken pipe\n", 2, 0);
+    expect_streams("",
+                   "usage: tr string1 string2\n"
+                   "echo: write error: broken pipe\n");
     run_case("exit 257", "", 1, 0);
     run_case("exit -1", "", 255, 0);
     run_case("exit 1 2; echo continued",
