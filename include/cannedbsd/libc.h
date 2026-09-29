@@ -253,6 +253,8 @@ int cb_libc_fchown(int descriptor, uint32_t uid, uint32_t gid);
 int cb_libc_fchflags(int descriptor, uint32_t flags);
 int cb_libc_futimes(int descriptor, const struct timeval *times);
 int cb_libc_utimes(const char *path, const struct timeval *times);
+void cb_libc_sig_ignore(int sig);
+void cb_libc_sig_error(int sig);
 void (*cb_libc_signal(int sig, void (*func)(int)))(int);
 int32_t cb_libc_vfork(void);
 int cb_libc_execl(const char *path, const char *arg0, ...);

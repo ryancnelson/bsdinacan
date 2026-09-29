@@ -214,6 +214,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/mkdir_module.c
     ${ROOT}/tests/terminal_engine_probe.c
     ${ROOT}/tests/signal_probe.c
+    ${ROOT}/tests/signal_libc_probe.c
     ${ROOT}/tests/tee_state_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
@@ -326,3 +327,9 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_fts>)
 # A single resident CODE segment keeps all runtime calls free of that trap.
 target_link_options(CannedBSD PRIVATE -Wl,-gc-sections -Wl,--mac-strip-macsbug
     -Wl,--mac-single)
+
+# SIG-02 ordinary-source signal markers must compile and link on Retro68 too.
+add_library(cb_signal_libc_probe OBJECT ${ROOT}/tests/libc_signal_probe.c)
+target_include_directories(cb_signal_libc_probe PRIVATE ${ROOT}/libc/include ${ROOT}/include)
+target_compile_definitions(cb_signal_libc_probe PRIVATE main=cb_signal_libc_main)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_signal_libc_probe>)

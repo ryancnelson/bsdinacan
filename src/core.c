@@ -1630,6 +1630,17 @@ static const char *api_strerror(int error)
     }
 }
 
+static int api_set_interrupt(int disposition, int *previous)
+{
+    struct cb_task *task = active_kernel->current;
+    int result = cb_task_set_interrupt(task, disposition, previous);
+    if (result < 0) {
+        cb_task_set_error(task, -result);
+        return -1;
+    }
+    return 0;
+}
+
 static int api_get_errno(void)
 {
     return *active_kernel->current->error_cell;
@@ -1960,6 +1971,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->rmdir = api_rmdir;
     api->rename = api_rename;
     api->wall_clock_millis = api_wall_clock_millis;
+    api->set_interrupt = api_set_interrupt;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

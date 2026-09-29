@@ -6583,8 +6583,22 @@ static void test_startup_identity(void)
         fail("argv vector replacement renamed startup identity");
 }
 
+int cb_signal_libc_probe(const struct cb_host_ops_v1 *host);
+static void cb_test_signal_libc(void)
+{
+    int status = cb_signal_libc_probe(cb_linux_host_ops());
+    if (status != 0) {
+        fprintf(stderr, "signal libc failed status %d\n", status);
+        exit(1);
+    }
+    puts("signal libc tests passed");
+}
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--signal-libc") == 0) {
+        cb_test_signal_libc();
+        return 0;
+    }
     test_startup_identity();
     if (argc == 2 && strcmp(argv[1], "--format") == 0) {
         run_case("stdioprobe decimal", " -42", 0, 1);

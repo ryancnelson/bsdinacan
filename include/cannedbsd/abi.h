@@ -209,6 +209,10 @@ struct cb_input_state_v1 {
     (offsetof(struct cb_input_state_v1, input_streams) + \
      sizeof(((struct cb_input_state_v1 *)0)->input_streams))
 
+/* SIG-02: integer dispositions for the cooperative SIGINT setter. */
+#define CB_INTERRUPT_DEFAULT 0
+#define CB_INTERRUPT_IGNORE 1
+
 struct cb_api_v1 {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -283,6 +287,10 @@ struct cb_api_v1 {
        column needs the CURRENT time (time(3)), not a file's stored one,
        and no task-facing accessor for that existed before this. */
     uint64_t (*wall_clock_millis)(void);
+    /* SIG-02 optional tail. Set this task's cooperative interrupt disposition,
+       returning the previous value. Success preserves errno; failure returns
+       -1 with errno and leaves disposition/pending state unchanged. */
+    int (*set_interrupt)(int disposition, int *previous);
 };
 #define CB_API_V1_WALL_CLOCK_MIN_SIZE \
     (offsetof(struct cb_api_v1, wall_clock_millis) + \
