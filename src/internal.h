@@ -60,8 +60,6 @@ struct cb_executor_ops {
 
 #define CB_EXECUTOR_V1_PREFIX_SIZE offsetof(struct cb_executor_ops, capabilities)
 #define CB_EXECUTOR_COOPERATIVE_INTERRUPT UINT32_C(1)
-#define CB_INTERRUPT_DEFAULT 0
-#define CB_INTERRUPT_IGNORE 1
 
 struct cb_program {
     const struct cb_executor_ops *executor;

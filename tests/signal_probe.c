@@ -439,6 +439,7 @@ static int controller(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+int cb_signal_libc_probe(const struct cb_host_ops_v1 *host);
 int cb_signal_probe(const struct cb_host_ops_v1 *host)
 {
     struct cb_host_ops_v1 copy = *host;
@@ -512,5 +513,5 @@ int cb_signal_probe(const struct cb_host_ops_v1 *host)
             target_payload != NULL || peer_payload != NULL || error)) result = error ? (int)error : 95;
         if (result != 0) return (int)scenario * 100 + result;
     }
-    return 0;
+    return cb_signal_libc_probe(host);
 }

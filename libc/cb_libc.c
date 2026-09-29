@@ -461,16 +461,33 @@ int cb_libc_utimes(const char *path, const struct timeval *times)
     return -1;
 }
 
-/* PROVISIONAL PLACEHOLDER -- see libc/include/signal.h's own comment.
-   Always fails (SIG_ERR, matching real POSIX signal()'s own failure
-   return); never actually installs anything. Both rm.c and mv.c discard
-   the return value, so this is a silent, honest no-op either way. */
+/* Private signal markers have real function identities; they are never
+   delivered as handlers. Keep the public header independent of host signal.h. */
+void cb_libc_sig_ignore(int sig) { (void)sig; }
+void cb_libc_sig_error(int sig) { (void)sig; }
+
 void (*cb_libc_signal(int sig, void (*func)(int)))(int)
 {
-    (void)sig;
-    (void)func;
-    bound_api->set_errno(CB_ENOSYS);
-    return (void (*)(int))-1;
+    int disposition, previous;
+    if (sig != 2) { /* private SIGINT */
+        bound_api->set_errno(CB_EINVAL);
+        return cb_libc_sig_error;
+    }
+    if (func == NULL) disposition = CB_INTERRUPT_DEFAULT;
+    else if (func == cb_libc_sig_ignore) disposition = CB_INTERRUPT_IGNORE;
+    else {
+        bound_api->set_errno(CB_ENOSYS);
+        return cb_libc_sig_error;
+    }
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, set_interrupt) +
+                                    sizeof(bound_api->set_interrupt) ||
+        bound_api->set_interrupt == NULL) {
+        bound_api->set_errno(CB_ENOSYS);
+        return cb_libc_sig_error;
+    }
+    if (bound_api->set_interrupt(disposition, &previous) != 0)
+        return cb_libc_sig_error;
+    return previous == CB_INTERRUPT_IGNORE ? cb_libc_sig_ignore : NULL;
 }
 
 int32_t cb_libc_vfork(void)
