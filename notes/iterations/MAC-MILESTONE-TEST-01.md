@@ -91,3 +91,9 @@ Output capture (the `expected_output` buffer) is managed entirely separately by 
 - **Expected Status:** `1`
 - **Mapping:** `CB_MAC_CASE("cat Z", "cat: Z: no such file or directory\n", 1)`
 - **Observation:** Represents an explicitly broken operation as a test-harness negative control, verifying that missing paths generate exact rejections.
+
+## Source-Grounded Uncertainties
+There are NO remaining source-grounded uncertainties:
+- **Exact Error Strings:** `libc/cb_libc.c`'s `strerror` directly binds to the core kernel `api_strerror` table (in `src/core.c`), which hardcodes exactly `"no such file or directory"` without host OS influence. 
+- **`ls` Output Formatting:** `commands/ls.c` is cannedBSD's owned implementation which directly streams `readdir` strings via `puts()` and explicitly does not inject multi-column formatting, spacing, or structural metadata.
+- **`warn` Formatting:** Both `cannedBSD` and imported commands use `<err.h>` which binds `warn()` to `cb_libc_warn`, strictly printing `name: path: error_text\n`.
