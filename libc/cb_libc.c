@@ -266,7 +266,8 @@ int cb_libc_rename(const char *old_path, const char *new_path)
         bound_api->set_errno(CB_EFAULT);
         return -1;
     }
-    if (bound_api->struct_size < sizeof(struct cb_api_v1) ||
+    if (bound_api->struct_size < offsetof(struct cb_api_v1, rename) +
+                                    sizeof(bound_api->rename) ||
         bound_api->rename == NULL) {
         bound_api->set_errno(CB_ENOSYS);
         return -1;

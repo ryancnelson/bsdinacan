@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
+#include <stdio.h>
 
 static int handler_called;
 static void unsupported(int sig) { (void)sig; ++handler_called; }
@@ -12,6 +13,8 @@ int main(int argc, char **argv)
     if (argc != 2) return 90;
     mode = argv[1];
     errno = EPIPE;
+    if (strcmp(mode, "rename-oldtable") == 0)
+        return rename("/signal-rename-source", "/signal-rename-target") == 0 ? 0 : 24;
     if (strcmp(mode, "basic") == 0) {
         if (SIG_IGN == SIG_ERR || SIG_IGN == SIG_DFL || SIG_ERR == SIG_DFL)
             return 10;

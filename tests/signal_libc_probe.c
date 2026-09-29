@@ -66,6 +66,30 @@ static int entry(const struct cb_api_v1 *api, int argc,
     size_t i;
     int status, previous = 77;
     (void)argc; (void)argv;
+    /* The frozen pre-SIG-02 table includes rename but no interrupt setter.
+       Allocate only that prefix, and verify the real filesystem mutation. */
+    {
+        size_t old_size = offsetof(struct cb_api_v1, rename) + sizeof(api->rename);
+        struct cb_api_v1 *old_api = kernel->host->allocate(old_size);
+        int fd, result;
+        char content = 0;
+        if (old_api == NULL) return 61;
+        memcpy(old_api, api, old_size);
+        old_api->struct_size = (uint32_t)old_size;
+        fd = api->open("/signal-rename-source", CB_O_WRONLY | CB_O_CREAT, 0600);
+        if (fd < 0 || api->write(fd, "R", 1) != 1 || api->close(fd) != 0) {
+            kernel->host->release(old_api);
+            return 62;
+        }
+        result = call(old_api, "rename-oldtable");
+        kernel->host->release(old_api);
+        if (result != 0) return result;
+        fd = api->open("/signal-rename-target", CB_O_RDONLY, 0);
+        if (fd < 0 || api->read(fd, &content, 1) != 1 || content != 'R' ||
+            api->close(fd) != 0 ||
+            api->open("/signal-rename-source", CB_O_RDONLY, 0) != -1 ||
+            api->get_errno() != CB_ENOENT) return 63;
+    }
     if (call(api, "basic") != 0) return 40;
     api->set_errno(CB_EPIPE);
     if (api->set_interrupt(99, &previous) != -1 ||

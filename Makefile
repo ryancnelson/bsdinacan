@@ -955,5 +955,5 @@ HEAD_STACKFLAGS ?= -fstack-usage
 $(HEAD_COMMAND_OBJECT): upstream/netbsd/usr.bin/head/head.c include/cannedbsd/libc.h libc/include/stdio.h libc/include/stdlib.h libc/include/inttypes.h libc/include/ctype.h libc/include/unistd.h libc/include/err.h libc/include/errno.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) $(HEAD_STACKFLAGS) -Dmain=cb_head_main -c $< -o $@
 
-$(BUILD)/libc_signal_probe.o: tests/libc_signal_probe.c libc/include/signal.h include/cannedbsd/libc.h | $(BUILD)
+$(BUILD)/libc_signal_probe.o: tests/libc_signal_probe.c libc/include/signal.h libc/include/stdio.h include/cannedbsd/libc.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_signal_libc_main -c $< -o $@
