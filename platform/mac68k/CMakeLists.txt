@@ -262,13 +262,29 @@ add_custom_command(TARGET CannedBSD PRE_LINK
         --redefine-sym fflag=cb_cat_fflag --redefine-sym lflag=cb_cat_lflag
         --redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag
         --redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag
-        --redefine-sym rval=cb_cat_rval
+        --redefine-sym rval=cb_cat_rval --redefine-sym bsize=cb_cat_bsize
         --globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag
         --globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag
         --globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag
         --globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag
-        --globalize-symbol=cb_cat_rval
+        --globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize
         $<TARGET_OBJECTS:cb_cat>
+    # STATICS-CACHE-02: function-local cache statics; the helper finds the
+    # compiler-chosen local name (Retro68 GCC: var.N, Clang: func.var).
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_cat> raw_cat buf cb_cat_raw_cat_buf
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_cat> raw_cat fb_buf cb_cat_raw_cat_fb_buf
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_mv> fastcopy bp cb_mv_fastcopy_bp
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_mv> fastcopy blen cb_mv_fastcopy_blen
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_ls_print> printcol array
+        cb_ls_printcol_array
+    COMMAND sh ${ROOT}/tools/globalize-function-static.sh ${CMAKE_OBJCOPY}
+        ${CMAKE_NM} $<TARGET_OBJECTS:cb_ls_print> printcol lastentries
+        cb_ls_printcol_lastentries
     COMMAND ${CMAKE_OBJCOPY} --redefine-sym dnesp=cb_cp_dnesp
         --globalize-symbol=cb_cp_dnesp $<TARGET_OBJECTS:cb_cp>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OBJECTS:cb_locale_probe> $<TARGET_OBJECTS:cb_terminal_probe> $<TARGET_OBJECTS:cb_poll_probe> $<TARGET_OBJECTS:cb_err_probe> $<TARGET_OBJECTS:cb_warn_probe> $<TARGET_OBJECTS:cb_strcpy_probe> $<TARGET_OBJECTS:cb_memory_probe>

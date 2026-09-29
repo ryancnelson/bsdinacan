@@ -43,8 +43,8 @@
  *     /home, /bin) sits on the one unified root ramfs mount, rename()
  *     never returns EXDEV inside a single mount, and fastcopy() is only
  *     ever reached on that EXDEV fallback path -- so no shell command
- *     exercises it today. Fixed anyway, on the same mechanism as ls's
- *     case, for whenever a second mount makes it reachable.
+ *     exercises it today. Managed anyway, as a pair of slots like ls's
+ *     and cat's caches, for whenever a second mount makes it reachable.
  *
  * ls.c's own 32 non-static globals plus `output` (stale option flags and
  * a stale accumulated exit status carrying across a session's later,
@@ -59,119 +59,54 @@
  * without being claimed as a verified fix -- see cp_slots' own comment
  * below.
  *
- * This state comes in three different C storage classes, and this
- * mechanism's reach is different for each -- stated plainly, per an
- * explicit request after the first version of this file only handled one
- * of the three and left two of the five hazards above live while
- * appearing to solve the problem:
+ * STATICS-CACHE-02 found three defects in the first version of this file's
+ * treatment of function-local caches, each reproduced by
+ * tests/statics_cache_probe.c: cat -B growing from 2048 to 4096 overflowed
+ * a retained 2048-byte buf; a second kernel in the same host process wrote
+ * through the first kernel's released buf; and two cat tasks in one
+ * pipeline shared buf/fb_buf, so `cat big | cat` corrupted its output.
+ * Retaining task allocations across task exit (the former
+ * CB_EXECUTOR_PERSISTENT_HEAP) kept some pointers valid but never gave
+ * each task its own cache. It is gone; every piece of state below is now
+ * owned the same way.
  *
- *   - File-scope statics (ls.c's `output`; cat.c's/mv.c's/rm.c's getopt
- *     flags; cp.c's `dnesp`): COVERED. Reachable via objcopy -- see
- *     mechanism 1 below.
+ * One mechanism covers all three C storage classes:
+ *
  *   - Plain non-static globals (ls.c's `termwidth`/`sortkey`/`rval`/
- *     `blocksize` and its 28 f_* flags; cp.c's `Hflag`/`Lflag`/etc.):
- *     COVERED, more easily than file-scope statics -- these already have
- *     real external linkage, so `extern` by their own name is sufficient
- *     and no rename step is needed at all. Slotted into the exact same
- *     mechanism 1 below, alongside the renamed file-scope statics; the
- *     wrapper does not need to know or care which of the two a given slot
- *     started as.
- *   - Function-scope statics (print.c's printcol()-local `array`/
- *     `lastentries`; mv.c's fastcopy()-local `bp`/`blen`; cat.c's
- *     raw_cat()-local `buf`): PARTIALLY COVERED, and only because each of
- *     the three actual cases here happens to fit one of two narrow
- *     shapes -- see mechanism 2 below for what those shapes are and what
- *     this mechanism would NOT be able to fix if a fourth case did not
- *     fit either one. This is the one honest gap: there is no general
- *     mechanism here for a function-scope static that must itself be
- *     reset (not just kept valid) and has no unmanaged partner variable
- *     to pair it with. Closing that gap for real would mean either
- *     editing pinned source (forbidden) or per-task writable-data copies
- *     or per-command linker sections -- a materially different, larger
- *     piece of work, not a reset-list extension, and out of scope here
- *     unless a real case actually needs it.
+ *     `blocksize` and its 28 f_* flags; cp.c's `Hflag`/`Lflag`/etc.)
+ *     already have external linkage and are named directly.
+ *   - File-scope statics (ls.c's `output`; cat.c's/mv.c's/rm.c's getopt
+ *     flags and cat's `bsize`; cp.c's `dnesp`) are given an external name
+ *     by objcopy --redefine-sym/--globalize-symbol in each build rule. A
+ *     -D rename cannot do this: it can rename an identifier but not strip
+ *     internal linkage from one declaration (a blanket -Dstatic= turned
+ *     raw_cat()'s and fastcopy()'s statics into uninitialized automatics).
+ *   - Function-local statics (print.c printcol()'s `array`/`lastentries`;
+ *     cat.c raw_cat()'s `buf`/`fb_buf`; mv.c fastcopy()'s `bp`/`blen`)
+ *     get the same objcopy treatment, but the compiler chooses their local
+ *     symbol name: GCC (host GCC 14 and Retro68's m68k GCC 16) emits
+ *     `var.N`, Clang emits `func.var`. tools/globalize-function-static.sh
+ *     finds the single matching local symbol in the compiled object and
+ *     fails the build if there is not exactly one.
  *
- * Two different sub-mechanisms, because file-scope/global scalars and
- * function-scope pointer caches are reachable in two different ways:
+ * Ownership rules, applied identically to every slot:
  *
- * 1. File-scope scalar statics (ls.c's `output`; cat.c's/mv.c's/rm.c's
- *    getopt flags and accumulated-exit-status variables): given an
- *    external name via objcopy(1) (--globalize-symbol promotes the
- *    compiled symbol from local to global binding, --redefine-sym renames
- *    it -- see each pinned file's own Makefile/CMakeLists build rule for
- *    the exact rename table), this wrapper's start_or_resume memcpy()s
- *    each declared slot's saved bytes into the live global before
- *    delegating to the native executor, then saves the live value back
- *    out afterward (unless the task is now CB_TASK_ZOMBIE/CB_TASK_DEAD,
- *    mirroring TEE-STATE-01-design.md's own rule 3 -- a task that already
- *    exited may have freed memory a pointer-typed slot referenced), then
- *    always clears the live global before returning to the scheduler
- *    (rule 5 -- interleaved tasks of the same program must never see each
- *    other's live values while suspended). A compile-time -D rename
- *    cannot do this job: it can rename an identifier, but not selectively
- *    strip internal linkage from ONE specific declaration while leaving
- *    the same file's actual function-local statics alone -- confirmed by
- *    attempting exactly that (a blanket -Dstatic=) on cat.c and mv.c,
- *    which turned raw_cat()'s own `static char *buf` and fastcopy()'s own
- *    `static char *bp`/`static blksize_t blen` into fresh, uninitialized
- *    automatic variables each call (a real, WORSE bug than the one being
- *    fixed: GCC's own -Wmaybe-uninitialized caught it immediately, not
- *    guessed). objcopy operates on the already-compiled symbol table
- *    instead, precisely enough to touch only the one named symbol.
- *
- * 2. Function-local pointer caches -- print.c's printcol()-local `static
- *    FTSENT **array`/`static int lastentries` (ls), raw_cat()'s own
- *    `static char *buf` paired with the file-scope `bsize` it gates on
- *    (cat), fastcopy()'s own `static char *bp` paired with `static
- *    blksize_t blen` (mv). Each of these three fits one of exactly two
- *    shapes that make an unreachable pointer's staleness safe to leave
- *    alone rather than needing to reset it: (i) the command's own logic
- *    re-derives whatever it needs from the cache on every call regardless
- *    of what the pointer currently holds (ls's printcol() resizes/refills
- *    `array` itself based on the current listing's own entry count; mv's
- *    fastcopy() keeps reusing `bp` sized to whatever `blen` was, which is
- *    also left unmanaged, so the two never desync); or (ii) the pointer's
- *    OWN gate variable is itself left unmanaged alongside it, so gate and
- *    cache move in lockstep and the pair is self-consistent even though
- *    neither resets (cat's `buf`/`bsize`, once `bsize` was moved back out
- *    of mechanism 1's reset list -- see cat_slots' own comment below for
- *    the bug that came from putting it there while `buf` had no partner
- *    treatment). Neither shape is a general answer: a function-local
- *    static whose OWN correctness requires it to become NULL/zero again
- *    between invocations, with no unmanaged partner variable available to
- *    pair it with, is not something this mechanism can fix. A function-
- *    local static's compiled symbol name
- *    is compiler-internal and, at least under GCC, mangled with a
- *    non-deterministic numeric suffix -- not something to build a
- *    portable rename-and-reset mechanism on (clang's own naming, `func.
- *    var`, IS stable and objcopy-reachable, confirmed via nm on cat.o, but
- *    mac68k's Retro68 cross-toolchain is GCC-based, so relying on that
- *    would be a portability trap). The fix instead is to make the memory
- *    each cache holds never become invalid while its program could still
- *    run again -- i.e., by not running the ordinary task-scoped allocation
- *    sweep for that program at all -- and to leave the *entire* gate/cache
- *    pair unmanaged rather than resetting only the half objcopy can reach.
- *    (An earlier version of this file reset cat's `bsize` alone, since it
- *    IS file-scope and objcopy-reachable; that desynced it from `buf`,
- *    which stayed non-NULL from a prior invocation and skipped raw_cat()'s
- *    own re-initialization, so a second invocation ran `read(rfd, buf, 0)`
- *    -- a zero-length read a pipe's read() treats as immediate EOF. Caught
- *    by exactly the red test STATICS-RESET-01 was supposed to write: a
- *    multi-invocation session exercising the default, non-`-1` code path
- *    across more than one task.) See CB_EXECUTOR_PERSISTENT_HEAP and
- *    task_release_allocations()'s own comment in core.c: a persistent-heap
- *    executor's task allocations are spliced onto the shared program's own
- *    list instead of released, so a later task of the same program can
- *    safely keep reading through whatever a previous task's own explicit
- *    free() calls didn't already reclaim (which, for each of these three
- *    programs, is exactly and only its own cache above -- everything else
- *    they allocate, cb_fts.c's own entries included, is already explicitly
- *    freed within a single invocation's own traversal, matching what a
- *    real BSD process would never explicitly free either, relying on
- *    process exit; this executor's own program_destroy frees the
- *    accumulated arena for real at genuine kernel teardown). rm.c has no
- *    such pattern (checked directly against its source, not assumed) and
- *    is registered without the capability bit.
+ * 1. Each task has its own saved copy of every slot, seeded from the
+ *    program's compiled defaults (not zero: ls.c's `termwidth` is 80 and
+ *    printcol()'s `lastentries` is -1).
+ * 2. start_or_resume copies the task's saved values into the live
+ *    globals, runs the task until it yields, copies the live values back
+ *    out, then restores the live globals to the compiled defaults. Between
+ *    any two task runs the live globals therefore hold exactly their
+ *    compiled defaults, so interleaved tasks never see each other's state
+ *    (a cat blocked in write() keeps its own fb_buf contents while another
+ *    cat reads into fb_buf), and defaults captured by a later kernel's
+ *    program are still the real compiled values.
+ * 3. A task that has exited is not saved back: its pointer slots may name
+ *    memory its exit just released. Its heap allocations are released at
+ *    exit like any other task's, so a cache never outlives its task, and
+ *    the next task starts with NULL/-1/0 rather than a stale pointer --
+ *    in the same kernel or a later one.
  */
 
 #include "internal.h"
@@ -230,37 +165,16 @@ static struct cb_execution *sr_instance_create(struct cb_task *task,
     execution->common.executor = program->executor;
     execution->common.task = task;
     execution->common.program = program;
-    /* CB_EXECUTOR_PERSISTENT_HEAP: adopt whatever a previous task of this
-       same program left in the shared arena as THIS task's own
-       allocations, not merely something that survives in memory -- a
-       fresh task's own task->allocations starts NULL (real BSD assumption
-       print.c's printcol() relies on either way, see its own comment),
-       so this is a plain assignment, not a merge. Necessary, not just
-       nice-to-have: cb_libc_realloc()/free() (api_resize()/api_release()
-       in core.c) look the pointer up in the CURRENT task's own
-       task->allocations list and fail EINVAL if it is not there --
-       found by running the real multi-invocation session this ID's own
-       red test exercises and reading ls's own "invalid argument"
-       diagnostic, not guessed. task_release_allocations() (core.c) moves
-       it back to program->persistent_allocations when this task exits,
-       exactly reversing this adoption. */
-    if (cb_executor_supports_persistent_heap(program->executor)) {
-        task->allocations = mutable_program->persistent_allocations;
-        mutable_program->persistent_allocations = NULL;
-    }
     execution->saved_size = 0;
     {
         size_t i;
         for (i = 0; i < ops->slot_count; i++)
             execution->saved_size += ops->slots[i].size;
     }
-    /* Captured once per program, from each slot's own live value, the
-       first time any task of this program is ever created -- i.e. before
-       any task has run and had a chance to mutate them, so this is still
-       each slot's real compile-time initializer. NOT always zero-fill:
-       see cb_program's own static_defaults comment in internal.h for why
-       ls.c's `termwidth` (initializes to 80) needs this instead of a
-       blind zero-fill. */
+    /* Captured once per program from the live slots. Outside
+       sr_start_or_resume the live slots always hold their compiled
+       defaults (rule 2 in this file's top comment), so this is correct
+       for the first kernel and for every kernel created after it. */
     if (mutable_program->static_defaults == NULL && execution->saved_size != 0) {
         unsigned char *cursor;
         size_t i, j;
@@ -339,13 +253,16 @@ static void sr_start_or_resume(struct cb_execution *common)
     }
 
     /* Never leave one task's live values exposed to another interleaved
-       task of the same program while this one is suspended or gone --
-       matching TEE-STATE-01-design.md's own rule 5. */
+       task while this one is suspended or gone (TEE-STATE-01-design.md's
+       rule 5), and leave the compiled defaults, not zeros, for whatever
+       runs or is created next. */
+    cursor = common->program->static_defaults;
     for (i = 0; i < ops->slot_count; i++) {
         size_t j;
         unsigned char *slot = ops->slots[i].address;
         for (j = 0; j < ops->slots[i].size; j++)
-            slot[j] = 0;
+            slot[j] = cursor[j];
+        cursor += ops->slots[i].size;
     }
 }
 
@@ -373,16 +290,6 @@ static void sr_instance_destroy(struct cb_execution *common)
 
 static void sr_program_destroy(struct cb_kernel *kernel, struct cb_program *program)
 {
-    /* Real kernel teardown, not a task exit: safe to free whatever a
-       persistent-heap program's own tasks left behind (print.c's
-       printcol() cache, for ls) for real -- see task_release_allocations()
-       and CB_EXECUTOR_PERSISTENT_HEAP's own comments for why this can
-       never happen any earlier. A no-op for a program with the capability
-       unset, or one that never accumulated anything. */
-    if (program->persistent_allocations != NULL) {
-        cb_task_release_allocation_list(kernel, program->persistent_allocations);
-        program->persistent_allocations = NULL;
-    }
     if (program->static_defaults != NULL) {
         cb_release(kernel, program->static_defaults);
         program->static_defaults = NULL;
@@ -409,8 +316,8 @@ static void sr_program_destroy(struct cb_kernel *kernel, struct cb_program *prog
    adds itself. */
 
 /* LS-02's own leaked "static int output" (a stray "\ndirname:\n" header
-   on a later listing) plus the persistent-heap capability for print.c's
-   printcol() cache -- see this file's own top comment. cb_ls_output is
+   on a later listing) plus print.c's printcol() cache slots -- see this
+   file's own top comment. cb_ls_output is
    the only one of ls.c's own cross-invocation statics that is itself
    `static` (hence the objcopy rename); ls.c's remaining 32 -- blocksize,
    termwidth, sortkey, rval, and 28 f_* option flags -- are plain
@@ -438,6 +345,14 @@ extern int f_accesstime, f_column, f_columnacross, f_flags, f_grouponly,
            f_recursive, f_reversesort, f_sectime, f_singlecol, f_size,
            f_statustime, f_stream, f_type, f_typedir, f_whiteout,
            f_fullpath, f_leafonly;
+/* STATICS-CACHE-02: print.c printcol()'s own function-local `static
+   FTSENT **array` and `static int lastentries = -1`, renamed by the build
+   (tools/globalize-function-static.sh). Declared through a plain object
+   pointer: this file cannot see FTSENT, and only the storage size matters
+   to a slot. lastentries' -1 default is what makes each task's first
+   printcol() allocate its own array. */
+extern void *cb_ls_printcol_array;
+extern int cb_ls_printcol_lastentries;
 static const struct cb_static_slot ls_slots[] = {
     { &cb_ls_output, sizeof(cb_ls_output) },
     { &blocksize, sizeof(blocksize) },
@@ -472,10 +387,11 @@ static const struct cb_static_slot ls_slots[] = {
     { &f_whiteout, sizeof(f_whiteout) },
     { &f_fullpath, sizeof(f_fullpath) },
     { &f_leafonly, sizeof(f_leafonly) },
+    { &cb_ls_printcol_array, sizeof(cb_ls_printcol_array) },
+    { &cb_ls_printcol_lastentries, sizeof(cb_ls_printcol_lastentries) },
 };
 static const struct cb_static_reset_ops ls_static_reset_ops = {
-    { CB_STATIC_RESET_OPS_COMMON,
-      CB_EXECUTOR_COOPERATIVE_INTERRUPT | CB_EXECUTOR_PERSISTENT_HEAP },
+    { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
     ls_slots, sizeof(ls_slots) / sizeof(ls_slots[0])
 };
 
@@ -485,32 +401,23 @@ const struct cb_executor_ops *cb_ls_static_reset_executor(void)
 }
 
 /* cat.c's getopt flags (never reset at the top of main) plus its own
-   accumulated exit-status variable (cb_cat_rval) reset per invocation.
-   cb_cat_bsize is deliberately NOT reset, and is paired with
-   CB_EXECUTOR_PERSISTENT_HEAP instead -- found the hard way: an earlier
-   version of this file DID reset bsize to 0 each invocation while leaving
-   raw_cat()'s own function-local `static char *buf` alone (unreachable by
-   name from here, or so it seemed -- see below). raw_cat()'s own gate is
-   `if (buf == NULL) { ... recompute bsize, allocate buf ... }`, so
-   resetting bsize without also resetting buf desynced the pair: buf
-   stayed non-NULL from the first invocation, so the second invocation's
-   gate never fired, and `read(rfd, buf, bsize)` ran with the
-   freshly-reset bsize == 0 -- a zero-length read a pipe's read() treats
-   as EOF before ever checking whether the writer is still open, so
-   `echo abc | cat | tr a-z A-Z` produced no output. This is exactly
-   mv.c's fastcopy() `bp`/`blen` shape (see mv.c's own comment below) and
-   the fix is the same: leave the whole gate/cache pair -- bsize AND
-   buf -- unmanaged and let CB_EXECUTOR_PERSISTENT_HEAP keep buf's target
-   valid across invocations, rather than resetting one half of a pair
-   whose other half objcopy cannot reach. (raw_cat.buf's compiled symbol
-   name *is* stable and objcopy-reachable under clang, confirmed via nm;
-   this fix doesn't need that fact, since not resetting it at all sidesteps
-   the portability question of whether the same holds under mac68k's
-   GCC-based cross-compiler, which mangles function-local statics with a
-   non-deterministic numeric suffix instead.) */
+   accumulated exit-status variable (cb_cat_rval) reset per invocation,
+   and -- STATICS-CACHE-02 -- raw_cat()'s buffer state: file-scope `bsize`
+   and function-local `buf` and `fb_buf[BUFSIZ]`. These three are one
+   unit: raw_cat() only sizes and allocates buf while buf is NULL, and
+   falls back to pointing buf at fb_buf. Resetting bsize alone once left a
+   stale buf reading 0 bytes; retaining buf alone let a later -B 4096
+   read into an earlier 2048-byte buffer; sharing fb_buf let two cats in
+   one pipeline overwrite each other's pending data. As slots, every cat
+   task starts with bsize 0 and buf NULL and keeps its own fb_buf contents
+   while suspended. */
 extern int cb_cat_bflag, cb_cat_eflag, cb_cat_fflag, cb_cat_lflag,
            cb_cat_nflag, cb_cat_sflag, cb_cat_tflag, cb_cat_vflag,
            cb_cat_rval;
+extern size_t cb_cat_bsize;
+extern char *cb_cat_raw_cat_buf;
+/* 1024 is libc/include/stdio.h's BUFSIZ, fb_buf's declared size. */
+extern char cb_cat_raw_cat_fb_buf[1024];
 static const struct cb_static_slot cat_slots[] = {
     { &cb_cat_bflag, sizeof(cb_cat_bflag) },
     { &cb_cat_eflag, sizeof(cb_cat_eflag) },
@@ -521,10 +428,12 @@ static const struct cb_static_slot cat_slots[] = {
     { &cb_cat_tflag, sizeof(cb_cat_tflag) },
     { &cb_cat_vflag, sizeof(cb_cat_vflag) },
     { &cb_cat_rval, sizeof(cb_cat_rval) },
+    { &cb_cat_bsize, sizeof(cb_cat_bsize) },
+    { &cb_cat_raw_cat_buf, sizeof(cb_cat_raw_cat_buf) },
+    { cb_cat_raw_cat_fb_buf, sizeof(cb_cat_raw_cat_fb_buf) },
 };
 static const struct cb_static_reset_ops cat_static_reset_ops = {
-    { CB_STATIC_RESET_OPS_COMMON,
-      CB_EXECUTOR_COOPERATIVE_INTERRUPT | CB_EXECUTOR_PERSISTENT_HEAP },
+    { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
     cat_slots, sizeof(cat_slots) / sizeof(cat_slots[0])
 };
 
@@ -537,20 +446,23 @@ const struct cb_executor_ops *cb_cat_static_reset_executor(void)
    are deliberately not managed: stdin_ok is always recomputed via
    isatty() before use (moot regardless, since isatty() always reports
    true in this runtime) and pinfo is a SIGINFO progress-report counter
-   with no correctness impact if stale. CB_EXECUTOR_PERSISTENT_HEAP covers
-   fastcopy()'s own function-local `static char *bp`/`static blksize_t
-   blen` buffer cache, the same class of hazard as cat.c's `buf` above --
-   see this file's own top comment. */
+   with no correctness impact if stale. STATICS-CACHE-02: fastcopy()'s own
+   function-local `static char *bp`/`static blksize_t blen` buffer cache
+   is managed as a pair, like cat.c's buf/bsize above (blksize_t is
+   int32_t in libc/include/sys/types.h). */
 extern int cb_mv_fflg, cb_mv_hflg, cb_mv_iflg, cb_mv_vflg;
+extern char *cb_mv_fastcopy_bp;
+extern int32_t cb_mv_fastcopy_blen;
 static const struct cb_static_slot mv_slots[] = {
     { &cb_mv_fflg, sizeof(cb_mv_fflg) },
     { &cb_mv_hflg, sizeof(cb_mv_hflg) },
     { &cb_mv_iflg, sizeof(cb_mv_iflg) },
     { &cb_mv_vflg, sizeof(cb_mv_vflg) },
+    { &cb_mv_fastcopy_bp, sizeof(cb_mv_fastcopy_bp) },
+    { &cb_mv_fastcopy_blen, sizeof(cb_mv_fastcopy_blen) },
 };
 static const struct cb_static_reset_ops mv_static_reset_ops = {
-    { CB_STATIC_RESET_OPS_COMMON,
-      CB_EXECUTOR_COOPERATIVE_INTERRUPT | CB_EXECUTOR_PERSISTENT_HEAP },
+    { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
     mv_slots, sizeof(mv_slots) / sizeof(mv_slots[0])
 };
 
@@ -563,7 +475,7 @@ const struct cb_executor_ops *cb_mv_static_reset_executor(void)
    (cb_rm_eval). stdin_ok/pinfo left unmanaged, same reasoning as mv.c's
    own. rm.c has no function-local pointer-cache pattern like cat.c's
    `buf` or mv.c's `bp`/`blen` (checked directly against its own source,
-   not assumed) -- no CB_EXECUTOR_PERSISTENT_HEAP needed. */
+   not assumed) -- no cache slots needed. */
 extern int cb_rm_dflag, cb_rm_eval, cb_rm_fflag, cb_rm_iflag, cb_rm_Pflag,
            cb_rm_vflag, cb_rm_Wflag, cb_rm_xflag;
 static const struct cb_static_slot rm_slots[] = {
@@ -617,9 +529,12 @@ const struct cb_executor_ops *cb_rm_static_reset_executor(void)
    objcopy-rename mechanism as every other slot in this file, but the
    fix is not claimed as verified for this specific slot the way the
    flag leakage and the printcol()/fastcopy()/raw_cat() UAFs are. No
-   CB_EXECUTOR_PERSISTENT_HEAP needed: cp.c/utils.c have no function-local
-   pointer-cache pattern like cat.c's `buf` or mv.c's `bp`/`blen` (checked
-   directly against both files' own source, not assumed). */
+   cache slots: cp.c/utils.c have no function-local pointer cache like
+   cat.c's `buf` or mv.c's `bp`/`blen`. utils.c copy_file()'s `static char
+   buf[MAXBSIZE]` is scratch filled and drained by one read/write pair; it
+   is shared between cp tasks, which is safe only while that write cannot
+   yield (STATICS-CACHE-02 records this as unverified for blocking
+   destinations). */
 extern int Hflag, Lflag, Rflag, Pflag, fflag, iflag, lflag, pflag, rflag,
            vflag, Nflag;
 /* cb_ssize_t, not int: cp.c declares dnesp `static ssize_t`, and ssize_t

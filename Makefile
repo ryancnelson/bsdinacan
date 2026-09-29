@@ -5,6 +5,8 @@ CFLAGS ?= -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O2
 LDFLAGS ?=
 LDLIBS ?=
 SANITIZE_CC ?= $(CC)
+NM ?= nm
+GLOBALIZE_FUNCTION_STATIC := tools/globalize-function-static.sh objcopy $(NM)
 
 # See the memset.c build rule and UPSTREAM.md's "NetBSD memset" entry:
 # GCC's loop-idiom recognition rewrites this file's own fill loops into
@@ -57,7 +59,7 @@ CORE_SOURCES := \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
+TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/statics_cache_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/wc_command.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
@@ -214,10 +216,19 @@ $(LS_PRINT_OBJECT): upstream/netbsd/bin/ls/print.c upstream/netbsd/bin/ls/ls.h \
 		libc/include/fts.h libc/include/inttypes.h libc/include/pwd.h \
 		libc/include/grp.h libc/include/stdio.h libc/include/stdlib.h \
 		libc/include/string.h libc/include/time.h libc/include/tzfile.h \
-		libc/include/unistd.h libc/include/util.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) \
+		libc/include/unistd.h libc/include/util.h \
+		tools/globalize-function-static.sh | $(BUILD)
+# STATICS-CACHE-02: printcol()'s own `static FTSENT **array` and `static int
+# lastentries = -1` become per-task slots in src/static_reset.c, so every ls
+# task starts from their compiled defaults and owns its own array. See
+# tools/globalize-function-static.sh for how the compiler-chosen local name
+# is found. -O0: same clang+ASan global-size-narrowing reason as ls.c's own
+# build rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
 		-DSMALL \
 		-c upstream/netbsd/bin/ls/print.c -o $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol array cb_ls_printcol_array
+	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol lastentries cb_ls_printcol_lastentries
 
 $(LS_CMP_OBJECT): upstream/netbsd/bin/ls/cmp.c upstream/netbsd/bin/ls/ls.h \
 		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
@@ -281,18 +292,15 @@ $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnam
 		libc/include/err.h libc/include/errno.h libc/include/fcntl.h \
 		libc/include/grp.h libc/include/locale.h libc/include/pwd.h \
 		libc/include/signal.h libc/include/stdio.h libc/include/stdlib.h \
-		libc/include/string.h libc/include/unistd.h | $(BUILD)
+		libc/include/string.h libc/include/unistd.h \
+		tools/globalize-function-static.sh | $(BUILD)
 # STATICS-RESET-01: mv.c's own getopt flags need per-invocation isolation
 # -- objcopy, not -D, for the same reason ls.c's own build rule comment
 # explains. stdin_ok/pinfo left unmanaged, same reasoning as rm.c's own.
-# fastcopy()'s own function-local `static char *bp`/`static blksize_t
-# blen` buffer cache is a SEPARATE hazard objcopy cannot reach at all (no
-# compiler-portable external name for a function-local static -- found by
-# attempting exactly this rename, which produced a real
-# -Wmaybe-uninitialized error once `static` was stripped, not guessed):
-# covered instead by giving this program CB_EXECUTOR_PERSISTENT_HEAP (see
-# src/static_reset.c), the same mechanism print.c's printcol() cache
-# needs under ls.
+# STATICS-CACHE-02: fastcopy()'s own function-local `static char *bp`/
+# `static blksize_t blen` buffer cache becomes a pair of per-task slots,
+# renamed from whatever local name the compiler chose (see
+# tools/globalize-function-static.sh); a -D rename cannot reach them.
 # -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
 # rule comment explains.
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/mv $(CFLAGS) -O0 \
@@ -301,6 +309,8 @@ $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnam
 		--redefine-sym iflg=cb_mv_iflg --redefine-sym vflg=cb_mv_vflg \
 		--globalize-symbol=cb_mv_fflg --globalize-symbol=cb_mv_hflg \
 		--globalize-symbol=cb_mv_iflg --globalize-symbol=cb_mv_vflg $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ fastcopy bp cb_mv_fastcopy_bp
+	$(GLOBALIZE_FUNCTION_STATIC) $@ fastcopy blen cb_mv_fastcopy_blen
 
 # CAT-01. Prerequisites: LIBC-CTYPE-01 (isascii/toascii/iscntrl),
 # LIBC-STDIO-02 (clearerr/setbuf/fileno/BUFSIZ/SEEK_*), LIBC-ERR-02
@@ -314,18 +324,18 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 		libc/include/sys/cdefs.h libc/include/ctype.h libc/include/err.h \
 		libc/include/errno.h libc/include/fcntl.h libc/include/locale.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
-		libc/include/unistd.h | $(BUILD)
+		libc/include/unistd.h tools/globalize-function-static.sh | $(BUILD)
 # STATICS-RESET-01: cat.c's own getopt flags and its accumulated
 # exit-status variable (rval) need per-invocation isolation -- objcopy,
 # not -D, for the same reason ls.c's own build rule comment explains.
 # filename is left unmanaged: always reassigned before every read/warn()
-# use within the same invocation, so no reset is needed. bsize is also
-# left unmanaged, deliberately NOT renamed/reset here: it gates
-# raw_cat()'s own function-local `static char *buf`, which objcopy cannot
-# safely reach in a mac68k-portable way, so the pair is left to
-# CB_EXECUTOR_PERSISTENT_HEAP instead of resetting one half and desyncing
-# it from the other -- see src/static_reset.c's own cat_slots comment for
-# the bug this caused when bsize alone was reset.
+# use within the same invocation, so no reset is needed.
+# STATICS-CACHE-02: bsize and raw_cat()'s own function-local `static char
+# *buf` and `static char fb_buf[BUFSIZ]` are managed together as per-task
+# slots: buf is sized from bsize, and may point at fb_buf, so no one of the
+# three can be reset or shared without the others. The two function-local
+# names are found in the compiled object (see
+# tools/globalize-function-static.sh).
 # -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
 # rule comment explains.
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -O0 \
@@ -334,12 +344,14 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 		--redefine-sym fflag=cb_cat_fflag --redefine-sym lflag=cb_cat_lflag \
 		--redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag \
 		--redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag \
-		--redefine-sym rval=cb_cat_rval \
+		--redefine-sym rval=cb_cat_rval --redefine-sym bsize=cb_cat_bsize \
 		--globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag \
 		--globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag \
 		--globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag \
 		--globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag \
-		--globalize-symbol=cb_cat_rval $@
+		--globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat buf cb_cat_raw_cat_buf
+	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat fb_buf cb_cat_raw_cat_fb_buf
 
 $(CP_COMMAND_OBJECT): upstream/netbsd/bin/cp/cp.c upstream/netbsd/bin/cp/extern.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \

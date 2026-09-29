@@ -4212,8 +4212,8 @@ static int ls_interleave_main(const struct cb_api_v1 *api, int argc,
        invocations by design (real BSD ls never runs a second `ls` in the
        same process), and two of these tasks calling it in one host
        process was a real heap-use-after-free once the first task's own
-       allocations were reclaimed at its task exit. Fixed by
-       CB_EXECUTOR_PERSISTENT_HEAP (src/static_reset.c); this now
+       allocations were reclaimed at its task exit. STATICS-CACHE-02 makes
+       the cache a per-task slot (src/static_reset.c); this now
        exercises the real default path (no -1 workaround) specifically
        because it is the interleaved, not just sequential, case. */
     char *argv_alpha[] = {(char *)"ls", (char *)"/tmp/lsdir-alpha", NULL};
@@ -6326,6 +6326,25 @@ static void test_tee_state(void)
         exit(1);
     }
 }
+int cb_statics_cache_probe(const struct cb_host_ops_v1 *host, size_t index);
+size_t cb_statics_cache_probe_count(void);
+const char *cb_statics_cache_probe_output(void);
+static void test_statics_cache(void)
+{
+    size_t index;
+    int failed = 0;
+    for (index = 0; index < cb_statics_cache_probe_count(); ++index) {
+        int result = cb_statics_cache_probe(cb_linux_host_ops(), index);
+        if (result != 0) {
+            fprintf(stderr, "FAIL: statics cache probe status %d\n", result);
+            fprintf(stderr, "last session output: <%.200s>\n",
+                    cb_statics_cache_probe_output());
+            failed = 1;
+        }
+    }
+    if (failed)
+        exit(1);
+}
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 static void test_console_write(void)
 {
@@ -6519,6 +6538,17 @@ int main(int argc, char **argv)
         puts("tee state tests passed");
         return 0;
     }
+    if (argc == 3 && strcmp(argv[1], "--statics-cache-case") == 0) {
+        int result = cb_statics_cache_probe(cb_linux_host_ops(),
+                                            (size_t)strtoul(argv[2], NULL, 10));
+        printf("statics cache case %s status %d\n", argv[2], result);
+        return result == 0 ? 0 : 1;
+    }
+    if (argc == 2 && strcmp(argv[1], "--statics-cache") == 0) {
+        test_statics_cache();
+        puts("statics cache tests passed");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--console-write") == 0) {
         test_console_write();
         puts("portable console write tests passed");
@@ -6618,6 +6648,7 @@ int main(int argc, char **argv)
     cb_test_fwrite();
     cb_test_echo_state();
     test_mac_acceptance();
+    test_statics_cache();
     test_err();
     test_netbsd_strlen();
     test_netbsd_strcmp();

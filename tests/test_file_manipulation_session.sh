@@ -112,8 +112,9 @@ check_stdin_session() {
 # genuine heap-use-after-free once an earlier ls task's allocations were
 # reclaimed at its own task exit) and ls.c's own `output` flag (a stray
 # "\ndirname:\n" header leaking into a later single-argument listing).
-# STATICS-RESET-01 fixed both -- the array via CB_EXECUTOR_PERSISTENT_HEAP
-# (src/static_reset.c), the flag via objcopy-based per-invocation reset --
+# STATICS-RESET-01 fixed both -- the array now as per-task slots
+# (STATICS-CACHE-02, src/static_reset.c), the flag via objcopy-based
+# per-invocation reset --
 # so these now exercise the real default column path across multiple `ls`
 # invocations in one session, the scenario that used to crash under the
 # sanitizer. Expected output below was captured from the real binary, not
