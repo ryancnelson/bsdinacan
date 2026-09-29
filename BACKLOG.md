@@ -51,7 +51,7 @@ have not been verified. Preserve all existing worktrees.
 - Hypothesis: a probe defined as `main(void)` is called through the incompatible
   `int (int, char **)` callback type, producing the recurring UBSan diagnostic.
 - Red: compiling the actual probe against its module prototype reports
-  conflicting types; current exact CI logs report incorrect function type.
+  conflicting types; historical #499 logs report incorrect function type.
 - Acceptance: matching signature, unchanged eight behavioral assertions,
   exact all-three CI and inspection of the sanitizer log. Test-only source
   is absent from the Mac application; no production qualification claim.
@@ -107,7 +107,9 @@ have not been verified. Preserve all existing worktrees.
 ### STATICS-CACHE-02 — repair retained command buffer lifecycle
 
 - Status: Candidate `5ba7741`, exact #508 all three workflows passed; independent
-  review and guest qualification pending. Claude owns work/STATICS-CACHE-02. Runtime prerequisite
+  review found unsorted root-directory traversal; isolated LS-ROOT-ORDER-01
+  repairs it without editing Claude's worktree. Guest qualification pending.
+  Claude owns work/STATICS-CACHE-02. Runtime prerequisite
   for STATICS-RESET-01 remains unaccepted.
 - Base: exact STATICS-RESET-01 `b2d003b`; coordinate with STATICS-REPRO-GATE-02,
   which owns the shell regression detector.
@@ -126,8 +128,9 @@ have not been verified. Preserve all existing worktrees.
 
 ### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
 
-- Status: Antigravity preparing/revising documentation only in
-  work/MAC-MILESTONE-TEST-01. Implementation blocked on state-repair integration.
+- Status: Proposal `b3b97bb` reviewed, exact #503 all three workflows passed.
+  Implementation remains blocked on state-repair integration; Antigravity was
+  reassigned to read-only ls auditing. No guest execution is claimed.
 - Base: main; dependencies: STATICS-RESET-01 and existing file utilities.
 - Hypothesis: compilation-only coverage cannot demonstrate the newly integrated
   mkdir/cp/mv/rm/ls milestone works inside System 7.
@@ -317,7 +320,7 @@ Gaps and observations:
 
 ### LS-02 — unchanged NetBSD `ls` with the long form
 
-- Status: Existing candidate `54a00df` held behind STATICS-RESET-01 /
+- Status: Existing candidate `54a00df` (original candidate, now carried by `5ba7741`) held behind STATICS-RESET-01 /
   STATICS-CACHE-02 repairs and exact cross-platform qualification. Do not start
   a duplicate import; current main still uses the LS-01 owned command.
 - Base: main
@@ -689,7 +692,7 @@ pinned source that `cat` calls `fcntl(F_SETLKW)` **only** under `-l`
 
 ### FTS-CHILDREN-01 — `fts_children` for `ls` only
 
-- **Status:** Bundled in held LS-02 candidate `54a00df`, not on main.
+- **Status:** Bundled in held LS-02 candidate `54a00df` (original candidate, now carried by `5ba7741`), not on main.
   Coordinate with that existing work; do not duplicate its implementation.
 - **Base:** main
 - **Depends on:** FTS-CORE-01 (implemented), STATICS-CACHE-02 qualification

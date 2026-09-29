@@ -4,7 +4,7 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Coordination checkpoint, 2026-09-28
+## Coordination checkpoint, 2026-09-29
 
 Main now includes test-only correction `c8e8dd03c49f1e4683a7f639d891ae93a64b435c`.
 Exact Woodpecker #495 ci/mac68k/mac-automation passed, followed by independent
@@ -32,11 +32,13 @@ independent review and fresh Mac artifact acceptance remain required.
 - Claude's STATICS-CACHE-02/LS-02 candidate `5ba7741` passed exact #508 all
   three workflows. It merges current main and repairs command static ownership,
   mixed-mode ls state, dot traversal and several ls options. Independent review
-  is in progress; no runtime integration or guest acceptance is claimed.
+  found that root directory operands ignore sorting. LS-ROOT-ORDER-01 is
+  assigned in an isolated tree; no runtime integration or guest acceptance is
+  claimed.
 - SIG-02 candidate `7712111` passed exact #507 all three workflows. It connects
   the private signal veneer to the existing cooperative interrupt mechanism.
   Independent review found an old-size rename ABI guard regression; repair is
-  required before integration. The combined ABI must append wall_clock_millis
+  assigned to SIG-02-ABI-FIX in an isolated tree before integration. The combined ABI must append wall_clock_millis
   before set_interrupt and be rebuilt and qualified together.
 - Antigravity's MAC-MILESTONE-TEST-01 proposal `b3b97bb` passed exact #503 and
   documentation review. Its ten proposed cases are not implemented or executed.
