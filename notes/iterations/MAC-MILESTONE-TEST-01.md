@@ -7,14 +7,14 @@
 
 ## Acceptance Cases & Mappings
 
-These cases map directly to the `CB_MAC_CASE(command, expected_output, expected_status)` macro format in `platform/mac68k/acceptance_cases.def`. 
+These cases map directly to the `CB_MAC_CASE(command, expected_output, expected_status)` macro format in `platform/mac68k/acceptance_cases.def`.
 `platform/mac68k/main.c` utilizes a fresh kernel for every `CB_MAC_CASE`. Consequently, cases cannot share state across runs; each fixture independently sets up its required state using minimal relative paths to conserve buffer limits.
 
 ### Budget Verification
-`main.c` concatenates `"PASS <command>\n"` to `result[2048]` upon success. 
+`main.c` concatenates `"PASS <command>\n"` to `result[2048]` upon success.
 - Current `expected-result` length: 1712 bytes.
 - Total added bytes across all 10 proposed cases below: **313 bytes**.
-- Final computed `result` length: 2025 bytes, safely within the 2048-byte limit.
+- Final computed `result` length: 2025 bytes (total including NUL is 2026, leaving 22 bytes safely within the 2048-byte limit).
 
 ### 1. Create & Inspect (`echo` and `cat`)
 - **Fixture:** `echo y>f;cat f` (Adds 20 bytes)
