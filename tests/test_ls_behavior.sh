@@ -119,10 +119,37 @@ check_case 'mkdir /tmp/d; echo 1 > /tmp/d/in; echo 2 > /tmp/f; ls /tmp/d /tmp/f'
 # usage error); more than one directory operand gets a "name:" header per
 # directory, blank-line separated, no header before the first section only
 # when there is just one -- here there are two, so both get headers.
-check_case 'ls /tmp /home' 0 "/tmp:\n\n/home:\nuser\n" "" \
+# LS-ROOT-ORDER-01: sections follow name order, not argument order.
+check_case 'ls /tmp /home' 0 "/home:\nuser\n\n/tmp:\n" "" \
     "multiple directory operands get per-directory headers"
 
 check_case 'ls -1 /tmp | cat' 0 "" "" "pipeline on an empty directory"
+
+# LS-ROOT-ORDER-01: directory sections must follow the same comparator
+# as the initial operand preview, rather than the original argv order.
+root_fixture='mkdir /tmp/z; mkdir /tmp/a; echo z > /tmp/z/z; echo a > /tmp/a/a'
+check_case "$root_fixture; ls -1 /tmp/z /tmp/a" 0 \
+    "/tmp/a:\na\n\n/tmp/z:\nz\n" "" "directory operands sort by name"
+check_case "$root_fixture; ls -1r /tmp/a /tmp/z" 0 \
+    "/tmp/z:\nz\n\n/tmp/a:\na\n" "" "directory operands sort in reverse"
+# RAMFS directories have equal sizes, so -S must use its name tie-break.
+check_case "$root_fixture; ls -1S /tmp/z /tmp/a" 0 \
+    "/tmp/a:\na\n\n/tmp/z:\nz\n" "" "directory size ties sort by name"
+check_case "$root_fixture; ls -1Sr /tmp/a /tmp/z" 0 \
+    "/tmp/z:\nz\n\n/tmp/a:\na\n" "" "directory size ties reverse by name"
+# Compare -t's directory traversal to its own -d operand ordering, with
+# no intervening filesystem writes. This works with tied or distinct mtimes.
+for time_flags in -1t -1tr; do
+    run_case "mkdir /tmp/z; mkdir /tmp/a; ls -d $time_flags /tmp/z /tmp/a; ls $time_flags /tmp/z /tmp/a"
+    if [ "$status" -ne 0 ] || [ -s "$case_dir/err" ] ||
+       ! awk 'NR == 1 { first = $0; next }
+              NR == 2 { second = $0; next }
+              /:$/ { sub(/:$/, ""); count++; if ($0 != (count == 1 ? first : second)) bad = 1 }
+              END { exit bad || count != 2 }' "$case_dir/out"; then
+        cat "$case_dir/out" "$case_dir/err" >&2
+        fail "directory time ordering must match -d ($time_flags)"
+    fi
+done
 
 # No operand defaults to ".", which resolves to the boot-time root; its
 # three children in real sorted order (bin, home, tmp), not RAMFS's raw

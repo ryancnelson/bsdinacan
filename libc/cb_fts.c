@@ -78,8 +78,13 @@ struct cb_fts {
        (ls.c's own first call, per real fts(3)) previews path_argv itself
        without consuming root_index -- the main fts_read() loop below
        still creates and yields its own, separately owned entries for
-       each root afterward. Freed and rebuilt on each such call. */
+       each root afterward. Retained until close, and reused by later
+       root-level children calls for the remaining operand list. */
     FTSENT *root_children;
+    /* LS-ROOT-ORDER-01: the remaining roots in the comparator's order.
+       The preview owns these entries until close; traversal makes its
+       own entry so operand display scratch and basename rules stay apart. */
+    FTSENT *next_root;
 };
 
 static FTSENT *entry_create(const char *parent_path, const char *name,
@@ -362,8 +367,10 @@ FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
     }
     if (ftsp->depth == 0) {
         int i;
-        free_child_list(ftsp->root_children);
-        ftsp->root_children = NULL;
+        if (ftsp->root_children != NULL) {
+            errno = 0;
+            return ftsp->next_root;
+        }
         for (i = ftsp->root_index; ftsp->path_argv[i] != NULL; ++i) {
             FTSENT *entry = entry_create(NULL, ftsp->path_argv[i], 0);
             if (entry == NULL) {
@@ -386,6 +393,7 @@ FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
         }
         head = sort_children(ftsp, head);
         ftsp->root_children = head;
+        ftsp->next_root = head;
         errno = 0;
         return head;
     } else {
@@ -525,12 +533,22 @@ FTSENT *cb_libc_fts_read(FTS *ftsp)
             return NULL;
         }
         {
-            FTSENT *root = entry_create(NULL,
-                                        ftsp->path_argv[ftsp->root_index],
-                                        0);
-            ftsp->root_index++;
+            const char *path;
+            FTSENT *root;
+            /* A comparator governs root traversal as well as previews.
+               Build the preview lazily for callers that start with read;
+               comparator-free walkers retain their streaming behavior. */
+            if (ftsp->compar != NULL && ftsp->root_children == NULL &&
+                cb_libc_fts_children(ftsp, 0) == NULL)
+                return NULL;
+            path = ftsp->next_root != NULL ? ftsp->next_root->fts_path :
+                ftsp->path_argv[ftsp->root_index];
+            root = entry_create(NULL, path, 0);
             if (root == NULL)
                 return NULL;
+            if (ftsp->next_root != NULL)
+                ftsp->next_root = ftsp->next_root->fts_link;
+            ftsp->root_index++;
             classify(ftsp, root);
             if (root->fts_info != FTS_D)
                 ftsp->pending_free = root;
