@@ -27,4 +27,14 @@
 #define UINT_MAX 0xffffffffU
 #endif
 
+/*
+ * Import-only shim, added for the pinned NetBSD ls/util.c: MB_LEN_MAX
+ * bounds its per-character conversion buffer. Genuinely 1 here, not an
+ * approximation -- see wchar.h's own comment on the single, immutable
+ * C locale this whole runtime already commits to (LOCALE-01).
+ */
+#ifndef MB_LEN_MAX
+#define MB_LEN_MAX 1
+#endif
+
 #endif

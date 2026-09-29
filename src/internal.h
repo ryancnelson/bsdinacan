@@ -66,6 +66,15 @@ struct cb_executor_ops {
 struct cb_program {
     const struct cb_executor_ops *executor;
     const char *name;
+    /* STATICS-RESET-01: only ever non-NULL for a program registered under
+       cb_static_reset_ops (src/static_reset.c): each managed slot's
+       compiled initializer, captured from the live slot at this program's
+       first task creation. Not always 0 -- ls.c's `termwidth` is 80 and
+       print.c's printcol() `lastentries` is -1. STATICS-CACHE-02: valid
+       in every kernel, because that wrapper restores the live slots to
+       these values, never to zero, after each task run. Seeds each new
+       task's saved slots; released in the executor's own program_destroy. */
+    unsigned char *static_defaults;
 };
 
 struct cb_execution {
@@ -326,6 +335,15 @@ int cb_task_set_interrupt(struct cb_task *task, int disposition, int *previous);
 void cb_task_deliver_interrupt(struct cb_task *task);
 int cb_executor_supports_interrupt(const struct cb_executor_ops *executor);
 const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
+
+/* STATICS-RESET-01 (src/static_reset.c): one generic executor-ops wrapper,
+   one accessor per command giving it its own slot table. See that file's
+   own top comment for the full design. */
+const struct cb_executor_ops *cb_ls_static_reset_executor(void);
+const struct cb_executor_ops *cb_cat_static_reset_executor(void);
+const struct cb_executor_ops *cb_mv_static_reset_executor(void);
+const struct cb_executor_ops *cb_rm_static_reset_executor(void);
+const struct cb_executor_ops *cb_cp_static_reset_executor(void);
 
 const struct cb_executor_ops *cb_native_executor(void);
 int cb_executor_prepare(struct cb_kernel *kernel,

@@ -78,9 +78,16 @@ check_case 'echo one > /tmp/a; echo two > /tmp/b; mv /tmp/a /tmp/b; cat /tmp/b; 
 check_case 'echo test > /tmp/src; mv -v /tmp/src /tmp/dst; cat /tmp/dst' \
     0 "/tmp/src -> /tmp/dst\ntest\n" "" "verbose flag -v output"
 
-# 4. Multi-file move into existing directory (/home/user)
-check_case 'echo f1 > /tmp/f1; echo f2 > /tmp/f2; mv /tmp/f1 /tmp/f2 /home/user; ls /home/user; ls /tmp' \
-    0 "f2\nf1\n" "" "multi-file move into existing directory"
+# 4. Multi-file move into existing directory (/home/user), leaving /tmp
+# empty -- one combined `ls` call with both directories as operands (real
+# ls sorts by name and headers each operand) rather than two separate `ls`
+# invocations in the same script: pinned ls.c's own file-scope `static int
+# output` (its "have I already printed something" flag) is never reset
+# between invocations sharing this runtime's single process image, so two
+# back-to-back `ls` calls in one script do not behave like two independent
+# processes the way real BSD assumes -- see notes/iterations/LS-02.md.
+check_case 'echo f1 > /tmp/f1; echo f2 > /tmp/f2; mv /tmp/f1 /tmp/f2 /home/user; ls /home/user /tmp' \
+    0 "/home/user:\nf1 f2\n\n/tmp:\n" "" "multi-file move into existing directory"
 
 # 5. Directory rename (same mount)
 check_case 'echo nested > /home/user/content; mv /home/user /home/renamed; cat /home/renamed/content; ls /home' \

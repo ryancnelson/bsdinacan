@@ -73,10 +73,11 @@ check_case \
     "single directory creation"
 
 # 2. Multiple directory operands
+# Upstream ls (LS-02) sorts by name and packs both names on one line.
 check_case \
     'mkdir /tmp/alpha /tmp/beta; ls /tmp' \
     0 \
-    "beta\nalpha\n" \
+    "alpha beta\n" \
     "" \
     "multiple directory operands"
 

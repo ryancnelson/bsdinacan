@@ -43,15 +43,28 @@ struct cb_fts_frame {
     FTSENT *entry;   /* the FTS_D entry that opened this frame; reused,
                         info flipped to FTS_DP, when the frame pops */
     int skip;        /* fts_set(FTS_SKIP) called on `entry` */
+    /* FTS-CHILDREN-01: set only if fts_children() was called while this
+       frame was on top. children_snapshot owns the whole list (freed by
+       fts_close() from next_child onward -- entries before next_child
+       have already been handed to the caller via fts_read() and are
+       owned by pending_free/a child frame's own entry by then).
+       next_child is fts_read()'s own consumption cursor into that same
+       list, advanced one fts_link at a time instead of calling
+       cb_libc_readdir() again -- the directory handle was already fully
+       drained building the snapshot, so reading it again would only
+       ever see EOF. */
+    FTSENT *children_snapshot;
+    FTSENT *next_child;
 };
 
 struct cb_fts {
     char *const *path_argv;
     int root_index;
     int options;
-    int (*compar)(const FTSENT **, const FTSENT **);  /* accepted, unused:
-        no pinned rm/cp call site ever passes a non-NULL comparator (design
-        note); sorting is ls's concern, which is FTS-CHILDREN-01's scope. */
+    int (*compar)(const FTSENT **, const FTSENT **);  /* NULL for every
+        pinned rm/cp call site (design note); ls.c passes mastercmp, applied
+        by cb_libc_fts_children() below (FTS-CHILDREN-01/LS-02) to the list
+        it returns, matching real fts(3)'s own contract. */
     struct cb_fts_frame stack[CB_FTS_MAX_DEPTH];
     int depth;
     FTSENT *pending_free;  /* previous entry not owned by a frame; real
@@ -61,6 +74,17 @@ struct cb_fts {
                                than immediately -- callers may still be
                                holding/reading the pointer they were just
                                handed until they ask for the next one. */
+    /* FTS-CHILDREN-01: fts_children(ftsp, 0) called before any fts_read()
+       (ls.c's own first call, per real fts(3)) previews path_argv itself
+       without consuming root_index -- the main fts_read() loop below
+       still creates and yields its own, separately owned entries for
+       each root afterward. Retained until close, and reused by later
+       root-level children calls for the remaining operand list. */
+    FTSENT *root_children;
+    /* LS-ROOT-ORDER-01: the remaining roots in the comparator's order.
+       The preview owns these entries until close; traversal makes its
+       own entry so operand display scratch and basename rules stay apart. */
+    FTSENT *next_root;
 };
 
 static FTSENT *entry_create(const char *parent_path, const char *name,
@@ -104,6 +128,9 @@ static FTSENT *entry_create(const char *parent_path, const char *name,
     for (i = 0; i < entry->fts_pathlen; ++i)
         if (entry->fts_path[i] == '/')
             slash = &entry->fts_path[i];
+    /* As NetBSD fts_load(): a root keeps "/" rather than an empty name. */
+    if (slash == entry->fts_path && entry->fts_pathlen == 1)
+        slash = NULL;
     entry->fts_name = slash != NULL ? (char *)slash + 1 : entry->fts_path;
     entry->fts_namelen = cb_libc_strlen(entry->fts_name);
     entry->fts_level = level;
@@ -134,28 +161,25 @@ static int cycle_detected(struct cb_fts *fts, uint64_t inode)
     return 0;
 }
 
-/* Classifies a freshly-created entry (stats it, and for directories,
-   attempts to open/descend or detects DNR/DC), pushing a new frame onto
-   the stack when it becomes an FTS_D. Never returns NULL -- a stat or
-   opendir failure is reported as an FTSENT (NS/DNR), matching real fts's
-   own error-continuation contract (per-entry errors never abort the
-   walk; see the design note and rm.c's own handling). */
-static void classify(struct cb_fts *fts, FTSENT *entry)
+/* Shared stat/cycle/depth checks for both classify() (opens and
+   descends) and classify_peek() (fts_children()'s non-descending
+   preview). Returns 1 if entry is a directory candidate still needing
+   an opendir() attempt to resolve FTS_D vs FTS_DNR; 0 if fts_info is
+   already final (NS/DC/DEFAULT/the depth-bound DNR case). */
+static int classify_kind(struct cb_fts *fts, FTSENT *entry)
 {
-    struct cb_libc_dir *dir;
-
     if (cb_libc_stat(entry->fts_path, entry->fts_statp) < 0) {
         entry->fts_info = FTS_NS;
         entry->fts_errno = errno;
-        return;
+        return 0;
     }
     if (!S_ISDIR(entry->fts_statp->st_mode)) {
         entry->fts_info = FTS_DEFAULT;
-        return;
+        return 0;
     }
     if (cycle_detected(fts, entry->fts_statp->st_ino)) {
         entry->fts_info = FTS_DC;
-        return;
+        return 0;
     }
     if (fts->depth >= CB_FTS_MAX_DEPTH) {
         /* A path this deep already exceeds CB_PATH_MAX and could not have
@@ -164,8 +188,22 @@ static void classify(struct cb_fts *fts, FTSENT *entry)
            since further descent is equally impossible. */
         entry->fts_info = FTS_DNR;
         entry->fts_errno = ENAMETOOLONG;
-        return;
+        return 0;
     }
+    return 1;
+}
+
+/* Classifies a freshly-created entry, pushing a new frame onto the stack
+   when it becomes an FTS_D. Never returns NULL -- a stat or opendir
+   failure is reported as an FTSENT (NS/DNR), matching real fts's own
+   error-continuation contract (per-entry errors never abort the walk;
+   see the design note and rm.c's own handling). */
+static void classify(struct cb_fts *fts, FTSENT *entry)
+{
+    struct cb_libc_dir *dir;
+
+    if (!classify_kind(fts, entry))
+        return;
     dir = cb_libc_opendir(entry->fts_accpath);
     if (dir == NULL) {
         entry->fts_info = FTS_DNR;
@@ -177,7 +215,31 @@ static void classify(struct cb_fts *fts, FTSENT *entry)
     fts->stack[fts->depth].inode = entry->fts_statp->st_ino;
     fts->stack[fts->depth].entry = entry;
     fts->stack[fts->depth].skip = 0;
+    fts->stack[fts->depth].children_snapshot = NULL;
+    fts->stack[fts->depth].next_child = NULL;
     fts->depth++;
+}
+
+/* FTS-CHILDREN-01: fts_children()'s own classification. Distinguishes
+   FTS_D from FTS_DNR the same way classify() does, but never keeps a
+   directory open or pushes a frame -- this previews, it does not
+   descend. The real descent happens later, at actual consumption via
+   classify() in cb_libc_fts_read()'s main loop, when this same entry is
+   handed out as the current one. */
+static void classify_peek(struct cb_fts *fts, FTSENT *entry)
+{
+    struct cb_libc_dir *dir;
+
+    if (!classify_kind(fts, entry))
+        return;
+    dir = cb_libc_opendir(entry->fts_accpath);
+    if (dir == NULL) {
+        entry->fts_info = FTS_DNR;
+        entry->fts_errno = errno;
+        return;
+    }
+    cb_libc_closedir(dir);
+    entry->fts_info = FTS_D;
 }
 
 FTS *cb_libc_fts_open(char *const *path_argv, int options,
@@ -208,6 +270,190 @@ FTS *cb_libc_fts_open(char *const *path_argv, int options,
     return fts;
 }
 
+/* Frees a fts_children() list from `from` onward (inclusive), following
+   fts_link. Used both to discard a stale/superseded list and, in
+   fts_close(), to free whatever a still-open frame's snapshot never got
+   consumed. */
+static void free_child_list(FTSENT *from)
+{
+    while (from != NULL) {
+        FTSENT *next = from->fts_link;
+        entry_destroy(from);
+        from = next;
+    }
+}
+
+/* LS-02: real fts_children() sorts the list it returns using the
+   comparator fts_open() was given, the same one applied to each
+   directory's children during an ordinary fts_read() descent -- ls.c's
+   own default (non -f/-U) listing order depends on this; rm.c/cp.c
+   never pass a non-NULL comparator, so this is a no-op for them. A
+   simple linked-list merge sort, not qsort(3) over a temporary array:
+   this project's libc veneer has no qsort, and RAMFS directories are
+   small enough that introducing one just for this one internal use
+   would be pure overhead. */
+static FTSENT *merge_sorted_children(
+        int (*compar)(const FTSENT **, const FTSENT **),
+        FTSENT *left, FTSENT *right)
+{
+    FTSENT head_stub;
+    FTSENT *tail = &head_stub;
+
+    while (left != NULL && right != NULL) {
+        const FTSENT *left_entry = left;
+        const FTSENT *right_entry = right;
+        if (compar(&left_entry, &right_entry) <= 0) {
+            tail->fts_link = left;
+            tail = left;
+            left = left->fts_link;
+        } else {
+            tail->fts_link = right;
+            tail = right;
+            right = right->fts_link;
+        }
+    }
+    tail->fts_link = (left != NULL) ? left : right;
+    return head_stub.fts_link;
+}
+
+static FTSENT *sort_children(struct cb_fts *fts, FTSENT *head)
+{
+    FTSENT *slow, *fast, *second_half;
+
+    if (fts->compar == NULL || head == NULL || head->fts_link == NULL)
+        return head;
+
+    slow = head;
+    fast = head->fts_link;
+    while (fast != NULL && fast->fts_link != NULL) {
+        slow = slow->fts_link;
+        fast = fast->fts_link->fts_link;
+    }
+    second_half = slow->fts_link;
+    slow->fts_link = NULL;
+
+    return merge_sorted_children(fts->compar,
+                                  sort_children(fts, head),
+                                  sort_children(fts, second_half));
+}
+
+/* FTS-CHILDREN-01. See the FTSENT fts_link/fts_parent doc comment and
+   struct cb_fts_frame's children_snapshot/next_child doc comment in
+   fts.h and above. */
+/* STATICS-CACHE-02: a directory child's fts_path is "parent/name" in one
+   buffer. While the child sits in a fts_children() list, the separator is
+   replaced by a NUL so fts_path reads as the parent path, which is what
+   NetBSD fts_build() leaves there and what ls -P prints before "/name".
+   fts_name points past the separator and is unaffected. Only children
+   (created with a parent path) are ever passed here. */
+static void children_path_to_parent(FTSENT *entry)
+{
+    entry->fts_path[entry->fts_pathlen - entry->fts_namelen - 1] = '\0';
+}
+
+static void children_path_restore(FTSENT *entry)
+{
+    entry->fts_path[entry->fts_pathlen - entry->fts_namelen - 1] = '/';
+}
+
+FTSENT *cb_libc_fts_children(FTS *ftsp, int options)
+{
+    FTSENT *head = NULL, *tail = NULL;
+    (void)options; /* FTS_NAMEONLY accepted, not distinguished -- see fts.h */
+
+    if (ftsp == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+    if (ftsp->depth == 0) {
+        int i;
+        if (ftsp->root_children != NULL) {
+            errno = 0;
+            return ftsp->next_root;
+        }
+        for (i = ftsp->root_index; ftsp->path_argv[i] != NULL; ++i) {
+            FTSENT *entry = entry_create(NULL, ftsp->path_argv[i], 0);
+            if (entry == NULL) {
+                free_child_list(head);
+                return NULL;
+            }
+            /* STATICS-CACHE-02: an operand previewed before fts_read()
+               keeps its whole spelling as fts_name, as NetBSD
+               fts_open()'s fts_alloc(sp, *argv, len) does; ls lists and
+               diagnoses operands by this name. fts_read() roots are
+               trimmed to the last component, as fts_load() does. */
+            entry->fts_name = entry->fts_path;
+            entry->fts_namelen = entry->fts_pathlen;
+            classify_peek(ftsp, entry);
+            if (tail == NULL)
+                head = entry;
+            else
+                tail->fts_link = entry;
+            tail = entry;
+        }
+        head = sort_children(ftsp, head);
+        ftsp->root_children = head;
+        ftsp->next_root = head;
+        errno = 0;
+        return head;
+    } else {
+        struct cb_fts_frame *top = &ftsp->stack[ftsp->depth - 1];
+        struct dirent *de;
+
+        if (top->children_snapshot != NULL)
+            return top->children_snapshot;
+        if (ftsp->options & FTS_SEEDOT) {
+            const char *dotnames[2] = { ".", ".." };
+            int i;
+            for (i = 0; i < 2; ++i) {
+                FTSENT *entry = entry_create(top->entry->fts_path,
+                                             dotnames[i],
+                                             top->entry->fts_level + 1);
+                if (entry == NULL) {
+                    free_child_list(head);
+                    return NULL;
+                }
+                /* Never a descent candidate, so no cycle or directory
+                   classification: just the stat ls -la displays. */
+                if (cb_libc_stat(entry->fts_path, entry->fts_statp) < 0) {
+                    entry->fts_info = FTS_NS;
+                    entry->fts_errno = errno;
+                } else {
+                    entry->fts_info = FTS_DOT;
+                }
+                entry->fts_parent = top->entry;
+                children_path_to_parent(entry);
+                if (tail == NULL)
+                    head = entry;
+                else
+                    tail->fts_link = entry;
+                tail = entry;
+            }
+        }
+        while ((de = cb_libc_readdir(top->dir)) != NULL) {
+            FTSENT *entry = entry_create(top->entry->fts_path, de->d_name,
+                                         top->entry->fts_level + 1);
+            if (entry == NULL) {
+                free_child_list(head);
+                return NULL;
+            }
+            classify_peek(ftsp, entry);
+            entry->fts_parent = top->entry;
+            children_path_to_parent(entry);
+            if (tail == NULL)
+                head = entry;
+            else
+                tail->fts_link = entry;
+            tail = entry;
+        }
+        head = sort_children(ftsp, head);
+        top->children_snapshot = head;
+        top->next_child = head;
+        errno = 0;
+        return head;
+    }
+}
+
 FTSENT *cb_libc_fts_read(FTS *ftsp)
 {
     if (ftsp == NULL) {
@@ -229,8 +475,29 @@ FTSENT *cb_libc_fts_read(FTS *ftsp)
                    returning anything for this frame. */
                 cb_libc_closedir(top->dir);
                 entry_destroy(top->entry);
+                free_child_list(top->next_child);
                 ftsp->depth--;
                 continue;
+            }
+            if (top->next_child != NULL) {
+                /* fts_children() already drained this frame's directory
+                   into a snapshot; consume that instead of calling
+                   cb_libc_readdir() again (which would only see EOF).
+                   The snapshot's own classify_peek() only distinguished
+                   FTS_D from FTS_DNR without opening/descending -- do
+                   the real classify() now so descending into a
+                   previewed directory actually opens and pushes a
+                   frame for it. Non-directory previews are already
+                   final; classify_kind() is cheap and idempotent to
+                   redo rather than special-case skipping it. */
+                FTSENT *child = top->next_child;
+                top->next_child = child->fts_link;
+                children_path_restore(child);
+                if (child->fts_info == FTS_D)
+                    classify(ftsp, child);
+                if (child->fts_info != FTS_D)
+                    ftsp->pending_free = child;
+                return child;
             }
             de = cb_libc_readdir(top->dir);
             if (de != NULL) {
@@ -266,12 +533,22 @@ FTSENT *cb_libc_fts_read(FTS *ftsp)
             return NULL;
         }
         {
-            FTSENT *root = entry_create(NULL,
-                                        ftsp->path_argv[ftsp->root_index],
-                                        0);
-            ftsp->root_index++;
+            const char *path;
+            FTSENT *root;
+            /* A comparator governs root traversal as well as previews.
+               Build the preview lazily for callers that start with read;
+               comparator-free walkers retain their streaming behavior. */
+            if (ftsp->compar != NULL && ftsp->root_children == NULL &&
+                cb_libc_fts_children(ftsp, 0) == NULL)
+                return NULL;
+            path = ftsp->next_root != NULL ? ftsp->next_root->fts_path :
+                ftsp->path_argv[ftsp->root_index];
+            root = entry_create(NULL, path, 0);
             if (root == NULL)
                 return NULL;
+            if (ftsp->next_root != NULL)
+                ftsp->next_root = ftsp->next_root->fts_link;
+            ftsp->root_index++;
             classify(ftsp, root);
             if (root->fts_info != FTS_D)
                 ftsp->pending_free = root;
@@ -293,9 +570,14 @@ int cb_libc_fts_close(FTS *ftsp)
     for (i = 0; i < ftsp->depth; ++i) {
         cb_libc_closedir(ftsp->stack[i].dir);
         entry_destroy(ftsp->stack[i].entry);
+        /* Only from next_child onward: entries before it were already
+           handed to the caller via fts_read() and are owned by
+           pending_free or a child frame's own entry by now. */
+        free_child_list(ftsp->stack[i].next_child);
     }
     if (ftsp->pending_free != NULL)
         entry_destroy(ftsp->pending_free);
+    free_child_list(ftsp->root_children);
     cb_libc_free(ftsp);
     return 0;
 }

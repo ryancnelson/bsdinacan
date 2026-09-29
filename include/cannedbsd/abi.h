@@ -275,7 +275,18 @@ struct cb_api_v1 {
        exactly like every other optional extension above. */
     int (*rmdir)(const char *path);
     int (*rename)(const char *old_path, const char *new_path);
+
+    /* Appended by LS-02. Optional extension; callers must check
+       struct_size before reading. Exposes the same real host wall
+       clock the kernel's own struct cb_host_ops_v1 already reads for
+       FS-STAT-01's file timestamps, to ordinary tasks -- ls -l's date
+       column needs the CURRENT time (time(3)), not a file's stored one,
+       and no task-facing accessor for that existed before this. */
+    uint64_t (*wall_clock_millis)(void);
 };
+#define CB_API_V1_WALL_CLOCK_MIN_SIZE \
+    (offsetof(struct cb_api_v1, wall_clock_millis) + \
+     sizeof(((struct cb_api_v1 *)0)->wall_clock_millis))
 
 struct cb_program_v1 {
     uint32_t abi_version;

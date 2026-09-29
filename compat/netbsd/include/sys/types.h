@@ -80,6 +80,8 @@ typedef unsigned long u_long;
 /* RM-01: rm.c's -P macro (outside the accepted matrix) uses this legacy
    BSD alias internally. */
 typedef uint32_t u_int32_t;
+/* LS-02: pinned ls.h's DISPLAY struct uses this legacy BSD alias. */
+typedef uint64_t u_int64_t;
 /* WC-02: wc.c uses u_quad_t for 64-bit line/word/byte counts unless NO_QUAD. */
 typedef uint64_t u_quad_t;
 typedef int64_t quad_t;

@@ -55,6 +55,10 @@ int main(int argc, char **argv)
         return !ferror(stdout) && !ferror(stderr) ? 0 : 21;
     }
     if (strcmp(mode, "format") == 0) {
+        /* %u itself is supported since LS-02 (pinned ls/print.c's real
+           "%*llu "/"total %llu\n" column output needs it) -- %x remains
+           a genuinely unsupported conversion, no real consumer needs it,
+           so it is still the honest EINVAL case this probe exercises. */
         if (printf("%x", 1U) >= 0 || errno != EINVAL) return 22;
         return !ferror(stdout) && !ferror(stderr) ? 0 : 23;
     }

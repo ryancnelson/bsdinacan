@@ -1466,6 +1466,14 @@ static int api_rename(const char *old_path, const char *new_path)
     return cb_vfs_rename_paths(active_kernel->current, old_path, new_path);
 }
 
+/* LS-02: exposes the same real host wall clock FS-STAT-01's file
+   timestamps already read, to ordinary tasks -- see abi.h's own
+   comment on why time(3) needed this appended. */
+static uint64_t api_wall_clock_millis(void)
+{
+    return active_kernel->host->wall_clock_millis();
+}
+
 static int api_chdir(const char *path)
 {
     return cb_vfs_chdir_path(active_kernel->current, path);
@@ -1951,6 +1959,7 @@ static void initialize_api(struct cb_kernel *kernel)
     api->input_state_location = api_input_state_location;
     api->rmdir = api_rmdir;
     api->rename = api_rename;
+    api->wall_clock_millis = api_wall_clock_millis;
 }
 
 static int host_ops_valid(const struct cb_host_ops_v1 *host)

@@ -2,20 +2,20 @@
 #define CANNEDBSD_FTS_H
 
 /*
- * cannedBSD's fts(3): FTS-CORE-01.
+ * cannedBSD's fts(3): FTS-CORE-01, extended by FTS-CHILDREN-01.
  *
  * This is not a port of BSD fts(3). It is the minimal subset derived in
- * notes/iterations/FTS-01-design.md by grepping the pinned NetBSD b890038f
- * consumer sources (bin/rm/rm.c, bin/cp/cp.c, bin/cp/utils.c) for every
- * fts_/FTS_/FTSENT reference they actually make. Values/fields real BSD
- * defines but no pinned consumer references (FTS_F, FTS_SL, FTS_SLNONE,
- * FTS_DEFAULT, FTS_DOT, FTS_INIT, FTS_NSOK, fts_cycle, fts_link's use
- * outside fts_children) are deliberately absent; see the design note.
+ * notes/iterations/FTS-CORE-01.md by grepping the pinned NetBSD b890038f
+ * consumer sources (bin/rm/rm.c, bin/cp/cp.c, bin/cp/utils.c, and for
+ * FTS-CHILDREN-01, bin/ls/ls.c/print.c/cmp.c/util.c) for every
+ * fts_/FTS_/FTSENT reference they actually make. Values/fields no pinned
+ * consumer references (FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT's real-BSD
+ * split, FTS_INIT, FTS_NSOK, fts_cycle) are deliberately absent. FTS_DOT
+ * is present since STATICS-CACHE-02: ls -Ra must not descend into the "."
+ * and ".." entries FTS_SEEDOT synthesizes.
  *
- * fts_children/fts_link/fts_parent (ls-only, per the design note's grep)
- * are FTS-CHILDREN-01's scope, not this one's, and are not declared here.
- * FTS_SEEDOT's './..' synthesis is also FTS-CHILDREN-01's job; the flag
- * exists below only so it compiles, and does nothing in this cut.
+ * fts_children/fts_link/fts_parent and FTS_SEEDOT's "."/".." synthesis
+ * are FTS-CHILDREN-01's addition, ls-only per the same grep.
  */
 
 #include "cannedbsd/libc.h"
@@ -36,6 +36,8 @@
                            real BSD splits this into FTS_F/FTS_SL/etc; no
                            pinned consumer switches on those, so cannedBSD
                            does not distinguish them (design note S3) */
+#define FTS_DOT     9  /* "." or ".." synthesized by FTS_SEEDOT; carries a
+                           valid fts_statp but is never descended into */
 
 /* fts_open() options. */
 #define FTS_PHYSICAL  0x0001
@@ -52,8 +54,11 @@
                                   FTS-XDEV-01 adds mount-crossing
                                   detection */
 #define FTS_NOSTAT    0x0020
-#define FTS_SEEDOT    0x0040  /* accepted; does nothing until
-                                  FTS-CHILDREN-01 */
+#define FTS_SEEDOT    0x0040  /* fts_children() also synthesizes "." and
+                                  ".." entries for a directory's children
+                                  (never for the top-level path_argv
+                                  preview, matching real fts(3): those
+                                  are never directory entries themselves) */
 #define FTS_WHITEOUT  0x0080  /* accepted; RAMFS has no whiteout concept,
                                   so no entry is ever tagged FTS_W */
 
@@ -70,13 +75,24 @@ typedef struct cb_ftsent {
     int fts_level;
     long fts_number;           /* caller-owned scratch, never touched */
     void *fts_pointer;         /* caller-owned scratch, never touched */
-    char *fts_path;            /* NUL-terminated, from one of path_argv */
+    char *fts_path;            /* NUL-terminated, from one of path_argv.
+                                  In a fts_children() list it reads as the
+                                  parent's path (as after NetBSD's
+                                  fts_build()); fts_read() restores the
+                                  full path when it returns that entry. */
     size_t fts_pathlen;
     char *fts_accpath;         /* == fts_path; FTS_NOCHDIR is the only mode */
     char *fts_name;            /* last component of fts_path */
     size_t fts_namelen;
     int fts_errno;             /* set when fts_info is DNR/ERR/NS */
     struct stat *fts_statp;
+    /* FTS-CHILDREN-01. fts_link: next sibling in a fts_children() list
+       (NULL for entries reached via ordinary fts_read(), which are not
+       part of any such list). fts_parent: the FTS_D entry whose children
+       list this entry came from (NULL for path_argv-level entries, which
+       have no FTSENT parent). */
+    struct cb_ftsent *fts_link;
+    struct cb_ftsent *fts_parent;
 } FTSENT;
 
 FTS *cb_libc_fts_open(char *const *path_argv, int options,
@@ -84,10 +100,21 @@ FTS *cb_libc_fts_open(char *const *path_argv, int options,
 FTSENT *cb_libc_fts_read(FTS *ftsp);
 int cb_libc_fts_close(FTS *ftsp);
 int cb_libc_fts_set(FTS *ftsp, FTSENT *entry, int instr);
+FTSENT *cb_libc_fts_children(FTS *ftsp, int options);
 
 #define fts_open cb_libc_fts_open
 #define fts_read cb_libc_fts_read
 #define fts_close cb_libc_fts_close
 #define fts_set cb_libc_fts_set
+#define fts_children cb_libc_fts_children
+
+/* FTS-CHILDREN-01: accepted at compile time (ls.c:439's ch_options
+   computation references it); fts_children() itself always stats every
+   entry regardless, so this does not change behavior -- see the design
+   note on why: separating "just names" from "names+stat" would be a
+   second, unmeasured code path for a cost (skipping a stat RAMFS already
+   does cheaply in memory) real fts_children() exists to avoid on
+   disk-backed filesystems, not this one. */
+#define FTS_NAMEONLY 0x0100
 
 #endif

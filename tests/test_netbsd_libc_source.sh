@@ -314,6 +314,33 @@ if ! nm -u "$build_path/cb_libc.o" |
     exit 1
 fi
 
+humanize_source=upstream/netbsd/lib/libc/gen/humanize_number.c
+humanize_object=$build_path/netbsd_humanize_number.o
+humanize_hash=2f311138d6388adbd8ce03e1d0d2d197712f287dd41d15b7ed3e7ec3c09da77e
+if [[ ! -f $humanize_source ]] ||
+        [[ $(sha256sum "$humanize_source" | awk '{print $1}') != "$humanize_hash" ]] ||
+        ! matches "$humanize_hash" "$provenance_file"; then
+    echo 'FAIL: pinned NetBSD humanize_number source/provenance pin differs' >&2
+    exit 1
+fi
+if [[ ! -f $humanize_object ]] ||
+        ! nm "$humanize_object" |
+            matches '[[:space:]]T[[:space:]]+cb_libc_humanize_number$' ||
+        nm "$humanize_object" | matches '[[:space:]]T[[:space:]]+humanize_number$'; then
+    echo 'FAIL: NetBSD humanize_number was not compiled under its private link name' >&2
+    exit 1
+fi
+for symbol in snprintf strlen localeconv; do
+    if nm -u "$humanize_object" | matches "[[:space:]]U[[:space:]]+${symbol}$"; then
+        echo "FAIL: NetBSD humanize_number imports host-facing $symbol" >&2
+        exit 1
+    fi
+done
+if ! ar t "$archive_file" | matches '^netbsd_humanize_number\.o$'; then
+    echo 'FAIL: libcannedbsd.a does not contain NetBSD humanize_number' >&2
+    exit 1
+fi
+
 strtoimax_source=upstream/netbsd/common/lib/libc/stdlib/strtoimax.c
 strtoimax_object=$build_path/netbsd_strtoimax.o
 strtoimax_hash=c2476abb39e6ab8dd1fe2d745aeef66309d6cc90adb10f4beee64ae38c1f1ae5

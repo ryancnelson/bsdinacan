@@ -5,6 +5,8 @@ CFLAGS ?= -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O2
 LDFLAGS ?=
 LDLIBS ?=
 SANITIZE_CC ?= $(CC)
+NM ?= nm
+GLOBALIZE_FUNCTION_STATIC := tools/globalize-function-static.sh objcopy $(NM)
 
 # See the memset.c build rule and UPSTREAM.md's "NetBSD memset" entry:
 # GCC's loop-idiom recognition rewrites this file's own fill loops into
@@ -51,19 +53,23 @@ CORE_SOURCES := \
 	src/executor.c \
 	src/host_linux.c \
 	src/programs.c \
+	src/static_reset.c \
 	src/ramfs.c \
 	src/shell.c \
 	src/vfs.c
 
 PROGRAM_SOURCES := src/main.c $(CORE_SOURCES)
-TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
+TEST_SOURCES := tests/terminal_engine_probe.c tests/signal_probe.c tests/tee_state_probe.c tests/statics_cache_probe.c tests/console_write_probe.c tests/head_probe.c tests/libc_fwrite_compat_module.c tests/test_fwrite.c tests/libc_fwrite_probe_module.c tests/test_fread.c tests/libc_fread_probe_module.c tests/libc_fread_compat_module.c tests/test_file.c tests/libc_file_probe_module.c tests/libc_file_compat_module.c tests/test_stdin.c tests/libc_stdin_probe_module.c tests/libc_stdin_compat_module.c tests/test_getopt_arg.c tests/libc_getopt_arg_probe_module.c tests/test_echo_state.c tests/test_argv.c tests/libc_argv_probe_module.c tests/test_stdio_state.c tests/libc_stdio_state_probe_module.c tests/libc_stdio_oldtable_probe_module.c tests/vfs_executable_probe.c tests/libc_progname_probe_module.c tests/test_core.c tests/test_locale.c tests/libc_locale_probe_module.c tests/test_terminal.c tests/libc_terminal_probe_module.c tests/libc_memory_probe_module.c tests/libc_exit_probe_module.c tests/libc_getopt_probe_module.c tests/libc_truncate_probe_module.c tests/libc_errx_probe_module.c tests/libc_err_probe_module.c tests/libc_warn_probe_module.c tests/libc_warnx_probe_module.c tests/libc_fclose_stdout_probe_module.c tests/libc_format_probe_module.c tests/libc_strcpy_probe_module.c tests/libc_dirname_probe_module.c tests/libc_dirent_probe_module.c tests/libc_basename_probe_module.c tests/libc_strtoimax_probe_module.c $(CORE_SOURCES)
 WC_COMMAND_OBJECT := $(BUILD)/netbsd_wc.o
 YES_COMMAND_OBJECT := $(BUILD)/netbsd_yes.o
 PRINTENV_COMMAND_OBJECT := $(BUILD)/netbsd_printenv.o
 DIRNAME_COMMAND_OBJECT := $(BUILD)/dirname_command.o
 BASENAME_COMMAND_OBJECT := $(BUILD)/basename_command.o
 HEAD_COMMAND_OBJECT := $(BUILD)/netbsd_head.o
-LS_COMMAND_OBJECT := $(BUILD)/ls_command.o
+LS_COMMAND_OBJECT := $(BUILD)/netbsd_ls.o
+LS_PRINT_OBJECT := $(BUILD)/netbsd_ls_print.o
+LS_CMP_OBJECT := $(BUILD)/netbsd_ls_cmp.o
+LS_UTIL_OBJECT := $(BUILD)/netbsd_ls_util.o
 RM_COMMAND_OBJECT := $(BUILD)/rm_command.o
 MV_COMMAND_OBJECT := $(BUILD)/netbsd_mv.o
 CAT_COMMAND_OBJECT := $(BUILD)/netbsd_cat.o
@@ -111,6 +117,7 @@ NETBSD_STRRCHR_OBJECT := $(BUILD)/netbsd_strrchr.o
 NETBSD_MEMSET_OBJECT := $(BUILD)/netbsd_memset.o
 NETBSD_DIRNAME_OBJECT := $(BUILD)/netbsd_dirname.o
 NETBSD_BASENAME_OBJECT := $(BUILD)/netbsd_basename.o
+NETBSD_HUMANIZE_NUMBER_OBJECT := $(BUILD)/netbsd_humanize_number.o
 NETBSD_STRTOIMAX_OBJECT := $(BUILD)/netbsd_strtoimax.o
 LIBC_ALLOCATION_TEST_OBJECT := $(BUILD)/libc_allocation_source.o
 LIBC_MEMORY_TEST_OBJECT := $(BUILD)/libc_memory_source.o
@@ -133,6 +140,7 @@ LIBC_OBJECTS += $(NETBSD_MEMSET_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRCPY_OBJECT)
 LIBC_OBJECTS += $(NETBSD_DIRNAME_OBJECT)
 LIBC_OBJECTS += $(NETBSD_BASENAME_OBJECT)
+LIBC_OBJECTS += $(NETBSD_HUMANIZE_NUMBER_OBJECT)
 LIBC_OBJECTS += $(NETBSD_STRTOIMAX_OBJECT)
 LIBC_OBJECTS += $(FTS_OBJECT)
 LIBC_ARCHIVE := $(BUILD)/libcannedbsd.a
@@ -165,12 +173,98 @@ $(WC_COMMAND_OBJECT): upstream/netbsd/usr.bin/wc/wc.c \
 		-Dmain=cb_wc_main \
 		-c $< -o $@
 
-# cannedBSD-owned; no upstream import, no UPSTREAM.md entry. See LS-01.
-$(LS_COMMAND_OBJECT): commands/ls.c include/cannedbsd/abi.h \
-		include/cannedbsd/libc.h libc/include/dirent.h libc/include/errno.h \
-		libc/include/err.h libc/include/stdio.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) \
-		-c commands/ls.c -o $@
+# LS-02. Prerequisites: FS-STAT-01 (real device/nlink/uid/gid/timestamps
+# in cb_stat_v1), FTS-CORE-01 (fts_open/fts_read/fts_close), FTS-CHILDREN-01
+# (fts_children/fts_link/fts_parent, folded into this same effort -- see
+# notes/iterations/LS-02.md). Retires the cannedBSD-owned commands/ls.c
+# (LS-01) in this same commit: ls now serves every LIST invocation from
+# the unchanged, pinned NetBSD source, matching cat/cp/mv/rm.
+# -Icompat/netbsd/include: ls.c's #include <sys/param.h> needs the
+# MIN()/MAX() import-only shim, same as rm.c/cat.c/mv.c above.
+# -DSMALL: disables the ACL code path (#include <sys/acl.h>), same as
+# cp.c/utils.c -- this runtime has no ACL concept.
+$(LS_COMMAND_OBJECT): upstream/netbsd/bin/ls/ls.c upstream/netbsd/bin/ls/ls.h \
+		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h compat/netbsd/include/sys/param.h \
+		compat/netbsd/include/sys/types.h libc/include/sys/stat.h \
+		libc/include/sys/ioctl.h libc/include/sys/cdefs.h \
+		libc/include/dirent.h libc/include/err.h libc/include/errno.h \
+		libc/include/fts.h libc/include/locale.h libc/include/stdio.h \
+		libc/include/stdlib.h libc/include/string.h libc/include/unistd.h \
+		libc/include/termios.h libc/include/pwd.h libc/include/grp.h \
+		libc/include/util.h | $(BUILD)
+# STATICS-RESET-01: ls.c's own file-scope "have I already printed
+# something" static (`output`) needs per-invocation isolation -- see
+# src/static_reset.c's own top comment. -D can only rename an identifier,
+# never selectively strip internal linkage from ONE specific declaration
+# (a blanket -Dstatic= would also silently turn ls.c's actual
+# FUNCTION-LOCAL statics, like ls_main's own "static char dot[]"
+# fallback-argv array, into fresh-garbage-per-call automatic variables --
+# found by attempting exactly that on a sibling command, not guessed: see
+# mv.c's own build rule below). objcopy operates on the compiled symbol
+# table instead, precisely enough to touch only the one named symbol:
+# --globalize-symbol promotes it from local to global binding,
+# --redefine-sym renames it, and nothing else in the object file (any
+# actual function-local static, correctly still compiler-managed) is
+# affected. -O0 (overriding $(CFLAGS)'s own -O2, a real trailing-flag-wins
+# override, not a typo): at -O1/-O2 under clang's ASan instrumentation,
+# `output`'s address is never taken anywhere within ls.c itself, so the
+# compiler narrows its tracked "real size" to how many bytes ls.c's own
+# code actually observes (here, 1 -- the low byte of a 0/1 flag), even
+# though the C type is `int`; objcopy's later externally-visible rename
+# is invisible to that analysis, and static_reset.c's genuinely 4-byte
+# write then overflows ASan's narrowed redzone -- a real
+# global-buffer-overflow this project's own sanitizer gate caught, not
+# guessed. Performance is not a concern for a one-shot utility this
+# small, so -O0 (which does not exhibit the narrowing) is the correct
+# fix, not silencing the sanitizer.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
+		-DSMALL -Dls_main=cb_ls_main \
+		-c upstream/netbsd/bin/ls/ls.c -o $@
+	objcopy --redefine-sym output=cb_ls_output --globalize-symbol=cb_ls_output \
+		--redefine-sym printfcn=cb_ls_printfcn --globalize-symbol=cb_ls_printfcn \
+		--redefine-sym sortfcn=cb_ls_sortfcn --globalize-symbol=cb_ls_sortfcn $@
+
+$(LS_PRINT_OBJECT): upstream/netbsd/bin/ls/print.c upstream/netbsd/bin/ls/ls.h \
+		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h compat/netbsd/include/sys/param.h \
+		compat/netbsd/include/sys/types.h libc/include/sys/stat.h \
+		libc/include/sys/cdefs.h libc/include/err.h libc/include/errno.h \
+		libc/include/fts.h libc/include/inttypes.h libc/include/pwd.h \
+		libc/include/grp.h libc/include/stdio.h libc/include/stdlib.h \
+		libc/include/string.h libc/include/time.h libc/include/tzfile.h \
+		libc/include/unistd.h libc/include/util.h \
+		tools/globalize-function-static.sh | $(BUILD)
+# STATICS-CACHE-02: printcol()'s own `static FTSENT **array` and `static int
+# lastentries = -1` become per-task slots in src/static_reset.c, so every ls
+# task starts from their compiled defaults and owns its own array. See
+# tools/globalize-function-static.sh for how the compiler-chosen local name
+# is found. -O0: same clang+ASan global-size-narrowing reason as ls.c's own
+# build rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) -O0 \
+		-DSMALL \
+		-c upstream/netbsd/bin/ls/print.c -o $@
+	objcopy --redefine-sym now=cb_ls_print_now --globalize-symbol=cb_ls_print_now $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol array cb_ls_printcol_array
+	$(GLOBALIZE_FUNCTION_STATIC) $@ printcol lastentries cb_ls_printcol_lastentries
+
+$(LS_CMP_OBJECT): upstream/netbsd/bin/ls/cmp.c upstream/netbsd/bin/ls/ls.h \
+		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/sys/cdefs.h \
+		compat/netbsd/include/sys/types.h libc/include/sys/stat.h \
+		libc/include/fts.h libc/include/string.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) \
+		-c upstream/netbsd/bin/ls/cmp.c -o $@
+
+$(LS_UTIL_OBJECT): upstream/netbsd/bin/ls/util.c upstream/netbsd/bin/ls/ls.h \
+		upstream/netbsd/bin/ls/extern.h include/cannedbsd/abi.h \
+		include/cannedbsd/libc.h libc/include/sys/cdefs.h \
+		compat/netbsd/include/sys/types.h libc/include/sys/stat.h \
+		libc/include/err.h libc/include/fts.h compat/netbsd/include/limits.h \
+		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
+		libc/include/vis.h libc/include/wchar.h libc/include/wctype.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls $(CFLAGS) \
+		-c upstream/netbsd/bin/ls/util.c -o $@
 
 # RM-01. See notes/iterations/RM-01.md for the full veneer this needed
 # (struct stat/lstat from STAT-02, fts from FTS-CORE-01, warnx from
@@ -186,8 +280,27 @@ $(RM_COMMAND_OBJECT): upstream/netbsd/bin/rm/rm.c include/cannedbsd/abi.h \
 		libc/include/locale.h libc/include/pwd.h libc/include/signal.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
 		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+# STATICS-RESET-01: rm.c's own getopt flags plus its own accumulated
+# exit-status variable (eval) need per-invocation isolation -- objcopy,
+# not -D, for the same reason ls.c's own build rule comment explains.
+# stdin_ok/pinfo (also file-scope statics here) are deliberately not
+# renamed/managed: stdin_ok is always recomputed via isatty() before use
+# (moot regardless, since isatty() always reports true in this runtime)
+# and pinfo is a SIGINFO progress counter with no correctness impact if
+# stale.
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains (rm.c's flags are also only ever observed as 0/1
+# within rm.c itself).
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -O0 \
 		-Dmain=cb_rm_main -c upstream/netbsd/bin/rm/rm.c -o $@
+	objcopy --redefine-sym dflag=cb_rm_dflag --redefine-sym eval=cb_rm_eval \
+		--redefine-sym fflag=cb_rm_fflag --redefine-sym iflag=cb_rm_iflag \
+		--redefine-sym Pflag=cb_rm_Pflag --redefine-sym vflag=cb_rm_vflag \
+		--redefine-sym Wflag=cb_rm_Wflag --redefine-sym xflag=cb_rm_xflag \
+		--globalize-symbol=cb_rm_dflag --globalize-symbol=cb_rm_eval \
+		--globalize-symbol=cb_rm_fflag --globalize-symbol=cb_rm_iflag \
+		--globalize-symbol=cb_rm_Pflag --globalize-symbol=cb_rm_vflag \
+		--globalize-symbol=cb_rm_Wflag --globalize-symbol=cb_rm_xflag $@
 
 $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnames.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -197,10 +310,25 @@ $(MV_COMMAND_OBJECT): upstream/netbsd/bin/mv/mv.c upstream/netbsd/bin/mv/pathnam
 		libc/include/err.h libc/include/errno.h libc/include/fcntl.h \
 		libc/include/grp.h libc/include/locale.h libc/include/pwd.h \
 		libc/include/signal.h libc/include/stdio.h libc/include/stdlib.h \
-		libc/include/string.h libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/mv $(CFLAGS) \
-		-Dmain=cb_mv_main \
-		-c upstream/netbsd/bin/mv/mv.c -o $@
+		libc/include/string.h libc/include/unistd.h \
+		tools/globalize-function-static.sh | $(BUILD)
+# STATICS-RESET-01: mv.c's own getopt flags need per-invocation isolation
+# -- objcopy, not -D, for the same reason ls.c's own build rule comment
+# explains. stdin_ok/pinfo left unmanaged, same reasoning as rm.c's own.
+# STATICS-CACHE-02: fastcopy()'s own function-local `static char *bp`/
+# `static blksize_t blen` buffer cache becomes a pair of per-task slots,
+# renamed from whatever local name the compiler chose (see
+# tools/globalize-function-static.sh); a -D rename cannot reach them.
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/mv $(CFLAGS) -O0 \
+		-Dmain=cb_mv_main -c upstream/netbsd/bin/mv/mv.c -o $@
+	objcopy --redefine-sym fflg=cb_mv_fflg --redefine-sym hflg=cb_mv_hflg \
+		--redefine-sym iflg=cb_mv_iflg --redefine-sym vflg=cb_mv_vflg \
+		--globalize-symbol=cb_mv_fflg --globalize-symbol=cb_mv_hflg \
+		--globalize-symbol=cb_mv_iflg --globalize-symbol=cb_mv_vflg $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ fastcopy bp cb_mv_fastcopy_bp
+	$(GLOBALIZE_FUNCTION_STATIC) $@ fastcopy blen cb_mv_fastcopy_blen
 
 # CAT-01. Prerequisites: LIBC-CTYPE-01 (isascii/toascii/iscntrl),
 # LIBC-STDIO-02 (clearerr/setbuf/fileno/BUFSIZ/SEEK_*), LIBC-ERR-02
@@ -214,9 +342,36 @@ $(CAT_COMMAND_OBJECT): upstream/netbsd/bin/cat/cat.c include/cannedbsd/abi.h \
 		libc/include/sys/cdefs.h libc/include/ctype.h libc/include/err.h \
 		libc/include/errno.h libc/include/fcntl.h libc/include/locale.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
-		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
+		libc/include/unistd.h tools/globalize-function-static.sh | $(BUILD)
+# STATICS-RESET-01: cat.c's own getopt flags and its accumulated
+# exit-status variable (rval) need per-invocation isolation -- objcopy,
+# not -D, for the same reason ls.c's own build rule comment explains.
+# filename is managed too (STATICS-CACHE-02): it is assigned before each
+# file and read by warn() after reads that can yield to another cat task.
+# STATICS-CACHE-02: bsize and raw_cat()'s own function-local `static char
+# *buf` and `static char fb_buf[BUFSIZ]` are managed together as per-task
+# slots: buf is sized from bsize, and may point at fb_buf, so no one of the
+# three can be reset or shared without the others. The two function-local
+# names are found in the compiled object (see
+# tools/globalize-function-static.sh).
+# -O0: same clang+ASan global-size-narrowing reason as ls.c's own build
+# rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -O0 \
 		-Dmain=cb_cat_main -c upstream/netbsd/bin/cat/cat.c -o $@
+	objcopy --redefine-sym bflag=cb_cat_bflag --redefine-sym eflag=cb_cat_eflag \
+		--redefine-sym fflag=cb_cat_fflag --redefine-sym lflag=cb_cat_lflag \
+		--redefine-sym nflag=cb_cat_nflag --redefine-sym sflag=cb_cat_sflag \
+		--redefine-sym tflag=cb_cat_tflag --redefine-sym vflag=cb_cat_vflag \
+		--redefine-sym rval=cb_cat_rval --redefine-sym bsize=cb_cat_bsize \
+		--redefine-sym filename=cb_cat_filename \
+		--globalize-symbol=cb_cat_bflag --globalize-symbol=cb_cat_eflag \
+		--globalize-symbol=cb_cat_fflag --globalize-symbol=cb_cat_lflag \
+		--globalize-symbol=cb_cat_nflag --globalize-symbol=cb_cat_sflag \
+		--globalize-symbol=cb_cat_tflag --globalize-symbol=cb_cat_vflag \
+		--globalize-symbol=cb_cat_rval --globalize-symbol=cb_cat_bsize \
+		--globalize-symbol=cb_cat_filename $@
+	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat buf cb_cat_raw_cat_buf
+	$(GLOBALIZE_FUNCTION_STATIC) $@ raw_cat fb_buf cb_cat_raw_cat_fb_buf
 
 $(CP_COMMAND_OBJECT): upstream/netbsd/bin/cp/cp.c upstream/netbsd/bin/cp/extern.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -226,9 +381,17 @@ $(CP_COMMAND_OBJECT): upstream/netbsd/bin/cp/cp.c upstream/netbsd/bin/cp/extern.
 		libc/include/fts.h libc/include/locale.h libc/include/signal.h \
 		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
 		libc/include/unistd.h | $(BUILD)
-	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/cp $(CFLAGS) \
+# STATICS-RESET-01: cp.c's own dnesp (pushdne()/popdne()'s recursion-depth
+# index into the file-scope `static int dnestack[MAXPATHLEN]` array,
+# itself needing no slot -- see src/static_reset.c's own cp_slots comment)
+# needs objcopy, not -D, for the same reason ls.c's own build rule comment
+# explains; cp.c's own eleven getopt flags are plain non-static globals
+# already and need no rename at all. -O0: same clang+ASan
+# global-size-narrowing reason as ls.c's own build rule comment explains.
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/cp $(CFLAGS) -O0 \
 		-DSMALL -Dmain=cb_cp_main \
 		-c upstream/netbsd/bin/cp/cp.c -o $@
+	objcopy --redefine-sym dnesp=cb_cp_dnesp --globalize-symbol=cb_cp_dnesp $@
 
 $(CP_UTILS_OBJECT): upstream/netbsd/bin/cp/utils.c upstream/netbsd/bin/cp/extern.h \
 		include/cannedbsd/abi.h include/cannedbsd/libc.h \
@@ -569,6 +732,15 @@ $(NETBSD_BASENAME_OBJECT): upstream/netbsd/lib/libc/gen/basename.c \
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) \
 		-Dbasename=cb_libc_basename_upstream -c $< -o $@
 
+# STATICS-CACHE-02: ls -h. The pinned file is unchanged; stdlib.h's own
+# macro gives its definition the cb_libc_humanize_number link name.
+$(NETBSD_HUMANIZE_NUMBER_OBJECT): upstream/netbsd/lib/libc/gen/humanize_number.c \
+		compat/netbsd/include/namespace.h compat/netbsd/include/assert.h \
+		include/cannedbsd/libc.h libc/include/inttypes.h libc/include/locale.h \
+		libc/include/stdio.h libc/include/stdlib.h libc/include/string.h \
+		libc/include/sys/cdefs.h | $(BUILD)
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(CFLAGS) -c $< -o $@
+
 $(NETBSD_STRTOIMAX_OBJECT): upstream/netbsd/common/lib/libc/stdlib/strtoimax.c \
 		upstream/netbsd/common/lib/libc/stdlib/_strtol.h \
 		compat/netbsd/include/assert.h compat/netbsd/include/nbtool_config.h \
@@ -622,16 +794,16 @@ $(LIBC_TRUNCATE_TEST_OBJECT): tests/libc_truncate_probe.c \
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_truncate_probe_main \
 		-c $< -o $@
 
-$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h src/terminal.h | $(BUILD)
+$(PROGRAM): $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(LIBC_ARCHIVE) include/cannedbsd/abi.h src/internal.h src/terminal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PROGRAM_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
+$(TEST_PROGRAM): $(TEST_SOURCES) $(WC_COMMAND_OBJECT) $(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) \
 		$(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) $(LIBC_ARCHIVE) \
 		include/cannedbsd/abi.h include/cannedbsd/harness.h platform/mac68k/acceptance_cases.def platform/mac68k/acceptance_output.h src/internal.h src/terminal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_SOURCES) $(WC_COMMAND_OBJECT) \
-		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) \
+		$(YES_COMMAND_OBJECT) $(PRINTENV_COMMAND_OBJECT) $(DIRNAME_COMMAND_OBJECT) $(BASENAME_COMMAND_OBJECT) $(ECHO_COMMAND_OBJECT) $(HEAD_COMMAND_OBJECT) $(LS_COMMAND_OBJECT) $(LS_PRINT_OBJECT) $(LS_CMP_OBJECT) $(LS_UTIL_OBJECT) $(RM_COMMAND_OBJECT) $(MV_COMMAND_OBJECT) $(CAT_COMMAND_OBJECT) $(CP_COMMAND_OBJECT) $(CP_UTILS_OBJECT) $(MKDIR_COMMAND_OBJECT) $(EXITPROBE_COMMAND_OBJECT) $(BUILD)/libc_getopt_arg_probe.o $(GETOPTPROBE_COMMAND_OBJECT) $(ERRXPROBE_COMMAND_OBJECT) $(ERRPROBE_COMMAND_OBJECT) $(WARNPROBE_COMMAND_OBJECT) $(WARNXPROBE_COMMAND_OBJECT) $(FCLOSESTDOUTPROBE_COMMAND_OBJECT) $(FORMATPROBE_COMMAND_OBJECT) $(STRCPYPROBE_COMMAND_OBJECT) $(PROGNAMEPROBE_COMMAND_OBJECT) $(DIRNAMEPROBE_COMMAND_OBJECT) $(DIRNAME_OLDTABLE_TEST_OBJECT) $(DIRENTPROBE_COMMAND_OBJECT) $(DIRENT_OLDTABLE_TEST_OBJECT) $(STAT_OLDTABLE_TEST_OBJECT) $(DIRENT_ALLOCFAIL_TEST_OBJECT) $(DIRENT_READDIR_UNAVAIL_TEST_OBJECT) $(DIRENT_CLOSEDIR_REBIND_TEST_OBJECT) $(BASENAMEPROBE_COMMAND_OBJECT) $(BASENAME_OLDTABLE_TEST_OBJECT) $(STRTOIMAXPROBE_COMMAND_OBJECT) $(LIBC_STDIO_TEST_OBJECT) $(BUILD)/libc_fread_probe.o $(BUILD)/libc_file_probe.o $(BUILD)/libc_stdin_probe.o $(BUILD)/libc_argv_probe.o $(LIBC_STDIO_STATE_PROBE_OBJECT) $(BUILD)/libc_fwrite_probe.o $(BUILD)/libc_fwrite_wrapper_probe.o $(STDIO_OLDTABLE_TEST_OBJECT) $(LIBC_MEMORY_PROBE_OBJECT) $(LIBC_TRUNCATE_TEST_OBJECT) $(LIBC_TERMINAL_TEST_OBJECT) $(LIBC_LOCALE_TEST_OBJECT) $(LIBC_EXEC_ERRNO_TEST_OBJECT) $(LIBC_POLL_TEST_OBJECT) $(FTS_CORE_WALK_OBJECT) $(FTS_SKIP_WALK_OBJECT) $(FTS_CLOSE_WALK_OBJECT) $(FTS_CYCLE_WALK_OBJECT) $(FTS_ALLOCFAIL_WALK_OBJECT) $(STRRCHR_PROBE_OBJECT) $(MEMSET_PROBE_OBJECT) $(UNLINK_PROBE_OBJECT) $(RMDIR_WALK_OBJECT) $(GETCHAR_WALK_OBJECT) \
 		$(LIBC_ARCHIVE) $(LDFLAGS) -o $@ $(LDLIBS)
 
 
@@ -694,6 +866,7 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	PROGRAM_PATH='$(PROGRAM)' tests/test_mkdir_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_wc_behavior.sh
 	PROGRAM_PATH='$(PROGRAM)' tests/test_file_manipulation_session.sh
+	PROGRAM_PATH='$(PROGRAM)' tests/test_statics_repro.sh
 	@output="$$( $(PROGRAM) -c 'echo hello | tr a-z A-Z > /tmp/result; cat /tmp/result' )"; \
 		test "$$output" = HELLO || { printf 'acceptance output: <%s>\n' "$$output"; exit 1; }
 	$(PROGRAM) -c 'false; echo $$?'
@@ -896,6 +1069,18 @@ analyze:
 	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Dmain=cb_rm_main \
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/bin/rm/rm.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls -DSMALL -Dls_main=cb_ls_main \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/bin/ls/ls.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls -DSMALL \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/bin/ls/print.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/bin/ls/cmp.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include -Iupstream/netbsd/bin/ls \
+		-std=c99 -Wall -Wextra -Werror -Wpedantic \
+		-fanalyzer -fsyntax-only upstream/netbsd/bin/ls/util.c
 
 $(BUILD)/test_acceptance_output: tests/test_acceptance_output.c platform/mac68k/acceptance_output.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
@@ -916,6 +1101,7 @@ ci:
 	$(MAKE) check-linux-write
 	$(MAKE) check-acceptance-output
 	python3 tests/test_mac_guest.py
+	python3 -B tests/test_statics_repro_gate.py
 	$(MAKE) check-publication
 	$(MAKE) clean test
 	$(MAKE) sanitize

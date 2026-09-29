@@ -27,6 +27,12 @@ enum cb_libc_open_flag {
 
 enum cb_libc_locale_category { CB_LIBC_LC_ALL = 0 };
 char *cb_libc_setlocale(int category, const char *locale);
+struct cb_libc_lconv {
+    char *decimal_point;
+    char *thousands_sep;
+    char *grouping;
+};
+struct cb_libc_lconv *cb_libc_localeconv(void);
 
 typedef int (*cb_libc_main_fn)(int argc, char *argv[]);
 struct cb_libc_file;
@@ -114,6 +120,21 @@ void cb_libc_setprogname(const char *name);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);
+int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...);
+int cb_libc_ioctl(int fd, unsigned long request, ...);
+int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,
+                            const char *suffix, int scale, int flags);
+size_t cb_libc_strvis(char *dst, const char *src, int flags);
+const char *cb_libc_getenv(const char *name);
+int cb_libc_atoi(const char *nptr);
+char *cb_libc_getbsize(int *headerlenp, long *blocksizep);
+char *cb_libc_flags_to_string(unsigned long flags, const char *def);
+/* LS-02: time_t is spelled uint32_t here, matching st_atimespec.tv_sec's
+   existing type (see struct timespec/struct stat above), since this
+   internal header predates and does not itself define the public
+   time_t typedef (see libc/include/time.h). */
+uint32_t cb_libc_time(uint32_t *out);
+char *cb_libc_ctime(const uint32_t *timer);
 extern struct cb_libc_file *const cb_libc_stdin_stream;
 extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
@@ -149,6 +170,11 @@ char *cb_libc_basename(char *path);
 #define S_ISUID 0004000
 #define S_ISGID 0002000
 #define S_ISVTX 0001000
+
+/* LS-02: pinned ls/print.c's -h sizing multiplies st_blocks by this to
+   get bytes; the real BSD constant (the fixed unit st_blocks counts in),
+   not a value this project invented. */
+#define S_BLKSIZE 512
 
 #define S_IRWXU 0000700
 #define S_IRUSR 0000400
@@ -199,6 +225,11 @@ struct stat {
 #define st_atime st_atimespec.tv_sec
 #define st_mtime st_mtimespec.tv_sec
 #define st_ctime st_ctimespec.tv_sec
+/* LS-02: pinned ls/cmp.c's MTIMENSEC_CMP uses the legacy flat NetBSD
+   nanosecond field names alongside the POSIX timespec ones. */
+#define st_atimensec st_atimespec.tv_nsec
+#define st_mtimensec st_mtimespec.tv_nsec
+#define st_ctimensec st_ctimespec.tv_nsec
 
 struct timeval;
 
@@ -254,8 +285,15 @@ typedef struct {
 #define _MBSTATE_T_DECLARED
 #endif
 
+/* wint_t is unsigned int (libc/include/wchar.h); it is spelled out here
+   so these declarations match without that header. wchar_t is the
+   compiler builtin from <stddef.h>. */
 int cb_libc_iswspace(unsigned int wc);
 size_t cb_libc_mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps);
+/* LS-02: ls util.c's printescaped() path. */
+size_t cb_libc_wcrtomb(char *s, wchar_t wc, mbstate_t *ps);
+int cb_libc_iswprint(unsigned int wc);
+int cb_libc_wcwidth(wchar_t wc);
 
 struct cb_libc_dir *cb_libc_opendir(const char *path);
 struct dirent *cb_libc_readdir(struct cb_libc_dir *dirp);
