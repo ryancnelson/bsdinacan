@@ -1,4 +1,5 @@
 #include "../platform/mac68k/acceptance_output.h"
+#include "../platform/mac68k/acceptance_transcript.h"
 #include <stdio.h>
 
 int main(void)
@@ -20,5 +21,7 @@ int main(void)
         if (!cb_acceptance_output_matches(raw, sizeof(raw), 0, "ok")) return 8;
     }
     puts("acceptance byte-length checks passed");
+    printf("Mac result capacity including NUL: %lu bytes\n",
+           (unsigned long)CB_MAC_RESULT_CAPACITY);
     return 0;
 }
