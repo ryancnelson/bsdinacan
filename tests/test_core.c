@@ -6383,6 +6383,15 @@ static void test_signals(void)
         exit(1);
     }
 }
+int cb_tee_probe(const struct cb_host_ops_v1 *host);
+static void test_tee(void)
+{
+    int result = cb_tee_probe(cb_linux_host_ops());
+    if (result != 0) {
+        fprintf(stderr, "FAIL: tee probe status %d\n", result);
+        exit(1);
+    }
+}
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 static void test_tee_state(void)
 {
@@ -6426,6 +6435,7 @@ static void test_mac_acceptance(void)
     test_terminal_engine();
     test_signals();
     test_tee_state();
+    test_tee();
     test_console_write();
 #define CB_MAC_CASE(command, expected, status) \
     run_case(command, expected, status, FIXTURE_MAC);
@@ -6597,6 +6607,11 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--signal-libc") == 0) {
         cb_test_signal_libc();
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--tee") == 0) {
+        test_tee();
+        puts("tee command tests passed");
         return 0;
     }
     test_startup_identity();
