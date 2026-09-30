@@ -703,9 +703,15 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
 		test "$$output" = "       5" || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
 
-sanitize:
+SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=undefined
+
+.PHONY: check-sanitizer-policy
+check-sanitizer-policy:
+	CC='$(SANITIZE_CC)' SANITIZER_FLAGS='$(SANITIZER_FLAGS)' tests/test_sanitizer_policy.sh
+
+sanitize: check-sanitizer-policy
 	$(MAKE) clean
-	$(MAKE) CC='$(SANITIZE_CC)' BUILD_VARIANT=sanitize CFLAGS='-std=c99 -Wall -Wextra -Werror -Wpedantic -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined' LDFLAGS='-fsanitize=address,undefined' test
+	$(MAKE) CC='$(SANITIZE_CC)' BUILD_VARIANT=sanitize CFLAGS='-std=c99 -Wall -Wextra -Werror -Wpedantic -g -O1 -fno-omit-frame-pointer $(SANITIZER_FLAGS)' LDFLAGS='$(SANITIZER_FLAGS)' test
 
 analyze:
 	$(CC) $(CPPFLAGS) -std=c99 -Wall -Wextra -Werror -Wpedantic \
