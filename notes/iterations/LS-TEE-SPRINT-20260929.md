@@ -42,3 +42,8 @@ The ten-case MAC-MILESTONE-TEST-01 document is still a proposal. This integratio
 has not added those cases, imported tee, or claimed every ls option is supported;
 retain the explicit option/limitation matrix in STATICS-CACHE-02.md. Finish ls
 qualification, then import tee, then conduct the planned quality review.
+
+Integration review caught the signal probe object missing from the Linux test
+link recipe despite its retained prerequisite. The object was restored to the
+link command before qualification; the initial integration is not a passing
+build. Independent re-review and exact replacement CI are required.
