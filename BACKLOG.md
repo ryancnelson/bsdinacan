@@ -74,6 +74,24 @@ have not been verified. Preserve all existing worktrees.
 - Scope: Linux sanitizer configuration and its focused regression control.
   Keep production source and Mac/Solaris toolchain flags unchanged.
 
+### FORMAT-PRI64-01 — match fixed-width printf macros to argument types
+
+- Status: Ready for the post-tee quality review; no implementation claim.
+- Base: accepted LS sprint, or exact candidate by coordinator assignment.
+- Dependencies: LS-02 / humanize_number import.
+- Hypothesis: hardcoding PRIu64/PRId64 as llu/lld does not control the caller's
+  uint64_t/int64_t typedef. On LP64 Linux those are long, so consuming long long
+  via va_arg is formally mismatched even when widths happen to agree.
+- Red: compile the actual pinned call sites with audited printf attributes and
+  format warnings as errors; distinguish exact type mismatches from width errors.
+- Acceptance: macros and formatter consumption match the actual types on Linux,
+  Retro68 and Solaris targets without changing imported sources or admitting host
+  libc calls. Preserve long/long-long formatting and boundary values; require
+  applicable exact CI, independent review and guest qualification.
+- Scope: fixed-width format macro contract and focused regression; no broader
+  speculative printf expansion. The current header's assertion that choosing
+  a macro controls both sides of varargs is incorrect and must be corrected.
+
 ### SOLARIS-WC-GATE-01 — update native wc acceptance contract
 
 - Status: Reviewed `628e9a0`, exact #489 ci/mac68k/mac-automation green;

@@ -38,10 +38,20 @@ preventing new app-agent submissions or guest automation. A read-only attempt
 through the documented Solaris SSH route failed authentication; no VM operation
 was performed. This is a blocked route, not evidence of Solaris runtime failure.
 
-The ten-case MAC-MILESTONE-TEST-01 document is still a proposal. This integration
-has not added those cases, imported tee, or claimed every ls option is supported;
-retain the explicit option/limitation matrix in STATICS-CACHE-02.md. Finish ls
-qualification, then import tee, then conduct the planned quality review.
+The ten-case MAC-MILESTONE-TEST-01 implementation was subsequently consumed
+from `0e23714` as `d0365a1`. It preserves the original 69 records and adds ten
+file-operation cases, remeasured for upstream ls. The transcript is now 2034
+bytes plus NUL, with capacity derived from the shared case table. The old
+69-record transcript is rejected. Root independently inspected cases and buffer
+bounds, reran all 19 host protocol tests and build parity, and found no blocker.
+The worker observed expanded shared Linux acceptance and rejected deletion and
+move-without-unlink controls. These are not Mac execution claims.
+
+Tee is not included in this integration; its source-feasibility compile passed
+and TEE-01 development was assigned in a separate tree while guest qualification
+is blocked. Its integration follows ls acceptance. Not every ls option is
+supported; retain the explicit matrix in STATICS-CACHE-02.md and the planned
+post-tee quality review.
 
 Integration review caught the signal probe object missing from the Linux test
 link recipe despite its retained prerequisite. The object was restored to the
