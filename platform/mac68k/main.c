@@ -6,6 +6,7 @@
 
 int cb_terminal_engine_probe(void);
 int cb_signal_probe(const struct cb_host_ops_v1 *host);
+int cb_tee_probe(const struct cb_host_ops_v1 *host);
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
 
@@ -85,6 +86,13 @@ int main(void)
         passed = cb_signal_probe(cb_mac_host_ops()) == 0;
         cb_mac_text(passed ? "PASS: cooperative interrupts\n" : "FAIL: interrupts\n");
         strcat(result, passed ? "PASS interrupts\n" : "FAIL interrupts\n");
+    }
+    if (passed) {
+        /* Run on the host/root stack: the probe owns its temporary kernel
+           and checks real tee lifecycle, I/O faults and interrupt delivery. */
+        passed = cb_tee_probe(cb_mac_host_ops()) == 0;
+        cb_mac_text(passed ? "PASS: tee command\n" : "FAIL: tee command\n");
+        strcat(result, passed ? "PASS teecommand\n" : "FAIL teecommand\n");
     }
     for (index = 0; passed && index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int status = -1;

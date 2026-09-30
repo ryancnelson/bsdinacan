@@ -57,9 +57,9 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 79)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 80)
         self.assertIn('PASS normalpollprobe\n', expected)
-        self.assertIn('PASS contexts\nPASS terminalengine\nPASS consolewrite\nPASS teestate\nPASS interrupts\n', expected)
+        self.assertIn('PASS contexts\nPASS terminalengine\nPASS consolewrite\nPASS teestate\nPASS interrupts\nPASS teecommand\n', expected)
         for probe in ['libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
                       'libcerrprobe', 'export GUEST=mac; printenv GUEST',
                       'printenv CANNEDBSD_UNSET_GUEST',
@@ -74,11 +74,20 @@ class GuestTests(unittest.TestCase):
 
     def test_previous_69_pass_transcript_cannot_satisfy_milestone(self):
         run = self.stage()
-        lines = guest.expected_result().splitlines(keepends=True)
+        lines = [line for line in guest.expected_result().splitlines(keepends=True)
+                 if line != 'PASS teecommand\n']
         # Keep the original 69 PASS records and valid final marker, but
         # omit all ten file-operation records from the end of the suite.
         (run / 'shared/cannedbsd-result.txt').write_text(
             ''.join(lines[:-11] + lines[-1:]))
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
+
+    def test_previous_79_pass_transcript_cannot_satisfy_tee(self):
+        run = self.stage()
+        (run / 'shared/cannedbsd-result.txt').write_text(
+            guest.expected_result().replace('PASS teecommand\n', ''))
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
             guest.check(self.state)
         self.assertFalse((run / 'acceptance.json').exists())
