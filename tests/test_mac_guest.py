@@ -57,7 +57,7 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 69)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 79)
         self.assertIn('PASS normalpollprobe\n', expected)
         self.assertIn('PASS contexts\nPASS terminalengine\nPASS consolewrite\nPASS teestate\nPASS interrupts\n', expected)
         for probe in ['libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
@@ -71,6 +71,17 @@ class GuestTests(unittest.TestCase):
                       'basename foo foo', 'basename -- -foo', 'basename -x',
                       'basename /a/b/c | cat', "basename ''"]:
             self.assertIn('PASS ' + probe + '\n', expected)
+
+    def test_previous_69_pass_transcript_cannot_satisfy_milestone(self):
+        run = self.stage()
+        lines = guest.expected_result().splitlines(keepends=True)
+        # Keep the original 69 PASS records and valid final marker, but
+        # omit all ten file-operation records from the end of the suite.
+        (run / 'shared/cannedbsd-result.txt').write_text(
+            ''.join(lines[:-11] + lines[-1:]))
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
 
     def test_autorun_stage_precreates_evidence_before_timestamp(self):
         run = guest.stage(self.artifact, self.state, 'a' * 40, None, autorun=True)

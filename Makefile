@@ -1082,7 +1082,8 @@ analyze:
 		-std=c99 -Wall -Wextra -Werror -Wpedantic \
 		-fanalyzer -fsyntax-only upstream/netbsd/bin/ls/util.c
 
-$(BUILD)/test_acceptance_output: tests/test_acceptance_output.c platform/mac68k/acceptance_output.h | $(BUILD)
+$(BUILD)/test_acceptance_output: tests/test_acceptance_output.c platform/mac68k/acceptance_output.h \
+        platform/mac68k/acceptance_transcript.h platform/mac68k/acceptance_cases.def | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
 
 .PHONY: check-acceptance-output

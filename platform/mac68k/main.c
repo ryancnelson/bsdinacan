@@ -1,5 +1,6 @@
 #include "host_mac.h"
 #include "autorun.h"
+#include "acceptance_transcript.h"
 
 #include <string.h>
 
@@ -49,7 +50,7 @@ int main(void)
 {
     size_t index;
     int passed, autorun;
-    char result[2048] = "cannedBSD System 7 / Retro68\n";
+    char result[CB_MAC_RESULT_CAPACITY] = CB_MAC_RESULT_HEADER;
     struct cb_kernel *kernel;
     if (cb_mac_initialize() < 0) return 1;
     autorun = cb_mac_autorun_requested();
