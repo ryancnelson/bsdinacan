@@ -882,3 +882,29 @@ heap use-after-free risk).
 
 Executes entirely in-process with 0 calls to `fork`, `vfork`, `exec*`, `spawn`,
 `system`, or `popen`. Zero additions were made to `include/cannedbsd/abi.h`.
+
+## NetBSD `tee`
+
+- Repository: `https://github.com/NetBSD/src`
+- Revision: `b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`
+- Upstream path: `usr.bin/tee/tee.c`
+- Local path: `upstream/netbsd/usr.bin/tee/tee.c`
+- SHA-256: `ebcf5dcb07756634ba5876630e2567bb7eb318c489a2a8a6c10fb6919f685a53`
+- Embedded RCS identifier: `$NetBSD: tee.c,v 1.12 2016/09/05 00:40:30 sevan Exp $`
+- License: three-clause Regents of the University of California license,
+  retained verbatim in the unchanged source.
+
+The build renames `main`, `head`, and `add` to private `cb_tee_*` symbols.
+The module enters through the existing libc veneer. Its executor saves the
+single `cb_tee_head` pointer per task using the existing state-slot wrapper,
+which advertises cooperative interrupts. List nodes and the 8192-byte input
+buffer remain task-owned allocations reclaimed by the core; the wrapper never
+traverses them. SIGINT ignore uses the real private signal veneer; host keyboard
+signals and arbitrary handlers are outside this command's accepted contract.
+
+`tests/test_netbsd_source.sh` pins the source and checks its private symbols.
+`tests/tee_probe.c` exercises the unchanged command through the real kernel,
+including bounded faults, two simultaneous tee tasks, default/ignored/inherited
+interrupts, and actual heap/descriptor cleanup observed before reap. The probe
+is compiled for Linux and Mac; guest execution requires coordinator wiring and
+exact-artifact qualification. See `notes/iterations/TEE-01.md` for evidence.

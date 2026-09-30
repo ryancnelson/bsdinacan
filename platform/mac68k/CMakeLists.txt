@@ -206,6 +206,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/wc_module.c ${ROOT}/commands/yes_module.c
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
+    ${ROOT}/commands/tee_module.c
     ${ROOT}/commands/ls_module.c
     ${ROOT}/commands/rm_module.c
     ${ROOT}/commands/mv_module.c
@@ -216,6 +217,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/signal_probe.c
     ${ROOT}/tests/signal_libc_probe.c
     ${ROOT}/tests/tee_state_probe.c
+    ${ROOT}/tests/tee_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
     ${ROOT}/libc/cb_libc.c
@@ -333,3 +335,8 @@ add_library(cb_signal_libc_probe OBJECT ${ROOT}/tests/libc_signal_probe.c)
 target_include_directories(cb_signal_libc_probe PRIVATE ${ROOT}/libc/include ${ROOT}/include)
 target_compile_definitions(cb_signal_libc_probe PRIVATE main=cb_signal_libc_main)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_signal_libc_probe>)
+
+add_library(cb_tee OBJECT ${ROOT}/upstream/netbsd/usr.bin/tee/tee.c)
+target_include_directories(cb_tee PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_tee PRIVATE main=cb_tee_main head=cb_tee_head add=cb_tee_add)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_tee>)

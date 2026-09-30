@@ -480,4 +480,32 @@ for symbol in close exit fprintf fstat getopt getopt_state_location \
     fi
 done
 
+tee_source=upstream/netbsd/usr.bin/tee/tee.c
+tee_object=$build_path/netbsd_tee.o
+tee_hash=ebcf5dcb07756634ba5876630e2567bb7eb318c489a2a8a6c10fb6919f685a53
+if [[ $(sha256sum "$tee_source" | awk '{print $1}') != "$tee_hash" ]] ||
+   ! matches "$tee_hash" "$provenance_file"; then
+    echo 'FAIL: tee source/provenance pin differs' >&2
+    exit 1
+fi
+for symbol in cb_tee_main cb_tee_head cb_tee_add; do
+    if ! nm "$tee_object" | matches "[[:space:]][BT][[:space:]]+${symbol}$"; then
+        echo "FAIL: tee symbol is not privately renamed: $symbol" >&2
+        exit 1
+    fi
+done
+for symbol in close err exit fprintf getopt getopt_state_location malloc open \
+        read setlocale sig_ignore signal stderr_stream warn write; do
+    if ! nm -u "$tee_object" | matches "[[:space:]]U[[:space:]]+cb_libc_${symbol}$"; then
+        echo "FAIL: tee does not use private libc $symbol" >&2
+        exit 1
+    fi
+done
+# Compiler sanitizer instrumentation is not a host application dependency.
+if nm -u "$tee_object" | awk '$1 == "U" { print $2 }' |
+        grep -vE '^(_GLOBAL_OFFSET_TABLE_|__(asan|ubsan)_[[:alnum:]_]+|cb_libc_[[:alnum:]_]+)$' | matches '.'; then
+    echo 'FAIL: tee imports a non-private application symbol' >&2
+    exit 1
+fi
+
 echo 'pinned unmodified NetBSD source boundary passed'

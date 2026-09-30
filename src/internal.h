@@ -337,6 +337,7 @@ const struct cb_api_v1 *cb_kernel_api(struct cb_kernel *kernel);
 /* STATICS-RESET-01 (src/static_reset.c): one generic executor-ops wrapper,
    one accessor per command giving it its own slot table. See that file's
    own top comment for the full design. */
+const struct cb_executor_ops *cb_tee_static_reset_executor(void);
 const struct cb_executor_ops *cb_ls_static_reset_executor(void);
 const struct cb_executor_ops *cb_cat_static_reset_executor(void);
 const struct cb_executor_ops *cb_mv_static_reset_executor(void);

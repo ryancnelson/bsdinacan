@@ -581,3 +581,20 @@ const struct cb_executor_ops *cb_cp_static_reset_executor(void)
 {
     return &cp_static_reset_ops.common;
 }
+
+/* TEE-01: upstream owns this one external pointer, not a static function
+   cache. Save its value per execution; core owns and reclaims every list node.
+   No traversal or extra freeing is required at exit, exec or destruction. */
+struct _list;
+extern struct _list *cb_tee_head;
+static const struct cb_static_slot tee_slots[] = {
+    { &cb_tee_head, sizeof(cb_tee_head) }
+};
+static const struct cb_static_reset_ops tee_static_reset_ops = {
+    { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
+    tee_slots, sizeof(tee_slots) / sizeof(tee_slots[0])
+};
+const struct cb_executor_ops *cb_tee_static_reset_executor(void)
+{
+    return &tee_static_reset_ops.common;
+}

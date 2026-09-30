@@ -11,6 +11,7 @@ extern const struct cb_program_v1 cb_basename_program;
 extern const struct cb_program_v1 cb_echo_program;
 extern const struct cb_program_v1 cb_head_program;
 extern const struct cb_program_v1 cb_ls_program;
+extern const struct cb_program_v1 cb_tee_program;
 extern const struct cb_program_v1 cb_rm_program;
 extern const struct cb_program_v1 cb_mv_program;
 extern const struct cb_program_v1 cb_cat_program;
@@ -166,7 +167,9 @@ void cb_register_base_programs(struct cb_kernel *kernel)
        src/static_reset.c's own top comment. Registered individually, not
        through the uniform loop above, since each needs its own executor
        with its own slot table. */
-    if (cb_kernel_register_executor(kernel, cb_ls_static_reset_executor(),
+    if (cb_kernel_register_executor(kernel, cb_tee_static_reset_executor(),
+                                    &cb_tee_program) < 0 ||
+        cb_kernel_register_executor(kernel, cb_ls_static_reset_executor(),
                                     &cb_ls_program) < 0 ||
         cb_kernel_register_executor(kernel, cb_cat_static_reset_executor(),
                                     &cb_cat_program) < 0 ||
