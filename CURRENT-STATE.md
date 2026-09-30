@@ -1,10 +1,49 @@
 # Current State — cannedBSD
 
-**Last repository/CI audit:** 2026-09-29 (guest evidence is dated separately below)
+**Last repository/CI audit:** 2026-09-30 (guest evidence is dated separately below)
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Coordination checkpoint, 2026-09-29
+## Coordination checkpoint, 2026-09-30
+
+Main now includes Linux-only CI-SANITIZER-02 `03176ef`, independently reviewed
+and accepted after exact #520 ci/mac68k/mac-automation success. Undefined
+behavior now fails the sanitizer process; a clean control succeeds and the
+same overflowing control fails even when the environment requests recovery.
+The complete CI log contains three core PASS markers and no UBSan runtime-error
+or ASan ERROR markers. Known ASan context-switch warnings remain.
+
+- LS/cache/signal integration `f66aab3` passed exact #518 all three workflows
+  and independent review. Root operand ordering and old-table rename regressions
+  are repaired. Ten shared file-operation cases increase expected Mac records
+  from 69 to 79; all original cases remain. No fresh guest result is claimed.
+- The #518 archive was fetched and its checksum verified:
+  `ae21bdf550a3b2cdf8dbedfc360149519b895d0be28de6314a7ee8ff56ced7e9`.
+  Download verification is not staging, execution or acceptance.
+- TEE-01 `fce35e5` implements the pinned unchanged command with isolated list
+  state and cooperative interrupts. Independent review is clean; the complete
+  local Linux gate and focused actual tee probe passed. Exact #519 was still
+  running at this checkpoint, with Mac build/automation successful.
+- Combined tee acceptance `218bcdf` invokes the actual command probe from the
+  Mac root stack. Expected records become 80, with 2050 bytes plus NUL safely
+  accommodated by the derived 2051-byte buffer. Twenty host protocol tests
+  passed, including rejection of prior 69/79-record transcripts. Independent
+  wiring review is clean; exact #521 was still running. No Mac execution claim.
+
+The desktop remains locked. Read-only application inspection reports both
+Claude and Antigravity processes, but zero-size frames; this is not proof of
+visible or working windows. No new app submission was made. Isolated Codex
+workers continued implementation and review. Ryan's interactive guest slot
+remains reserved and untouched; unlock and release of that session are still
+pending user input. Current native Solaris qualification also remains pending;
+the documented SSH route rejected authentication, with no VM operation attempted.
+
+Runtime candidates remain off main until required exact integrated checks,
+fresh serialized Mac acceptance and applicable portability gates are satisfied.
+The sprint remains ls, tee, then quality review; fixed-width varargs format
+matching is stocked as FORMAT-PRI64-01 in the sprint candidate backlog.
+
+## Historical coordination checkpoint, 2026-09-29
 
 Main now includes test-only correction `c8e8dd03c49f1e4683a7f639d891ae93a64b435c`.
 Exact Woodpecker #495 ci/mac68k/mac-automation passed, followed by independent

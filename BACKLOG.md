@@ -13,19 +13,18 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Coordination checkpoint (2026-09-29):** main is `7a8b0fb`; TEST-ENTRY-01
-passed exact #502 all three workflows and independent review. Latest accepted
-Mac runtime artifact remains #495, 69 PASS plus ALL PASS with normal shutdown.
-The guest is now reserved for Ryan's interactive session. Current-runtime
-Solaris acceptance remains pending. See CURRENT-STATE.md for evidence/limits.
+**Coordination checkpoint (2026-09-30):** main includes CI-SANITIZER-02
+`03176ef`, independently reviewed with exact #520 all-three success. LS/cache/
+signal candidate `f66aab3` has #518 all-three success and independent review,
+including 79-record Mac suite construction; guest qualification is pending.
+TEE-01 `fce35e5` and its 80-record Mac integration `218bcdf` are reviewed
+candidates with exact CI still running at this checkpoint. Neither runtime
+candidate is accepted. See CURRENT-STATE.md for precise execution limits.
 
-Sprint priority: upstream ls, then tee, then quality review. Claude's
-STATICS-CACHE-02/LS-02 candidate `5ba7741` has #508 success and is under
-independent review. SIG-02 `7712111` has #507 success but requires a repair to
-rename's old-size ABI check. Neither runtime candidate is accepted. Antigravity's
-MAC-MILESTONE-TEST-01 proposal is reviewed documentation only; its latest assigned
-work is a read-only ls audit. The desktop is locked, so renewed app submissions
-have not been verified. Preserve all existing worktrees.
+The host is locked; no new Claude/Antigravity submission is claimed. Isolated
+Codex workers completed repairs, milestone cases and tee development. Preserve
+their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
+remains pending. Sprint order stays ls, tee, quality review.
 
 ### MAC-FILEPROBE-01 — portable timestamp test expectations
 
@@ -59,8 +58,8 @@ have not been verified. Preserve all existing worktrees.
 
 ### CI-SANITIZER-02 — fail the Linux gate on undefined behavior
 
-- Status: Ready; deferred behind the ls/tee sprint and included in its quality review.
-  Implementation must consume TEST-ENTRY-01 before running the full gate.
+- Status: Done; `03176ef` merged after independent review and exact #520
+  all-three success, with clean sanitizer error inspection.
 - Base: accepted TEST-ENTRY-01 or its exact candidate by coordinator assignment.
 - Dependencies: TEST-ENTRY-01; no shared runtime or ABI changes.
 - Hypothesis: recoverable UBSan diagnostics currently leave `make ci` green;
@@ -128,7 +127,8 @@ have not been verified. Preserve all existing worktrees.
 
 ### LS-ROOT-ORDER-01 — respect sorted directory operands during traversal
 
-- Status: Assigned to an isolated Codex repair worker; Claude's tree preserved.
+- Status: Reviewed repair `eb10bb5`, exact #513 all-three success, consumed
+  by `f66aab3`; guest qualification pending. Claude's tree preserved.
 - Base: exact LS/cache candidate `5ba7741`; dependencies: its FTS implementation.
 - Hypothesis: sorting root_children has no effect when fts_read rebuilds roots
   from the original argv order.
@@ -141,7 +141,8 @@ have not been verified. Preserve all existing worktrees.
 
 ### SIG-02-ABI-FIX — retain rename compatibility after appending signal support
 
-- Status: Assigned to an isolated Codex repair worker.
+- Status: Reviewed repair `850ae23`, exact #514 all-three success, consumed
+  by `f66aab3`; guest qualification pending.
 - Base: exact SIG-02 `7712111`; dependency: SIG-02 candidate.
 - Hypothesis: rename's sizeof(full API) check wrongly requires a later callback.
 - Red: a genuinely old-size API allocation including rename is rejected ENOSYS.
@@ -152,9 +153,9 @@ have not been verified. Preserve all existing worktrees.
 
 ### MAC-MILESTONE-TEST-01 — execute file operations in the Mac suite
 
-- Status: Proposal `b3b97bb` reviewed, exact #503 all three workflows passed.
-  Implementation remains blocked on state-repair integration; Antigravity was
-  reassigned to read-only ls auditing. No guest execution is claimed.
+- Status: Implemented by isolated Codex worker as `0e23714` (#517 all-three
+  success), incorporated in reviewed `f66aab3` (#518 success). Original proposal
+  `b3b97bb` preserved; fresh 79-record Mac execution remains pending.
 - Base: main; dependencies: STATICS-RESET-01 and existing file utilities.
 - Hypothesis: compilation-only coverage cannot demonstrate the newly integrated
   mkdir/cp/mv/rm/ls milestone works inside System 7.
@@ -2477,8 +2478,9 @@ accepted. Future stream or integer extensions still require explicit design.
 
 ### TEE-01 — import unchanged NetBSD tee with isolated execution state
 
-- **Status:** Blocked; unassigned
-- **Base:** freshly fetched main
+- **Status:** Reviewed candidate `fce35e5`; exact #519 pending at checkpoint.
+  Mac probe wiring is in reviewed `218bcdf`; final ls/guest gates outstanding.
+- **Base:** coordinator-assigned `461504d` candidate, not accepted main.
 - **Depends on:** STAT-01, WRITE-02-linux, WRITE-02-portable, TEE-STATE-01,
   SIG-01, SIG-02, SOLARIS-01
 - **Scope:** import pinned tee byte-for-byte, retaining license and hash; connect

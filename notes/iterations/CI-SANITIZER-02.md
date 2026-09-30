@@ -25,6 +25,7 @@ even if the environment requests recovery.
 existing tests remain enabled. Existing ASan context-switch/no-return warnings
 are not suppressed and are not equivalent to sanitizer errors.
 
-Exact Woodpecker ci/mac68k/mac-automation and independent review are pending
-on the pushed candidate. Mac guest execution is not required for this build-only
+Exact commit `03176ef` passed Woodpecker #520 ci/mac68k/mac-automation and
+independent review, then merged. Full CI log inspection found three core PASS
+markers and zero UBSan runtime-error / ASan ERROR markers. Mac guest execution is not required for this build-only
 Linux policy; no runtime portability or current Solaris qualification is claimed.
