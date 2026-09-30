@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 project(cannedBSDMac C CXX ASM)
 set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+# The probe compiles with the cross compiler; it never runs a 68K program.
+separate_arguments(PRI64_C_FLAGS NATIVE_COMMAND "${CMAKE_C_FLAGS}")
+execute_process(COMMAND sh ${ROOT}/tools/printf64-flags.sh
+    ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1} ${PRI64_C_FLAGS}
+    RESULT_VARIABLE PRI64_RESULT OUTPUT_VARIABLE PRI64_FLAGS
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT PRI64_RESULT EQUAL 0)
+    message(FATAL_ERROR "Cannot determine target fixed-width printf types")
+endif()
+separate_arguments(PRI64_FLAGS NATIVE_COMMAND "${PRI64_FLAGS}")
+add_compile_options(${PRI64_FLAGS})
 include(CheckCCompilerFlag)
 check_c_compiler_flag("-fno-tree-loop-distribute-patterns" HAVE_NO_TREE_LOOP_DISTRIBUTE_PATTERNS)
 add_compile_options(-Os -ffunction-sections -fdata-sections -Wall -Wextra)
@@ -333,3 +344,9 @@ add_library(cb_signal_libc_probe OBJECT ${ROOT}/tests/libc_signal_probe.c)
 target_include_directories(cb_signal_libc_probe PRIVATE ${ROOT}/libc/include ${ROOT}/include)
 target_compile_definitions(cb_signal_libc_probe PRIVATE main=cb_signal_libc_main)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_signal_libc_probe>)
+
+# Audit the unchanged pinned PRI64 consumers with the actual target types.
+foreach(target cb_ls_print cb_humanize_number)
+    target_compile_options(${target} PRIVATE -Wformat -Werror
+        -include ${ROOT}/tests/printf64_attributes.h)
+endforeach()

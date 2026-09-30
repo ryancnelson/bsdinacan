@@ -2,6 +2,8 @@
 #include <errno.h>
 #include <err.h>
 #include <limits.h>
+#include <inttypes.h>
+#include <string.h>
 #include <stdio.h>
 
 int main(int argc, char **argv)
@@ -118,6 +120,26 @@ int main(int argc, char **argv)
            printf under LANG=C). */
         count = printf("%'llu|%'*llu|%'llu", 1234567ULL, 8, 999ULL, 42ULL);
         return count == 19 && errno == ENOENT ? 0 : 22;
+    }
+    if (argv[1][0] == 'q') {
+        /* Typed arguments: same PRI macros as ls and humanize_number.
+           Exercise both formatter sinks and preserve l/ll independently. */
+        char buffer[160];
+        const char *expected = "0 18446744073709551615 -9223372036854775808 9223372036854775807";
+        uint64_t zero = 0, umax = UINT64_MAX;
+        int64_t smin = INT64_MIN, smax = INT64_MAX;
+        count = snprintf(buffer, sizeof(buffer), "%" PRIu64 " %" PRIu64
+                         " %" PRId64 " %" PRId64, zero, umax, smin, smax);
+        if (count != (int)strlen(expected) || strcmp(buffer, expected)) return 24;
+        count = printf("%" PRIu64 " %" PRIu64 " %" PRId64 " %" PRId64,
+                       zero, umax, smin, smax);
+        if (count != (int)strlen(expected)) return 25;
+        count = fprintf(stderr, "|%ld %lu %lld %llu", -42L, 42UL, -42LL, 42ULL);
+        if (count != 14) return 26;
+        count = snprintf(buffer, sizeof(buffer), "%ld %lu %lld %llu",
+                         -42L, 42UL, -42LL, 42ULL);
+        if (count != 13 || strcmp(buffer, "-42 42 -42 42")) return 27;
+        return errno == ENOENT ? 0 : 28;
     }
     if (argv[1][0] == 'w') {
         errno = EBADF;

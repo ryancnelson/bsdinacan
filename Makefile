@@ -30,6 +30,15 @@ ifeq ($(CC_ACCEPTS_NO_LOOP_DISTRIBUTE),yes)
 MEMSET_NO_IDIOM_FLAGS += -fno-tree-loop-distribute-patterns
 endif
 
+# Probe without the private inttypes veneer or any executable target run.
+# Preserve caller CPPFLAGS (notably the Solaris stdint adapter) during probing.
+PRI64_FLAGS := $(shell $(SHELL) tools/printf64-flags.sh $(CC) $(CPPFLAGS) $(CFLAGS))
+ifeq ($(words $(PRI64_FLAGS)),2)
+override CPPFLAGS += $(PRI64_FLAGS)
+else
+$(error Cannot determine target fixed-width printf types)
+endif
+
 BUILD_ROOT := build
 BUILD_VARIANT ?= normal
 ifeq ($(BUILD_VARIANT),normal)
@@ -496,7 +505,7 @@ FORMATPROBE_COMMAND_OBJECT := $(BUILD)/formatprobe_command.o
 # formatter. See notes/iterations/FORMAT-01.md and FORMAT-01-design.md.
 $(FORMATPROBE_COMMAND_OBJECT): tests/libc_format_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/errno.h libc/include/err.h \
-		libc/include/stdio.h | $(BUILD)
+		libc/include/inttypes.h libc/include/string.h libc/include/stdio.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_format_probe_main \
 		-c tests/libc_format_probe.c -o $@
 
@@ -838,15 +847,14 @@ check-build-modes:
 check-publication:
 	tests/test_publication.sh
 
-# Compares this Makefile against platform/mac68k/CMakeLists.txt. Needs no
-# compiler and no toolchain, so it runs first in ci and fails in under a
-# second. See tests/test_build_parity.py for why each invariant exists.
+# Compares this Makefile against platform/mac68k/CMakeLists.txt before builds.
+# See tests/test_build_parity.py for why each invariant exists.
 check-build-parity:
 	python3 tests/test_build_parity.py
 
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
-		$(LIBC_STDIO_TEST_OBJECT) check-architecture
+		$(LIBC_STDIO_TEST_OBJECT) check-architecture check-printf64
 	$(TEST_PROGRAM)
 	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
 	CC='$(CC)' tests/test_mac_autorun.sh
@@ -875,6 +883,15 @@ test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 	$(PROGRAM) -c 'cd /tmp; pwd'
 	@output="$$( $(PROGRAM) -c 'echo -n hello | wc -c' )"; \
 		test "$$output" = "       5" || { printf 'libc acceptance output: <%s>\n' "$$output"; exit 1; }
+
+# Audit real pinned call sites without changing imported declarations/source.
+# POSIX grouping in ls is intentional; omit ISO-pedantic diagnostics here.
+.PHONY: check-printf64
+check-printf64:
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(filter-out -Wpedantic -pedantic,$(CFLAGS)) -Wformat -Werror \
+		-include tests/printf64_attributes.h -DSMALL -fsyntax-only upstream/netbsd/bin/ls/print.c
+	$(CC) $(CPPFLAGS) -Icompat/netbsd/include -Ilibc/include $(filter-out -Wpedantic -pedantic,$(CFLAGS)) -Wformat -Werror \
+		-include tests/printf64_attributes.h -fsyntax-only upstream/netbsd/lib/libc/gen/humanize_number.c
 
 sanitize:
 	$(MAKE) clean
