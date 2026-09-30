@@ -6342,6 +6342,8 @@ static void test_err(void)
        (unlike cases[]'s int-only table above, which cannot safely carry
        a real unsigned long long) -- the shapes pinned ls/print.c's
        "%*"PRIu64" "/"%*llu "/"%*lu "/"total %llu\n" call sites use. */
+    run_case("formatprobe q A", "0 18446744073709551615 -9223372036854775808 9223372036854775807|-42 42 -42 42", 0, FIXTURE_ERR);
+    expect_streams("0 18446744073709551615 -9223372036854775808 9223372036854775807", "|-42 42 -42 42");
     run_case("formatprobe u A", "7 12345     42   8", 0, FIXTURE_ERR);
     expect_streams("7 12345     42   8", "");
     /* %*lld: the "%*lld, %*lld " device-number column shape. */

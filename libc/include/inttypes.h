@@ -16,14 +16,25 @@ intmax_t cb_libc_strtoimax(const char *restrict nptr, char **restrict endptr,
                           int base);
 #define strtoimax cb_libc_strtoimax
 
-/* LS-02: pinned ls/print.c formats st_ino (uint64_t) via PRIu64. This
-   veneer's printf/fprintf/snprintf %llu handler reads an unsigned long
-   long va_arg, so PRIu64 must say "llu" regardless of what uint64_t is
-   actually typedef'd to on the host -- the pairing is internally
-   consistent because this veneer controls both sides. */
+/* Format strings must match the caller's typedef, not merely its width.
+   The build probes the target's stdint.h with compatible declarations;
+   the formatter already consumes long for l and long long for ll.
+   Do not import the host inttypes.h's callable API to obtain these macros. */
+#undef PRIu64
+#undef PRId64
+#if CB_PRIu64_KIND == 1
+#define PRIu64 "lu"
+#elif CB_PRIu64_KIND == 2
 #define PRIu64 "llu"
-/* STATICS-CACHE-02: pinned humanize_number.c formats int64_t via PRId64;
-   same pairing as PRIu64 above. */
+#else
+#error "Build must probe the actual uint64_t type"
+#endif
+#if CB_PRId64_KIND == 1
+#define PRId64 "ld"
+#elif CB_PRId64_KIND == 2
 #define PRId64 "lld"
+#else
+#error "Build must probe the actual int64_t type"
+#endif
 
 #endif

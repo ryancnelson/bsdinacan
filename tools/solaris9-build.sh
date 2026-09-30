@@ -62,7 +62,7 @@ export CC CPPFLAGS CFLAGS LDLIBS
 # guest build has no .su stack-usage report for netbsd_head.o, and does
 # not claim one. Every other build (Linux, Retro68 Mac68k) is
 # unaffected and keeps the default -fstack-usage.
-"$MAKE" SHELL=/bin/ksh HEAD_STACKFLAGS= build/bsdinacan build/test_core
+"$MAKE" SHELL=/bin/ksh HEAD_STACKFLAGS= check-printf64 build/bsdinacan build/test_core
 
 ./build/test_core
 PROGRAM_PATH='build/bsdinacan' /bin/ksh tests/test_launcher.sh
