@@ -75,7 +75,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FORMAT-PRI64-01 — match fixed-width printf macros to argument types
 
-- Status: Ready for the post-tee quality review; no implementation claim.
+- Status: Reviewed candidate `fb8e28f`, exact #524 pending at composition.
+  Included in the combined quality branch; no guest/native qualification claim.
 - Base: accepted LS sprint, or exact candidate by coordinator assignment.
 - Dependencies: LS-02 / humanize_number import.
 - Hypothesis: hardcoding PRIu64/PRId64 as llu/lld does not control the caller's
