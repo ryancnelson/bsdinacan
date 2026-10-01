@@ -4,7 +4,30 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
-## Latest quality checkpoint, 2026-09-30 evening
+## Latest integration checkpoint, 2026-09-30 evening
+
+Main includes the reviewed documentation checkpoint `a25613c`, accepted after
+exact #527 ci/mac68k/mac-automation success. The newer runtime composition is
+`49bd1bf4e920261199c0341c0d61f6328ba952b7`, with exact #532 running at this
+checkpoint. Independent review of both repairs and their composition is clean:
+
+- FORMAT-SIZE-01 `3cc2cb7` consumes actual size_t for stream `%zu`, fixes the
+  measured full cat allocation warning, and retains unsupported-conversion
+  rejection. The independent snprintf parser is outside this measured scope.
+- STATICS-TYPES-01 `d21993d` matches ls array/comparator declarations and obtains
+  the anonymous-DISPLAY callback object's actual address/size on the command
+  side. Registration preserves existing state initialization and ownership.
+- Shared Mac acceptance now includes existing format-probe fixed-width and
+  portable size_t boundary cases: **82 records, 2092 bytes plus NUL**. All prior
+  80 cases remain; stale 80-record evidence is rejected. Twenty-one host protocol
+  tests, build parity, source-derived declaration checks, pinned printf format
+  checks and the 2093-byte capacity check passed on the composed tree.
+
+These are build/test-harness results, not guest execution. The reserved Mac
+session remains untouched; fresh exact-artifact Mac and native Solaris
+qualification are still required before runtime integration.
+
+## Historical quality checkpoint, 2026-09-30 evening
 
 Combined ls/tee/quality candidate `61beeac0beef50a086622e6ffe734e10e15b5273`
 passed exact #526 ci/mac68k/mac-automation and independent merge review.

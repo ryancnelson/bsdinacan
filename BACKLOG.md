@@ -13,7 +13,7 @@ The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
 
-**Coordination checkpoint (2026-09-30):** main includes CI-SANITIZER-02
+**Historical coordination checkpoint (2026-09-30):** main includes CI-SANITIZER-02
 `03176ef`, independently reviewed with exact #520 all-three success. LS/cache/
 signal candidate `f66aab3` has #518 all-three success and independent review,
 including 79-record Mac suite construction; guest qualification is pending.
@@ -28,7 +28,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FORMAT-SIZE-01 — complete the measured cat allocation warning
 
-- Status: Assigned to isolated Codex worker; not implemented or accepted yet.
+- Status: Implemented and independently reviewed `3cc2cb7`; included in
+  reviewed composition `49bd1bf`, exact #532 running. Guest acceptance pending.
 - Base: exact combined candidate `61beeac`; final guest gates remain required.
 - Hypothesis: pinned cat's warnx("malloc, using %zu buffer", bsize) truncates
   because the stream formatter rejects the size_t conversion.
@@ -41,7 +42,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### STATICS-TYPES-01 — match ls slot declarations to their definitions
 
-- Status: Assigned after a read-only compiler-backed audit; no repair accepted.
+- Status: Implemented and independently reviewed `d21993d`; included in
+  reviewed composition `49bd1bf`, exact #532 running. Guest acceptance pending.
 - Base: exact combined candidate `61beeac`; depends on candidate ls/state wrapper.
 - Hypothesis: declaring array as void* and two callback objects as void(*)(void)
   violates their actual FTSENT** and typed-function-pointer contracts even though
