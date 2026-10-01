@@ -8,8 +8,10 @@ subsequent accepted work is tracked by backlog ID and exact evidence.
 
 Main includes the reviewed documentation checkpoint `a25613c`, accepted after
 exact #527 ci/mac68k/mac-automation success. The newer runtime composition is
-`49bd1bf4e920261199c0341c0d61f6328ba952b7`, with exact #532 running at this
-checkpoint. Independent review of both repairs and their composition is clean:
+`49bd1bf4e920261199c0341c0d61f6328ba952b7`. Exact #532 ci/mac68k/mac-automation
+all passed; the full Linux log has three core PASS markers, zero UBSan runtime
+errors and zero ASan ERROR markers. Independent review of both repairs and their
+composition is clean:
 
 - FORMAT-SIZE-01 `3cc2cb7` consumes actual size_t for stream `%zu`, fixes the
   measured full cat allocation warning, and retains unsupported-conversion
@@ -22,6 +24,16 @@ checkpoint. Independent review of both repairs and their composition is clean:
   80 cases remain; stale 80-record evidence is rejected. Twenty-one host protocol
   tests, build parity, source-derived declaration checks, pinned printf format
   checks and the 2093-byte capacity check passed on the composed tree.
+
+The exact #532 Mac archive is cached and checksum-verified:
+`d75f0191ffb69cecda82e98f39dfef230f2abb1e618f7f4989ac83c832fac9b8`.
+It has not been staged into the guest. On October 1 the desktop still reported
+locked, and Claude/Antigravity reported zero-size frames; no new app submission
+or visible work is claimed. The user's interactive guest reservation remains.
+
+Quality review also identified an overbroad `ls -P` claim: existing tests cover
+directory children, while root operands remain unqualified. LS-P-OPERAND-01 is
+stocked for bounded reference/acceptance investigation before a runtime repair.
 
 These are build/test-harness results, not guest execution. The reserved Mac
 session remains untouched; fresh exact-artifact Mac and native Solaris

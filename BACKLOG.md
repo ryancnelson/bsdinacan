@@ -26,6 +26,22 @@ Codex workers completed repairs, milestone cases and tee development. Preserve
 their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
 remains pending. Sprint order stays ls, tee, quality review.
 
+### LS-P-OPERAND-01 — establish full-path operand acceptance
+
+- Status: Ready for bounded source/reference investigation; no runtime fix claimed.
+- Base: exact reviewed candidate `49bd1bf`; dependencies: candidate LS/cache/FTS.
+- Hypothesis: the broad `-P` option claim exceeds its directory-child test coverage.
+  Root preview aliases path/name, and pinned printpath concatenates both. Absolute
+  file and `-d` directory operands therefore predict duplicated paths by inspection;
+  these fixtures have not been executed.
+- Red: run relative/absolute file, `-d` directory and mixed-operand fixtures; establish
+  a reliable expected contract before calling output incorrect. Pinned FTS's initial
+  shared path-buffer state makes source-only reference inference insufficient.
+- Acceptance: qualify the documented matrix now; retain directory-child coverage;
+  record reference evidence and exact output/status. Any justified runtime repair
+  must preserve pins and receive ordinary CI, review and guest qualification.
+- Scope: acceptance investigation first, not speculative FTS behavior changes.
+
 ### DOC-FORMAT-01 — align accepted libc format documentation
 
 - Status: Implemented documentation correction; review and exact CI pending.
@@ -39,7 +55,7 @@ remains pending. Sprint order stays ls, tee, quality review.
 ### FORMAT-SIZE-01 — complete the measured cat allocation warning
 
 - Status: Implemented and independently reviewed `3cc2cb7`; included in
-  reviewed composition `49bd1bf`, exact #532 running. Guest acceptance pending.
+  reviewed composition `49bd1bf`, exact #532 all-three success. Guest acceptance pending.
 - Base: exact combined candidate `61beeac`; final guest gates remain required.
 - Hypothesis: pinned cat's warnx("malloc, using %zu buffer", bsize) truncates
   because the stream formatter rejects the size_t conversion.
@@ -53,7 +69,7 @@ remains pending. Sprint order stays ls, tee, quality review.
 ### STATICS-TYPES-01 — match ls slot declarations to their definitions
 
 - Status: Implemented and independently reviewed `d21993d`; included in
-  reviewed composition `49bd1bf`, exact #532 running. Guest acceptance pending.
+  reviewed composition `49bd1bf`, exact #532 all-three success. Guest acceptance pending.
 - Base: exact combined candidate `61beeac`; depends on candidate ls/state wrapper.
 - Hypothesis: declaring array as void* and two callback objects as void(*)(void)
   violates their actual FTSENT** and typed-function-pointer contracts even though
