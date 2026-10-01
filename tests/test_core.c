@@ -4633,6 +4633,7 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_warn_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_format_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_strcpy_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_head_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_head_pipe_program) == 0 &&

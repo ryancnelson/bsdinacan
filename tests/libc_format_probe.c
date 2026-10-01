@@ -122,12 +122,12 @@ int main(int argc, char **argv)
         return count == 19 && errno == ENOENT ? 0 : 22;
     }
     if (argv[1][0] == 'z') {
-        size_t maximum = (size_t)-1;
+        size_t maximum = argv[2][0] == 'P' ? (size_t)UINT32_MAX : (size_t)-1;
         const char *invalid[] = {"%zd", "%zs", "%zz", "%zl", "%z", "%zx"};
         /* Real size_t operands, followed by differently typed arguments:
            a wrong va_arg width must not consume or corrupt the next field. */
         count = printf("%zu|%zu|%u|%s", (size_t)0, maximum, 7U, "end");
-        if (count != (sizeof(size_t) == 4 ? 18 : 28)) return 29;
+        if (count != (argv[2][0] == 'P' || sizeof(size_t) == 4 ? 18 : 28)) return 29;
         count = fprintf(stderr, "|%6zu|%1zu|%*zu", (size_t)42,
                         (size_t)123, 4, (size_t)9);
         if (count != 16 || errno != ENOENT) return 30;

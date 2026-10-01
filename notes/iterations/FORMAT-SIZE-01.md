@@ -56,6 +56,23 @@ Full gate is the exact pushed Woodpecker `make LDLIBS=-lucontext
 SANITIZE_CC=clang ci`, plus mac68k and mac-automation workflows; results belong
 in the handoff. `git diff --check` passes. No guest was operated: fresh exact
 Mac artifact execution and native Solaris qualification remain coordinator
-gates. These new format and allocation boundary probes currently run in Linux
-core tests, not in the Mac guest transcript. Mac compilation alone does not
-establish 32-bit execution of these boundary cases.
+gates. The allocation-failure probe remains in Linux core tests.
+
+## Shared Mac coverage follow-up
+
+The coordinator extended this assignment to make the required fresh guest run
+exercise the formatter changes. CMake now builds the existing ordinary format
+probe and its owned module; both Mac main and the scoped Linux Mac fixture
+register it with checked results. Two appended shared cases execute q A
+(uint64/int64 zero and extrema plus independent l/ll conversions) and z P
+(size_t zero and UINT32_MAX, widths, following arguments, and rejected z forms).
+The z P value is explicitly bounded to UINT32_MAX so expected bytes are identical
+on 32-bit Mac and 64-bit Linux; Linux z A retains native SIZE_MAX coverage.
+
+All original 80 records remain, followed by the two new format cases. The
+transcript derives 82 PASS records, 2092 bytes and a 2093-byte buffer including
+NUL. The 21 host protocol tests pass, including exact rejection of the former
+80-record result; prior 69/79 controls now explicitly omit the new cases too.
+Build parity passes. Linux --err and --mac-acceptance results are recorded in
+handoff. Mac compilation alone does not establish 32-bit execution: the fresh
+coordinator guest gate remains required.
