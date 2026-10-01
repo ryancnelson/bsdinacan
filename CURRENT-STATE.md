@@ -4,6 +4,37 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## Latest quality checkpoint, 2026-09-30 evening
+
+Combined ls/tee/quality candidate `61beeac0beef50a086622e6ffe734e10e15b5273`
+passed exact #526 ci/mac68k/mac-automation and independent merge review.
+Its complete Linux log contains three core PASS markers and zero UBSan runtime
+errors / ASan ERROR markers. FORMAT-PRI64-01 `fb8e28f` also passed exact #524
+all-three CI and its full local Linux gate. These remain candidate evidence,
+not main runtime integration or guest qualification.
+
+The #526 Mac archive is downloaded and checksum-verified:
+`4916a6c36bbcadc73a2eaa88b34b57b3cdfd826ee31b98dbec49f074033c6cd5`.
+Its expected suite has 80 records. The existing reserved guest was not altered
+or restaged. The desktop still reports locked; app processes have zero-size
+reported frames, so no visible app activity or new app submission is claimed.
+Previously requested unlock/session release and Solaris access information
+remain unanswered; do not substitute historical guest results.
+
+Further bounded quality work is assigned in separate worktrees:
+
+- FORMAT-SIZE-01: repair the actual pinned cat allocation-warning %zu path;
+  preserve explicit unsupported formatting outside the measured boundary.
+- STATICS-TYPES-01: repair three ls slot declarations whose types differ from
+  their actual definitions. Compiler declaration-pair controls rejected all
+  three. The wrapper copies storage bytes and never invokes these callbacks
+  through those declarations; no wrong-signature execution or corruption was
+  demonstrated. Keep pinned sources unchanged and anonymous DISPLAY details
+  on the command side rather than importing libc headers into the core.
+
+No runtime candidate is merge-ready until its final composed commit is reviewed,
+passes exact CI and receives the required guest/portability acceptance.
+
 ## Coordination checkpoint, 2026-09-30
 
 Main now includes Linux-only CI-SANITIZER-02 `03176ef`, independently reviewed

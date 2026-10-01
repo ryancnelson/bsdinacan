@@ -26,6 +26,33 @@ Codex workers completed repairs, milestone cases and tee development. Preserve
 their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
 remains pending. Sprint order stays ls, tee, quality review.
 
+### FORMAT-SIZE-01 — complete the measured cat allocation warning
+
+- Status: Assigned to isolated Codex worker; not implemented or accepted yet.
+- Base: exact combined candidate `61beeac`; final guest gates remain required.
+- Hypothesis: pinned cat's warnx("malloc, using %zu buffer", bsize) truncates
+  because the stream formatter rejects the size_t conversion.
+- Red: observe the real injected allocation failure and require the complete
+  warning, not only the currently accepted prefix. Add ordinary-source zero,
+  maximum-size and following-argument checks with exact size_t varargs.
+- Acceptance: complete bytes and status through the measured stream/warn path,
+  honest rejection outside scope, unchanged source hashes, exact CI/review and
+  fresh guest acceptance. No speculative general printf expansion.
+
+### STATICS-TYPES-01 — match ls slot declarations to their definitions
+
+- Status: Assigned after a read-only compiler-backed audit; no repair accepted.
+- Base: exact combined candidate `61beeac`; depends on candidate ls/state wrapper.
+- Hypothesis: declaring array as void* and two callback objects as void(*)(void)
+  violates their actual FTSENT** and typed-function-pointer contracts even though
+  this wrapper only copies bytes and does not invoke the callbacks itself.
+- Red: compile the extracted definition/declaration pairs; all three currently
+  fail with incompatible redeclarations. Compatible FTS forward-type controls pass.
+- Acceptance: exact array/sort types; obtain anonymous-DISPLAY print slot address
+  and actual size through a command-side accessor without duplicating its layout
+  or leaking libc headers into the core. Retain interleaving/cache regressions,
+  unchanged pins, exact CI/review and required guest qualification.
+
 ### MAC-FILEPROBE-01 — portable timestamp test expectations
 
 - Status: Done, test-only `c8e8dd0` merged after exact #495 all-three CI,
