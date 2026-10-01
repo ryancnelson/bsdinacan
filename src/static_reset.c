@@ -110,6 +110,7 @@
  */
 
 #include "internal.h"
+#include "cannedbsd/ls_state.h"
 
 struct cb_static_slot {
     void *address;
@@ -345,24 +346,18 @@ extern int f_accesstime, f_column, f_columnacross, f_flags, f_grouponly,
            f_recursive, f_reversesort, f_sectime, f_singlecol, f_size,
            f_statustime, f_stream, f_type, f_typedir, f_whiteout,
            f_fullpath, f_leafonly;
-/* STATICS-CACHE-02: print.c printcol()'s own function-local `static
-   FTSENT **array` and `static int lastentries = -1`, renamed by the build
-   (tools/globalize-function-static.sh). Declared through a plain object
-   pointer: this file cannot see FTSENT, and only the storage size matters
-   to a slot. lastentries' -1 default is what makes each task's first
-   printcol() allocate its own array. */
-extern void *cb_ls_printcol_array;
+/* Match the private FTSENT tag without importing libc headers into core.
+   Slot copies use the actual object type and size, including pointer slots. */
+struct cb_ftsent;
+extern struct cb_ftsent **cb_ls_printcol_array;
 extern int cb_ls_printcol_lastentries;
-/* STATICS-CACHE-02: ls.c's `static void (*printfcn)(DISPLAY *)` and
-   `static int (*sortfcn)(const FTSENT *, const FTSENT *)`, chosen from
-   the options in main and called after an fts traversal that can yield,
-   and print.c's `static time_t now` (uint32_t, libc/include/time.h), set
-   by printlong() before output that can yield. Declared through a plain
-   function-pointer type for the same reason as `array` above. */
-extern void (*cb_ls_printfcn)(void);
-extern void (*cb_ls_sortfcn)(void);
+extern int (*cb_ls_sortfcn)(const struct cb_ftsent *, const struct cb_ftsent *);
 extern uint32_t cb_ls_print_now;
-static const struct cb_static_slot ls_slots[] = {
+/* DISPLAY is an anonymous typedef in pinned ls.h. The command-side bridge
+   supplies printfcn's storage address and size using that exact type. The
+   first slot is initialized when this executor is registered, before use. */
+static struct cb_static_slot ls_slots[] = {
+    { NULL, 0 },
     { &cb_ls_output, sizeof(cb_ls_output) },
     { &blocksize, sizeof(blocksize) },
     { &termwidth, sizeof(termwidth) },
@@ -398,7 +393,6 @@ static const struct cb_static_slot ls_slots[] = {
     { &f_leafonly, sizeof(f_leafonly) },
     { &cb_ls_printcol_array, sizeof(cb_ls_printcol_array) },
     { &cb_ls_printcol_lastentries, sizeof(cb_ls_printcol_lastentries) },
-    { &cb_ls_printfcn, sizeof(cb_ls_printfcn) },
     { &cb_ls_sortfcn, sizeof(cb_ls_sortfcn) },
     { &cb_ls_print_now, sizeof(cb_ls_print_now) },
 };
@@ -409,6 +403,7 @@ static const struct cb_static_reset_ops ls_static_reset_ops = {
 
 const struct cb_executor_ops *cb_ls_static_reset_executor(void)
 {
+    cb_ls_printfcn_slot(&ls_slots[0].address, &ls_slots[0].size);
     return &ls_static_reset_ops.common;
 }
 
