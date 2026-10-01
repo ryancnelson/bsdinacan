@@ -161,6 +161,9 @@ target_include_directories(cb_fts PRIVATE
 # outright ("Target ... is an OBJECT library that may not have ..."),
 # so the rename has to happen on the target that actually links, right
 # before it does.
+add_library(cb_ls_static_slot OBJECT ${ROOT}/commands/ls_static_slot.c)
+target_include_directories(cb_ls_static_slot PRIVATE
+    ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
 add_library(cb_ls OBJECT ${ROOT}/upstream/netbsd/bin/ls/ls.c)
 target_include_directories(cb_ls PRIVATE
     ${ROOT}/compat/netbsd/include ${ROOT}/libc/include ${ROOT}/upstream/netbsd/bin/ls)
@@ -326,7 +329,7 @@ target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_progname_probe> $<TARGET_OB
     $<TARGET_OBJECTS:cb_fwrite_probe> $<TARGET_OBJECTS:cb_fread_probe> $<TARGET_OBJECTS:cb_file_probe> $<TARGET_OBJECTS:cb_stdin_probe> $<TARGET_OBJECTS:cb_getopt_arg_probe> $<TARGET_OBJECTS:cb_getopt_probe> $<TARGET_OBJECTS:cb_truncate_probe> $<TARGET_OBJECTS:cb_dirname_probe> $<TARGET_OBJECTS:cb_dirent_probe> $<TARGET_OBJECTS:cb_exec_errno_probe> $<TARGET_OBJECTS:cb_basename_probe> $<TARGET_OBJECTS:cb_argv_probe> $<TARGET_OBJECTS:cb_stdio_state_probe> $<TARGET_OBJECTS:cb_stdio_oldtable_probe> $<TARGET_OBJECTS:cb_strtoimax_probe> $<TARGET_OBJECTS:cb_format_probe>)
 target_sources(CannedBSD PRIVATE
     $<TARGET_OBJECTS:cb_dirname_command> $<TARGET_OBJECTS:cb_basename_command> $<TARGET_OBJECTS:cb_wc> $<TARGET_OBJECTS:cb_yes> $<TARGET_OBJECTS:cb_printenv> $<TARGET_OBJECTS:cb_echo> $<TARGET_OBJECTS:cb_head>
-    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_ls_print> $<TARGET_OBJECTS:cb_ls_cmp> $<TARGET_OBJECTS:cb_ls_util> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils> $<TARGET_OBJECTS:cb_mkdir>
+    $<TARGET_OBJECTS:cb_ls> $<TARGET_OBJECTS:cb_ls_static_slot> $<TARGET_OBJECTS:cb_ls_print> $<TARGET_OBJECTS:cb_ls_cmp> $<TARGET_OBJECTS:cb_ls_util> $<TARGET_OBJECTS:cb_rm> $<TARGET_OBJECTS:cb_mv> $<TARGET_OBJECTS:cb_cat> $<TARGET_OBJECTS:cb_cp> $<TARGET_OBJECTS:cb_cp_utils> $<TARGET_OBJECTS:cb_mkdir>
     $<TARGET_OBJECTS:cb_strlen> $<TARGET_OBJECTS:cb_strcmp> $<TARGET_OBJECTS:cb_strcpy>
     $<TARGET_OBJECTS:cb_memcpy> $<TARGET_OBJECTS:cb_memmove>)
 target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_memcmp>)
