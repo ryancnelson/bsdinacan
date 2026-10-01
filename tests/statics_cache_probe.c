@@ -362,10 +362,8 @@ static int check_immediate_cleanup(void)
 
 static int check_cat_malloc_failure(void)
 {
-    /* Only the fixed prefix of cat's warnx("malloc, using %zu buffer"):
-       this libc does not format %zu yet, and that is not this probe's
-       subject. The contents and statuses after the fallback are. */
-    static const char warning[] = "cat: malloc, using ";
+    /* Pinned cat reports the failed request before selecting its fallback. */
+    static const char warning[] = "cat: malloc, using 4099 buffer\n";
     const char *contents;
     struct session_result result;
     fail_size = CACHE_SIZE;
@@ -386,7 +384,8 @@ static int check_cat_malloc_failure(void)
         return 64;
     contents = output_overflow ? NULL : strchr(output, '\n');
     if (contents == NULL ||
-        strncmp(output, warning, sizeof(warning) - 1) != 0 ||
+        (size_t)(contents + 1 - output) != sizeof(warning) - 1 ||
+        memcmp(output, warning, sizeof(warning) - 1) != 0 ||
         (size_t)(output + output_size - (contents + 1)) != 2 * sizeof(fixture) ||
         memcmp(contents + 1, fixture, sizeof(fixture)) != 0 ||
         memcmp(contents + 1 + sizeof(fixture), fixture, sizeof(fixture)) != 0)

@@ -121,6 +121,23 @@ int main(int argc, char **argv)
         count = printf("%'llu|%'*llu|%'llu", 1234567ULL, 8, 999ULL, 42ULL);
         return count == 19 && errno == ENOENT ? 0 : 22;
     }
+    if (argv[1][0] == 'z') {
+        size_t maximum = (size_t)-1;
+        const char *invalid[] = {"%zd", "%zs", "%zz", "%zl", "%z", "%zx"};
+        /* Real size_t operands, followed by differently typed arguments:
+           a wrong va_arg width must not consume or corrupt the next field. */
+        count = printf("%zu|%zu|%u|%s", (size_t)0, maximum, 7U, "end");
+        if (count != (sizeof(size_t) == 4 ? 18 : 28)) return 29;
+        count = fprintf(stderr, "|%6zu|%1zu|%*zu", (size_t)42,
+                        (size_t)123, 4, (size_t)9);
+        if (count != 16 || errno != ENOENT) return 30;
+        for (index = 0; index < sizeof(invalid) / sizeof(invalid[0]); ++index) {
+            /* No operands: reject unsupported z combinations before va_arg. */
+            errno = ENOENT;
+            if (printf(invalid[index]) != EOF || errno != EINVAL) return 31;
+        }
+        return ferror(stdout) || ferror(stderr) ? 32 : 0;
+    }
     if (argv[1][0] == 'q') {
         /* Typed arguments: same PRI macros as ls and humanize_number.
            Exercise both formatter sinks and preserve l/ll independently. */
