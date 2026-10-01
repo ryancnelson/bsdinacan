@@ -4633,6 +4633,7 @@ static int register_mac_probes(struct cb_kernel *kernel)
            cb_kernel_register(kernel, &normalpollprobe_program) == 0 &&
            cb_kernel_register(kernel, &cb_err_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_warn_probe_program) == 0 &&
+           cb_kernel_register(kernel, &cb_format_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_strcpy_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_head_probe_program) == 0 &&
            cb_kernel_register(kernel, &cb_head_pipe_program) == 0 &&
@@ -6342,6 +6343,11 @@ static void test_err(void)
        (unlike cases[]'s int-only table above, which cannot safely carry
        a real unsigned long long) -- the shapes pinned ls/print.c's
        "%*"PRIu64" "/"%*llu "/"%*lu "/"total %llu\n" call sites use. */
+    run_case("formatprobe z A", sizeof(size_t) == 4 ?
+             "0|4294967295|7|end|    42|123|   9" :
+             "0|18446744073709551615|7|end|    42|123|   9", 0, FIXTURE_ERR);
+    expect_streams(sizeof(size_t) == 4 ? "0|4294967295|7|end" :
+                   "0|18446744073709551615|7|end", "|    42|123|   9");
     run_case("formatprobe q A", "0 18446744073709551615 -9223372036854775808 9223372036854775807|-42 42 -42 42", 0, FIXTURE_ERR);
     expect_streams("0 18446744073709551615 -9223372036854775808 9223372036854775807", "|-42 42 -42 42");
     run_case("formatprobe u A", "7 12345     42   8", 0, FIXTURE_ERR);

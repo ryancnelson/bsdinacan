@@ -1397,8 +1397,8 @@ static int format_output(int descriptor, const char *format,
             /* Bounded width 1-32 (literal or "*"-from-argument), an
                optional "-" left-justify flag or "'" thousands-separator
                flag (mutually exclusive in every real call site), an
-               optional length modifier ("l"/"ll"), and %d/%u/%s -- see
-               FORMAT-01-design.md's original %Nd/%Ns scope and its
+               optional length modifier ("l"/"ll", or "z" for %u), and
+               %d/%u/%s -- see FORMAT-01-design.md's original %Nd/%Ns scope and its
                LS-02 addendum. LS-02 measured pinned ls/print.c's column
                layout ("%*llu ", "%-*s  ", "%*"PRIu64" ", "%'*llu " for
                -M) and demonstrated that scope insufficient for a second
@@ -1408,7 +1408,7 @@ static int format_output(int descriptor, const char *format,
             int left_justify = 0;
             int use_commas = 0;
             unsigned width = 0;
-            int length_modifier = 0; /* 0 = none, 1 = 'l', 2 = "ll" */
+            int length_modifier = 0; /* 0 = none, 1 = l, 2 = ll, 3 = z */
             if (*cursor == '-') {
                 left_justify = 1;
                 ++cursor;
@@ -1449,6 +1449,15 @@ static int format_output(int descriptor, const char *format,
                     ++cursor;
                 }
             }
+            if (*cursor == 'z' && length_modifier == 0) {
+                /* Pinned cat's allocation warning passes an actual size_t. */
+                length_modifier = 3;
+                ++cursor;
+                if (*cursor != 'u') {
+                    bound_api->set_errno(CB_EINVAL);
+                    return -1;
+                }
+            }
             if (left_justify && *cursor != 's') {
                 /* Only ls's user/group/flags columns need left-justify,
                    and only on %s; no signed/unsigned consumer does. */
@@ -1472,7 +1481,9 @@ static int format_output(int descriptor, const char *format,
                 char *digits = end;
                 size_t length;
                 if (is_unsigned) {
-                    if (length_modifier == 2)
+                    if (length_modifier == 3)
+                        magnitude = va_arg(arguments, size_t);
+                    else if (length_modifier == 2)
                         magnitude = va_arg(arguments, unsigned long long);
                     else if (length_modifier == 1)
                         magnitude = va_arg(arguments, unsigned long);
