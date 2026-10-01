@@ -26,6 +26,16 @@ Codex workers completed repairs, milestone cases and tee development. Preserve
 their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
 remains pending. Sprint order stays ls, tee, quality review.
 
+### DOC-FORMAT-01 — align accepted libc format documentation
+
+- Status: Implemented documentation correction; review and exact CI pending.
+- Base: main `ad95f3d`; dependencies: accepted FORMAT-01 and unsigned formatting.
+- Hypothesis: LIBC.md's string-only claim understates implemented main behavior.
+- Evidence: compare format_output's actual parser/dispatch with the listed contract.
+- Acceptance: document accepted signed/unsigned conversions, bounded widths and
+  honest rejection; distinguish unmerged extensions. Documentation only; no new
+  guest execution required.
+
 ### FORMAT-SIZE-01 — complete the measured cat allocation warning
 
 - Status: Implemented and independently reviewed `3cc2cb7`; included in
