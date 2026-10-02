@@ -75,10 +75,15 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
 - `errno.h`: a task-local modifiable `errno` and all currently declared runtime
   error constants.
 - `stdio.h`: unbuffered `puts`, `printf`, and `fprintf` plus `stdout` and
-  `stderr`. Formatted output deliberately supports only literals, `%%`, and
-  `%s`, writes through partial descriptor writes, returns the exact byte count,
-  and preserves descriptor errors such as `EBADF` and `EPIPE`. Unsupported
-  conversions fail with `EINVAL` after any preceding literal output.
+  `stderr`. Accepted main supports literals, `%%`, `%s`, signed `%d`, and
+  unsigned `%u`/`%lu`/`%llu`. String and decimal conversions accept optional
+  literal widths 1–32, right-justify with spaces, and never truncate wider
+  values. It writes through partial descriptor writes, returns the exact byte
+  count, and preserves descriptor errors such as `EBADF` and `EPIPE`.
+  Flags, precision, dynamic widths, signed long/long-long and size_t conversions
+  remain outside accepted main's contract. Unsupported formats fail with
+  `EINVAL` after any preceding output. The pending ls/tee quality candidate
+  extends this boundary; its source and CI results are not guest acceptance.
 - `stdio.h`: `putchar`, `fflush`, and `ferror` use independent task-owned
   stdout/stderr error indicators. `putchar` returns the unsigned byte written
   or `EOF`. Positive short writes are retried; zero progress becomes `EIO`.
