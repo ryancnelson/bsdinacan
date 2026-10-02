@@ -130,13 +130,13 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   the formatted message, and a newline to `stderr` only, then exits with the
   caller's status.
 - `err.h`: `err` snapshots task errno before diagnostic output and adds its
-  `strerror` text before the newline. It uses the same literal/`%%`/`%s`
-  formatter and exits with the requested status even if stderr fails. A null
+  `strerror` text before the newline. It uses the bounded stream formatter described above and exits with the requested status even if stderr fails. A null
   format omits the message and its separator; an empty format does not.
 - `err.h`: returning `warn` uses the bounded formatter and saved full startup
   name, appends the saved errno text, and preserves incoming errno even
   when stderr fails. Null and empty formats retain their distinct separators;
-  the caller continues normally. No warnx or broader formatter is exposed.
+  the caller continues normally. `warnx` provides the returning diagnostic
+  without the errno text and likewise preserves incoming errno.
 - `dirent.h`: an opaque `DIR` plus `opendir`, `readdir`, and `closedir`,
   modeled on `stdio.h`'s `FILE` pattern. Each open directory is a task-owned
   handle (never shared or inherited across `spawn`), holding a retained VFS

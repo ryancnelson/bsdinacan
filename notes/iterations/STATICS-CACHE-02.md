@@ -1,5 +1,13 @@
 # STATICS-CACHE-02: repair retained command buffer lifecycle
 
+**Subsequent quality repairs:** this note preserves the original investigation.
+FORMAT-SIZE-01 now handles the measured stream `%zu` warning; STATICS-TYPES-01
+replaces the erased ls array/callback declarations with exact types and a typed
+storage accessor. FORMAT-PRI64-01 matches format macros to actual integer types:
+equal widths do not make different va_arg types compatible. These repairs are
+reviewed candidates with exact CI success, still awaiting guest qualification.
+The qualified option matrix below incorporates LS-P-OPERAND-01's measured limits.
+
 - Status: implementation and Linux evidence complete; Woodpecker, fresh Mac
   guest and native Solaris qualification are coordinator gates (below).
 - Base SHA: `b2d003b6820d6c19b47885986e8271f5b2d049fe` (STATICS-RESET-01),
@@ -295,7 +303,7 @@ is a same-width alias with no va_arg width mismatch:
 | `-M` | works, tested | C locale: no separator inserted |
 | `-m` `-x` | work, tested | upstream `-x` pads the last column |
 | `-O` | upstream behaviour, observed | suppresses headers and totals only |
-| `-P` | works, tested | full paths; upstream column widths ignore the path, so use with `-1`/`-l` |
+| `-P` | directory children tested; root operands unresolved | File and `-d` directory operands duplicate paths; mixed operands inherit this limitation. See LS-P-OPERAND-01. |
 | `-R` | works, tested | with and without `-a` |
 | `-r` `-S` `-t` | work, tested | mtime ties fall back to name order |
 | `-T` | works, observed | full date and time |
@@ -307,8 +315,10 @@ Other limits:
 
 - Diagnostics use this libc's lowercase `strerror` text (for example "no such
   file or directory"), which differs from NetBSD's capitalization.
-- `-P` with non-directory operands prints `operand/operand`. NetBSD reads its
-  shared path buffer there; this was not verified against a NetBSD host.
+- `-P` file and `-d` directory root operands duplicate paths in the measured
+  candidate. LS-P-OPERAND-01 records eight fixtures and a controlled allocation
+  experiment with pinned FTS. Native NetBSD behavior remains unmeasured; the
+  experiment establishes initial-buffer dependence, not a replacement contract.
 - No test compares output against a real NetBSD host. Every expectation above
   comes from reading the pinned sources.
 

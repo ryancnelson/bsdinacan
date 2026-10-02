@@ -28,12 +28,14 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### LS-P-OPERAND-01 — establish full-path operand acceptance
 
-- Status: Ready for bounded source/reference investigation; no runtime fix claimed.
+- Status: Investigation completed in reviewed `495cb27`, exact #537 all-three
+  success. Root-operand acceptance remains unresolved; no runtime fix claimed.
 - Base: exact reviewed candidate `49bd1bf`; dependencies: candidate LS/cache/FTS.
 - Hypothesis: the broad `-P` option claim exceeds its directory-child test coverage.
   Root preview aliases path/name, and pinned printpath concatenates both. Absolute
   file and `-d` directory operands therefore predict duplicated paths by inspection;
-  these fixtures have not been executed.
+  eight fixtures now confirm duplication for root operands, with status 0 and
+  empty stderr. Directory-child checks pass.
 - Red: run relative/absolute file, `-d` directory and mixed-operand fixtures; establish
   a reliable expected contract before calling output incorrect. Pinned FTS's initial
   shared path-buffer state makes source-only reference inference insufficient.

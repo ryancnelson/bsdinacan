@@ -4,6 +4,22 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 2 quality checkpoint
+
+LS-P-OPERAND-01 `495cb27` passed exact #537 ci/mac68k/mac-automation and
+independent review. Eight candidate fixtures measured duplicated root paths for
+files and `-d` directories; directory-child paths pass. The option matrix is
+now qualified accordingly. Optional diagnostic tools stay on the candidate
+branch because the reference experiment depends on pinned ls source absent
+from accepted main. Controlled allocation prefixes establish a reference limit,
+not native NetBSD behavior or a justified runtime repair.
+
+Main `3ca4993` contains reviewed formatter documentation and the preceding final
+CI/acceptance checkpoint. No runtime changes have been merged. On October 2 the
+host still reports locked and both app frames report zero size; no visible work
+or new app submission is claimed. Fresh Mac and Solaris qualification remain
+outstanding, and the reserved interactive Mac session has not been operated.
+
 ## Latest integration checkpoint, 2026-09-30 evening
 
 Main includes the reviewed documentation checkpoint `a25613c`, accepted after
