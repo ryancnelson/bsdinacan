@@ -34,8 +34,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 - Hypothesis: the broad `-P` option claim exceeds its directory-child test coverage.
   Root preview aliases path/name, and pinned printpath concatenates both. Absolute
   file and `-d` directory operands therefore predict duplicated paths by inspection;
-  eight fixtures now confirm duplication for root operands, with status 0 and
-  empty stderr. Directory-child checks pass.
+  eight fixtures include six root/mixed cases showing duplication and two
+  passing directory-child controls; all returned status 0 and empty stderr.
 - Red: run relative/absolute file, `-d` directory and mixed-operand fixtures; establish
   a reliable expected contract before calling output incorrect. Pinned FTS's initial
   shared path-buffer state makes source-only reference inference insufficient.
