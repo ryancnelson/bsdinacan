@@ -26,6 +26,22 @@ Codex workers completed repairs, milestone cases and tee development. Preserve
 their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
 remains pending. Sprint order stays ls, tee, quality review.
 
+### NEXT-UTIL-03 — remeasure the next utility after the ls/tee candidate
+
+- Status: Assigned for compile/source investigation only; no new import authorized.
+- Base: exact reviewed runtime candidate `f4e3f25`; accepted-main comparison `3ca4993`.
+- Dependencies: existing NEXT-UTIL-02 inventory; runtime adoption still depends on
+  ls/tee guest qualification. Read-only measurement can proceed independently.
+- Hypothesis: the ls/tee libc work removed some previously measured uniq/cut gaps,
+  changing the smallest useful next milestone.
+- Evidence: hash-verify pinned uniq/cut source; compile against real private headers,
+  record diagnostics and distinguish missing definitions from supported declarations.
+  Do not introduce empty headers, success stubs or host-library fallbacks.
+- Acceptance: one recommended next tool with concrete independently claimable
+  prerequisite tasks, source hashes, reproducible commands and state/cleanup needs.
+  Record candidate versus accepted-main differences and any remaining uncertainty.
+- Scope: own iteration note only; no runtime/header/source-pin changes or guest use.
+
 ### LS-P-OPERAND-01 — establish full-path operand acceptance
 
 - Status: Ready for bounded source/reference investigation; no runtime fix claimed.
