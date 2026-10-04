@@ -4,6 +4,25 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 3 coordination checkpoint
+
+Main `4abffe3` contains the reviewed warnx correction and dependency-investigation
+queue, accepted after exact #541 all-three CI. The reviewed runtime candidate
+`f4e3f25` passed exact #540 all three workflows; its full Linux log has three
+core PASS markers and no UBSan runtime errors or ASan ERROR markers. Its cached
+Mac archive SHA256 is `2c27699ca7bf9d34b880417c623767bb5a11364fa589f743f5678cea54b84f15`.
+It remains unstaged and unaccepted in the guest.
+
+NEXT-UTIL-03 `6054f77` recommends uniq after measured private-header compilation
+and real archive-symbol inspection. Neither uniq nor cut compiles yet. Writable
+FILE output, fgetln and asprintf remain uniq prerequisites; bounded design tasks
+are stocked before implementation. This is future preparation, not a change to
+the ls/tee acceptance order or a claim that either utility runs.
+
+Computer Use still reports a locked Mac on October 3. Hammerspoon did not answer;
+its stalled read-only query was stopped. No new Claude/Antigravity UI submission
+or Mac guest operation is claimed. Native Solaris qualification remains pending.
+
 ## Latest integration checkpoint, 2026-09-30 evening
 
 Main includes the reviewed documentation checkpoint `a25613c`, accepted after

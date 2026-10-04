@@ -26,9 +26,56 @@ Codex workers completed repairs, milestone cases and tee development. Preserve
 their worktrees and Ryan's reserved interactive Mac session. Solaris acceptance
 remains pending. Sprint order stays ls, tee, quality review.
 
+### STDIO-WRITE-01-design — writable FILE ownership before uniq
+
+- Status: Ready; design only, before shared FILE representation changes.
+- Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
+- Hypothesis: fopen(w) alone cannot serve uniq because fprintf currently rejects
+  nonstandard streams, and stream state must survive task switches and cleanup.
+- Evidence: trace existing FILE representation, dispatch, exit/exec/close ownership
+  and old-size capability behavior; map real uniq output calls to required changes.
+- Acceptance: one bounded w-mode design covering creation/truncation, partial/zero
+  writes, sticky errors, stale/foreign streams and cleanup before reap. Specify
+  fwrite's treatment and serialization with fgetln; no success stubs or new code.
+- Scope: own design note only; implementation becomes a separate reviewed task.
+
+### ASPRINTF-01-design — bounded allocating formatting for uniq
+
+- Status: Ready independently of FILE design; no implementation yet.
+- Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
+- Hypothesis: uniq's actual "-%c%s" legacy-option conversion needs allocating
+  formatting absent from both main and candidate snprintf.
+- Evidence: specify exact size calculation, va_arg types, task allocation ownership,
+  overflow and failure behavior with output pointer NULL.
+- Acceptance: a minimal implementation/test plan for literal/%c/%s, explicit
+  rejection outside the supported subset and actual legacy-option fixtures.
+- Scope: own note only; shared stdio declaration ownership assigned at implementation.
+
+### FGETLN-01 — per-stream line storage for uniq
+
+- Status: Blocked on agreed STDIO-WRITE-01 FILE design and explicit assignment.
+- Base: future reviewed writable-stream candidate selected by coordinator.
+- Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
+- Red: empty/long/unterminated/NUL input, partial/error reads, allocation failure
+  and interleaved streams; pin the borrowed-buffer lifetime to real stream events.
+- Acceptance: exact lengths/newlines, honest EOF/error state and cleanup before
+  reclaim; preserve stdin task state and old-size failures. Required runtime gates.
+
+### UNIQ-01 — unchanged uniq after measured prerequisites
+
+- Status: Blocked on ls/tee qualification, writable FILE, fgetln and asprintf.
+- Base: coordinator-selected qualified composition; no import authorized yet.
+- Hypothesis: the six static integer fields need task isolation across yields.
+- Red: repeated conflicting flags/counts and overlapping pipelines, plus files,
+  empty/long/unterminated/NUL input, numeric boundaries and injected I/O faults.
+- Acceptance: unchanged pin, typed state slots, cleanup before reap, exact CI/review
+  and guest gates. Characterize inherited ignored I/O errors rather than inventing
+  successful error propagation. See NEXT-UTIL-03 for concrete source evidence.
+
 ### NEXT-UTIL-03 — remeasure the next utility after the ls/tee candidate
 
-- Status: Assigned for compile/source investigation only; no new import authorized.
+- Status: Investigation candidate `6054f77`, exact CI all three passed;
+  independent review pending. Recommends uniq; no new import accepted.
 - Base: exact reviewed runtime candidate `f4e3f25`; accepted-main comparison `3ca4993`.
 - Dependencies: existing NEXT-UTIL-02 inventory; runtime adoption still depends on
   ls/tee guest qualification. Read-only measurement can proceed independently.
@@ -44,12 +91,13 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### LS-P-OPERAND-01 — establish full-path operand acceptance
 
-- Status: Ready for bounded source/reference investigation; no runtime fix claimed.
+- Status: Reviewed investigation `495cb27`, exact #537 all-three success;
+  root-operand behavior remains unresolved, no runtime fix claimed.
 - Base: exact reviewed candidate `49bd1bf`; dependencies: candidate LS/cache/FTS.
 - Hypothesis: the broad `-P` option claim exceeds its directory-child test coverage.
   Root preview aliases path/name, and pinned printpath concatenates both. Absolute
   file and `-d` directory operands therefore predict duplicated paths by inspection;
-  these fixtures have not been executed.
+  measured six root/mixed cases show duplication; two directory-child controls pass.
 - Red: run relative/absolute file, `-d` directory and mixed-operand fixtures; establish
   a reliable expected contract before calling output incorrect. Pinned FTS's initial
   shared path-buffer state makes source-only reference inference insufficient.
