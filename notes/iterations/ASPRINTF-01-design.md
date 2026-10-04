@@ -37,7 +37,9 @@ libc binding requires the allocate/resize/release capability prefix.
 
 The implementation owner adds `cb_libc_asprintf(char **out, const char *fmt, ...)`
 and the private stdio `asprintf` mapping, coordinating both declaration locations
-with the FILE worker. No FILE layout or program ABI change is required.
+with the FILE worker. Serialize implementation edits to cb_libc.c and stdio.h
+with writable-stream work even though these design notes can proceed in parallel.
+No FILE layout or program ABI change is required.
 
 Support literal bytes, bare `%c`, and bare `%s` only. Do not silently inherit
 stream formatter conversions. Reject `%%`, trailing `%`, widths, precision,
@@ -116,7 +118,8 @@ before zombie reap. No process-global ownership list or argv special case.
    heap lifecycle observation rather than inventing a new accounting subsystem.
 6. Run focused tests and complete Linux make ci, then exact-commit Woodpecker
    ci/mac68k/mac-automation, independent review, fresh serialized MAC-01 guest
-   acceptance including a portable allocating-format probe, and required Solaris
+   acceptance including the ordinary-source allocating-format probe registered in
+   the shared Mac suite, and required Solaris
    qualification. Missing guest access stays pending, not waived.
 
 This design requires no runtime tests or guest use itself. Verification here is
