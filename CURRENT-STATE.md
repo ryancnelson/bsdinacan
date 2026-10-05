@@ -4,6 +4,20 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 4 work checkpoint
+
+Main `0ab8bbf` includes the independently reviewed dependency study and backlog,
+with exact #544 all-three CI success. Writable-stream design `14c46dd` and
+allocating-format design `a4048b9` each passed their exact three workflows.
+Only their design notes are incorporated here; no runtime changes are included.
+
+ASPRINTF-01 implementation is assigned in its own worktree after coordinator
+scope review, with independent design review continuing. That worker exclusively
+owns the shared formatter/declaration files; writable-stream implementation waits
+for its handoff. Shared Mac probes and runtime qualification remain required.
+Computer Use again reports the desktop locked; no app-agent submission or guest
+operation is claimed.
+
 ## October 3 coordination checkpoint
 
 Main `4abffe3` contains the reviewed warnx correction and dependency-investigation

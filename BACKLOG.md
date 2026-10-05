@@ -28,7 +28,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### STDIO-WRITE-01-design — writable FILE ownership before uniq
 
-- Status: Ready; design only, before shared FILE representation changes.
+- Status: Design `14c46dd` has exact all-three CI success; independent review
+  pending. No implementation or shared FILE representation change yet.
 - Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
 - Hypothesis: fopen(w) alone cannot serve uniq because fprintf currently rejects
   nonstandard streams, and stream state must survive task switches and cleanup.
@@ -41,7 +42,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### ASPRINTF-01-design — bounded allocating formatting for uniq
 
-- Status: Ready independently of FILE design; no implementation yet.
+- Status: Design `a4048b9` has exact all-three CI success and coordinator
+  scope approval; independent review is in progress. Implementation assigned.
 - Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
 - Hypothesis: uniq's actual "-%c%s" legacy-option conversion needs allocating
   formatting absent from both main and candidate snprintf.
@@ -50,6 +52,21 @@ remains pending. Sprint order stays ls, tee, quality review.
 - Acceptance: a minimal implementation/test plan for literal/%c/%s, explicit
   rejection outside the supported subset and actual legacy-option fixtures.
 - Scope: own note only; shared stdio declaration ownership assigned at implementation.
+
+### ASPRINTF-01 — measured allocating-format implementation
+
+- Status: Assigned in work/ASPRINTF-01 after coordinator design review; exclusive
+  cb_libc.c and stdio declaration ownership. Independent design review continues.
+- Base: exact design candidate `a4048b9`; dependencies: reviewed design.
+- Hypothesis: actual uniq legacy-option conversion can use bounded allocating
+  literal/%c/%s output without depending on the narrower snprintf parser.
+- Red: ordinary-source missing-interface probe and actual unchanged obsolete
+  fixture; capture allocation failure, unsupported formats and embedded NUL bytes.
+- Acceptance: checked sizes and int return, NULL output on every failure, task-owned
+  allocation and cleanup before reap, shared Mac probe, exact CI/review and fresh
+  Mac/Solaris gates. Preserve the design's explicit unsupported-format boundary.
+- Scope: only the measured allocating-format path; writable FILE edits wait until
+  this owner hands off its selected commit. No full uniq import yet.
 
 ### FGETLN-01 — per-stream line storage for uniq
 
