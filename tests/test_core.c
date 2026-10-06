@@ -3112,6 +3112,108 @@ static int allocationprobe_main(const struct cb_api_v1 *api, int argc,
     return 0;
 }
 
+/* ASPRINTF-01: observation belongs in the harness, not ordinary source. */
+static char *asprintf_parent_buffer;
+static int asprintf_child_phase;
+
+static int asprintf_bind_main(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    return 0;
+}
+
+static int asprintf_lifecycle_main(const struct cb_api_v1 *api, int argc,
+                                   char *const argv[], char *const envp[])
+{
+    char *buffer = NULL;
+    char *replacement[] = {(char *)"asprintflifecycle", (char *)"after", NULL};
+    char *missing[] = {(char *)"missing-asprintf-program", NULL};
+    int status, mode;
+    cb_pid_t child;
+    if (cb_libc_start(api, 0, NULL, asprintf_bind_main) != 0)
+        return 1;
+    if (argc == 2 && strcmp(argv[1], "after") == 0) {
+        if (cb_test_task_allocation_count(api->getpid()) != 0 ||
+            api->get_errno() != 0)
+            return 2;
+        asprintf_child_phase = 3;
+        return 0;
+    }
+    if (argc == 2) {
+        api->set_errno(0);
+        /* The raw ownership operation reports EINVAL. libc free deliberately
+           preserves incoming errno, so it cannot expose this rejection. */
+        api->release(asprintf_parent_buffer);
+        if (api->get_errno() != CB_EINVAL)
+            return 3;
+        if (cb_libc_asprintf(&buffer, "-%c%s", 's', "child") != 7 ||
+            buffer == NULL || strcmp(buffer, "-schild") != 0 ||
+            cb_test_task_allocation_count(api->getpid()) != 1)
+            return 4;
+        asprintf_child_phase = 1;
+        api->yield();
+        if (strcmp(buffer, "-schild") != 0 ||
+            strcmp(asprintf_parent_buffer, "-fparent") != 0)
+            return 5;
+        if (api->exec(missing[0], missing, envp) != -1 ||
+            api->get_errno() != CB_ENOENT ||
+            cb_test_task_allocation_count(api->getpid()) != 1 ||
+            strcmp(buffer, "-schild") != 0)
+            return 6;
+        asprintf_child_phase = 2;
+        if (strcmp(argv[1], "exec") == 0) {
+            api->exec(replacement[0], replacement, envp);
+            return 7;
+        }
+        /* Deliberately leave the allocation live for exit cleanup. */
+        return 0;
+    }
+    for (mode = 0; mode < 2; ++mode) {
+        char *child_argv[] = {(char *)"asprintflifecycle",
+                             (char *)(mode ? "exec" : "exit"), NULL};
+        asprintf_child_phase = 0;
+        api->set_errno(CB_EACCES);
+        if (cb_libc_asprintf(&asprintf_parent_buffer, "-%c%s", 'f',
+                            "parent") != 8 || asprintf_parent_buffer == NULL ||
+            api->get_errno() != CB_EACCES ||
+            cb_test_task_allocation_count(api->getpid()) != 1)
+            return 8;
+        if (api->spawn(child_argv[0], child_argv, envp, NULL, 0, &child) < 0)
+            return 9;
+        api->set_errno(CB_EACCES);
+        api->yield();
+        if (asprintf_child_phase != 1) return 20;
+        if (cb_test_task_allocation_count(child) != 1) return 21;
+        if (cb_test_task_allocation_count(api->getpid()) != 1) return 22;
+        if (api->get_errno() != CB_EACCES) return 23;
+        if (strcmp(asprintf_parent_buffer, "-fparent") != 0) return 24;
+        api->yield();
+        /* Successful exec may schedule its replacement on the next turn. */
+        if (mode && asprintf_child_phase == 2)
+            api->yield();
+        if (asprintf_child_phase != (mode ? 3 : 2) ||
+            cb_test_task_allocation_count(child) != 0)
+            return 11;
+        /* Observe reclamation above, before waitpid can hide a leak. */
+        if (api->waitpid(child, &status) != child || status != 0)
+            return 12;
+        if (strcmp(asprintf_parent_buffer, "-fparent") != 0 ||
+            cb_test_task_allocation_count(api->getpid()) != 1)
+            return 13;
+        cb_libc_free(asprintf_parent_buffer);
+        asprintf_parent_buffer = NULL;
+        if (cb_test_task_allocation_count(api->getpid()) != 0)
+            return 14;
+    }
+    return 0;
+}
+
+static const struct cb_program_v1 asprintf_lifecycle_program = {
+    CB_ABI_VERSION_V1, sizeof(struct cb_program_v1), "asprintflifecycle", 0,
+    64 * 1024, asprintf_lifecycle_main
+};
+
 static int libcallocation_main(int argc, char *argv[])
 {
     unsigned char *zeroed;
@@ -4929,6 +5031,8 @@ static void run_case(const char *command, const char *expected_output,
                                &direntlibcallocfailprobe_program) < 0)
             fail("dirent test program registration");
     } else if (fixture == FIXTURE_ERR) {
+        if (cb_kernel_register(kernel, &asprintf_lifecycle_program) < 0)
+            fail("asprintf lifecycle registration");
         if (cb_kernel_register(kernel, &cb_warn_probe_program) < 0)
             fail("warnprobe registration");
         if (cb_kernel_register(kernel, &cb_warnx_probe_program) < 0)
@@ -6235,6 +6339,7 @@ static void test_err(void)
        cases[] table (letter = 'A' + array index); the probe writes to
        stdout on even indices, stderr on odd, and self-validates the
        returned character count and preserved errno before returning 0. */
+    run_case("asprintflifecycle", "", 0, FIXTURE_ERR);
     run_case("formatprobe v A", "0", 0, FIXTURE_ERR);
     expect_streams("0", "");
     run_case("formatprobe v B", "  42", 0, FIXTURE_ERR);

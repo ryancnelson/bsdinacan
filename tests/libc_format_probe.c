@@ -5,6 +5,9 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include "fixtures/uniq_obsolete.h"
 
 int main(int argc, char **argv)
 {
@@ -58,6 +61,37 @@ int main(int argc, char **argv)
     if (argc != 3) return 90;
     index = (unsigned char)argv[2][0] - (unsigned)'A';
     errno = ENOENT;
+    if (argv[1][0] == 'a') {
+        char *p = NULL;
+        char *legacy[] = {(char *)"uniq", (char *)"-3", (char *)"+3", NULL};
+        char *stop[] = {(char *)"uniq", (char *)"--", (char *)"-3", NULL};
+        char *operand[] = {(char *)"uniq", (char *)"file", (char *)"+3", NULL};
+        char *flag[] = {(char *)"uniq", (char *)"-c", NULL};
+        obsolete(legacy);
+        if (strcmp(legacy[1], "-f3") || strcmp(legacy[2], "-s3")) return 46;
+        free(legacy[1]); free(legacy[2]);
+        obsolete(stop); obsolete(operand); obsolete(flag);
+        if (strcmp(stop[2], "-3") || strcmp(operand[2], "+3") ||
+            strcmp(flag[1], "-c")) return 47;
+        const char *unsupported = "prefix:%d";
+        static const char expected[] = {'A', 0, 'B', 'x', 0};
+        if (asprintf(&p, "-%c%s", 'f', "3") != 3 ||
+            p == NULL || strcmp(p, "-f3") != 0) return 40;
+        free(p);
+        if (asprintf(&p, "-%c%s", 's', "3") != 3 ||
+            p == NULL || strcmp(p, "-s3") != 0) return 41;
+        free(p);
+        if (asprintf(&p, "A%cB%s", 0, "x") != 4 ||
+            p == NULL || memcmp(p, expected, sizeof(expected))) return 42;
+        free(p);
+        if (asprintf(&p, "") != 0 || p == NULL || *p) return 43;
+        free(p);
+        if (errno != ENOENT) return 44;
+        p = (char *)"sentinel";
+        if (asprintf(&p, unsupported, 0) != -1 || p != NULL ||
+            errno != EINVAL) return 45;
+        return 0;
+    }
     if (argv[1][0] == 'v') {
         if (index >= sizeof(cases) / sizeof(cases[0])) return 91;
         count = fprintf(index & 1 ? stderr : stdout, cases[index].format,

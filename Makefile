@@ -513,7 +513,7 @@ FORMATPROBE_COMMAND_OBJECT := $(BUILD)/formatprobe_command.o
 # formatter. See notes/iterations/FORMAT-01.md and FORMAT-01-design.md.
 $(FORMATPROBE_COMMAND_OBJECT): tests/libc_format_probe.c include/cannedbsd/abi.h \
 		include/cannedbsd/libc.h libc/include/errno.h libc/include/err.h \
-		libc/include/inttypes.h libc/include/string.h libc/include/stdio.h | $(BUILD)
+		libc/include/inttypes.h libc/include/string.h libc/include/stdio.h tests/fixtures/uniq_obsolete.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_format_probe_main \
 		-c tests/libc_format_probe.c -o $@
 
@@ -862,7 +862,7 @@ check-build-parity:
 
 test: $(PROGRAM) $(TEST_PROGRAM) $(LIBC_ALLOCATION_TEST_OBJECT) \
 		$(LIBC_MEMORY_TEST_OBJECT) $(LIBC_ENVIRON_TEST_OBJECT) \
-		$(LIBC_STDIO_TEST_OBJECT) check-architecture check-printf64 check-statics-types
+		$(LIBC_STDIO_TEST_OBJECT) check-architecture check-printf64 check-statics-types check-asprintf
 	$(TEST_PROGRAM)
 	CC='$(CC)' LDLIBS='$(LDLIBS)' tests/test_mac_root_dispatch.sh
 	CC='$(CC)' tests/test_mac_autorun.sh
@@ -1182,3 +1182,11 @@ $(TEE_COMMAND_OBJECT): upstream/netbsd/usr.bin/tee/tee.c include/cannedbsd/libc.
 .PHONY: check-statics-types
 check-statics-types:
 	CC='$(CC)' CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' python3 -B tests/test_statics_types.py
+
+# Includes the production parser to exercise unreachable-size arithmetic with
+# synthetic counts. Does not export private parser symbols into the ABI.
+$(BUILD)/test_asprintf_unit: tests/test_asprintf_unit.c libc/cb_libc.c tests/fixtures/uniq_obsolete.h $(LIBC_ARCHIVE) | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_asprintf_unit.c $(LIBC_ARCHIVE) $(LDFLAGS) -o $@
+.PHONY: check-asprintf
+check-asprintf: $(BUILD)/test_asprintf_unit
+	$(BUILD)/test_asprintf_unit

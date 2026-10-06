@@ -120,6 +120,7 @@ void cb_libc_setprogname(const char *name);
 int cb_libc_puts(const char *text);
 int cb_libc_printf(const char *format, ...);
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...);
+int cb_libc_asprintf(char **output, const char *format, ...);
 int cb_libc_snprintf(char *buffer, size_t size, const char *format, ...);
 int cb_libc_ioctl(int fd, unsigned long request, ...);
 int cb_libc_humanize_number(char *buffer, size_t length, int64_t quantity,

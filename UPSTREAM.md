@@ -908,3 +908,15 @@ including bounded faults, two simultaneous tee tasks, default/ignored/inherited
 interrupts, and actual heap/descriptor cleanup observed before reap. The probe
 is compiled for Linux and Mac; guest execution requires coordinator wiring and
 exact-artifact qualification. See `notes/iterations/TEE-01.md` for evidence.
+
+## ASPRINTF-01 diagnostic fixture
+
+`tests/fixtures/uniq_obsolete.h` retains the license and unchanged `obsolete`
+function extracted from `usr.bin/uniq/uniq.c` at the same NetBSD pin
+`b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`. This is a test fixture, not a full
+uniq import. Full source SHA256:
+`78d561c8817b3476713c23d76235a19aad726b7b22794ad11443c4f91462a195`.
+Fixture SHA256:
+`bd271ac5943202280d9f3dd6f22f5776a835789709c12263f9f641e5ff70beff`.
+The function body was compared byte-for-byte with the pinned source range ending
+before `usage`; only the source license and this function are included.

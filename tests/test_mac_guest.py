@@ -57,10 +57,10 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 82)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 83)
         self.assertIn('PASS normalpollprobe\n', expected)
         self.assertIn('PASS contexts\nPASS terminalengine\nPASS consolewrite\nPASS teestate\nPASS interrupts\nPASS teecommand\n', expected)
-        for probe in ['formatprobe q A', 'formatprobe z P', 'libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
+        for probe in ['formatprobe a A', 'formatprobe q A', 'formatprobe z P', 'libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
                       'libcerrprobe', 'export GUEST=mac; printenv GUEST',
                       'printenv CANNEDBSD_UNSET_GUEST',
                       'export EMPTY=; printenv EMPTY', 'printenv FOO=bar',
@@ -76,7 +76,7 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         lines = [line for line in guest.expected_result().splitlines(keepends=True)
                  if line not in ('PASS teecommand\n', 'PASS formatprobe q A\n',
-                                 'PASS formatprobe z P\n')]
+                                 'PASS formatprobe z P\n', 'PASS formatprobe a A\n')]
         # Keep the original 69 PASS records and valid final marker, but
         # omit all ten file-operation records from the end of the suite.
         (run / 'shared/cannedbsd-result.txt').write_text(
@@ -89,7 +89,16 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         (run / 'shared/cannedbsd-result.txt').write_text(
             guest.expected_result().replace('PASS teecommand\n', '')
-            .replace('PASS formatprobe q A\n', '').replace('PASS formatprobe z P\n', ''))
+            .replace('PASS formatprobe q A\n', '').replace('PASS formatprobe z P\n', '').replace('PASS formatprobe a A\n', ''))
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
+
+    def test_previous_82_pass_transcript_cannot_satisfy_asprintf(self):
+        run = self.stage()
+        old = guest.expected_result().replace('PASS formatprobe a A\n', '')
+        self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 82)
+        (run / 'shared/cannedbsd-result.txt').write_text(old)
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
             guest.check(self.state)
         self.assertFalse((run / 'acceptance.json').exists())
@@ -97,7 +106,7 @@ class GuestTests(unittest.TestCase):
     def test_previous_80_pass_transcript_cannot_satisfy_format_cases(self):
         run = self.stage()
         old = (guest.expected_result().replace('PASS formatprobe q A\n', '')
-               .replace('PASS formatprobe z P\n', ''))
+               .replace('PASS formatprobe z P\n', '').replace('PASS formatprobe a A\n', ''))
         self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 80)
         (run / 'shared/cannedbsd-result.txt').write_text(old)
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):

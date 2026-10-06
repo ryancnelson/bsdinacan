@@ -1577,6 +1577,97 @@ int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...)
     return result;
 }
 
+/* ASPRINTF-01: only the allocating literal/%c/%s path measured in uniq.
+ * Count separately from emission; never borrow snprintf's int accumulator. */
+static int asprintf_add(size_t *total, size_t piece)
+{
+    if (piece > SIZE_MAX - *total || *total + piece > INT_MAX ||
+        *total + piece == SIZE_MAX)
+        return -1;
+    *total += piece;
+    return 0;
+}
+
+static int asprintf_pass(const char *format, va_list arguments,
+                         char *output, size_t capacity, size_t *length)
+{
+    size_t total = 0;
+    while (*format != '\0') {
+        const char *text = format;
+        size_t count = 0;
+        unsigned char character;
+        if (*format != '%') {
+            while (*format != '\0' && *format != '%') {
+                if (asprintf_add(&total, 1) < 0) return CB_EOVERFLOW;
+                ++format;
+                ++count;
+            }
+        } else {
+            ++format;
+            if (*format == 'c') {
+                character = (unsigned char)va_arg(arguments, int);
+                text = (const char *)&character;
+                count = 1;
+                if (asprintf_add(&total, 1) < 0) return CB_EOVERFLOW;
+            } else if (*format == 's') {
+                text = va_arg(arguments, const char *);
+                if (text == NULL) return CB_EINVAL;
+                while (text[count] != '\0') {
+                    if (asprintf_add(&total, 1) < 0) return CB_EOVERFLOW;
+                    ++count;
+                }
+            } else {
+                return CB_EINVAL;
+            }
+            ++format;
+        }
+        if (output != NULL) {
+            if (total >= capacity) return CB_EOVERFLOW;
+            cb_libc_memcpy(output + total - count, text, count);
+        }
+    }
+    if (output != NULL) output[total] = '\0';
+    *length = total;
+    return 0;
+}
+
+int cb_libc_asprintf(char **output, const char *format, ...)
+{
+    va_list arguments, counting;
+    size_t length = 0, written = 0;
+    char *buffer;
+    int error, saved_error = bound_api->get_errno();
+    if (output != NULL) *output = NULL;
+    if (output == NULL || format == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return -1;
+    }
+    va_start(arguments, format);
+    va_copy(counting, arguments);
+    error = asprintf_pass(format, counting, NULL, 0, &length);
+    va_end(counting);
+    if (error != 0) {
+        va_end(arguments);
+        bound_api->set_errno(error);
+        return -1;
+    }
+    buffer = cb_libc_malloc(length + 1);
+    if (buffer == NULL) {
+        va_end(arguments);
+        return -1;
+    }
+    error = asprintf_pass(format, arguments, buffer, length + 1, &written);
+    va_end(arguments);
+    if (error != 0 || written != length) {
+        cb_libc_free(buffer);
+        bound_api->set_errno(error != 0 ? error : CB_EINVAL);
+        return -1;
+    }
+    *output = buffer;
+    bound_api->set_errno(saved_error);
+    return (int)length;
+}
+
 /* LS-02: appends up to `remaining` bytes of `text` into `*cursor`,
    advancing both, always leaving room for the eventual NUL snprintf
    writes on return -- mirrors real snprintf's "would have written"
