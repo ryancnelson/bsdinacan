@@ -55,8 +55,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### ASPRINTF-01 — measured allocating-format implementation
 
-- Status: Assigned in work/ASPRINTF-01 after coordinator design review; exclusive
-  cb_libc.c and stdio declaration ownership. Independent design review continues.
+- Status: Implemented candidate `0ea2461`, focused Linux tests passed; exact
+  #551 CI and independent implementation review pending. Guest gates remain.
 - Base: exact design candidate `a4048b9`; dependencies: reviewed design.
 - Hypothesis: actual uniq legacy-option conversion can use bounded allocating
   literal/%c/%s output without depending on the narrower snprintf parser.
@@ -67,6 +67,21 @@ remains pending. Sprint order stays ls, tee, quality review.
   Mac/Solaris gates. Preserve the design's explicit unsupported-format boundary.
 - Scope: only the measured allocating-format path; writable FILE edits wait until
   this owner hands off its selected commit. No full uniq import yet.
+
+### STDIO-WRITE-01 — bounded writable streams for uniq
+
+- Status: Ready for coordinator assignment after ASPRINTF-01 handoff/review.
+- Base: selected ASPRINTF-01 candidate `0ea2461`, subject to review corrections.
+- Dependencies: reviewed STDIO-WRITE-01-design `14c46dd`; serialize shared edits.
+- Hypothesis: real writable FILE dispatch can reuse existing descriptor/ownership
+  capabilities without adding a public ABI field or global stream state.
+- Red: fopen(w) currently rejects; require real creation/truncation, uniq's count
+  format, exact bytes, dynamic fwrite, independent sticky errors and failure cleanup.
+- Acceptance: reviewed design's bounded r/rb/w/wb modes, partial/zero/oversized
+  writes, fd1/2 identity distinction, close errors, old-size failures and lifecycle
+  observations before reap. Preserve non-CLOEXEC exec inheritance. Add shared Mac
+  coverage; exact CI/review and fresh Mac/Solaris required before integration.
+- Scope: one FILE owner, no fgetln storage yet and no full uniq import.
 
 ### FGETLN-01 — per-stream line storage for uniq
 

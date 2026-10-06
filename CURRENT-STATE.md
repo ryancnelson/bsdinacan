@@ -4,6 +4,22 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 5 implementation checkpoint
+
+ASPRINTF-01 candidate `0ea2461` implements the reviewed bounded allocating format.
+After two worker transport failures the coordinator preserved the dirty branch,
+finished validation and pushed it. Linux allocation/count tests, real task
+lifecycle tests and shared command probes passed. The ordinary-source fixture
+runs the unchanged pinned uniq obsolete function; this is not full uniq execution.
+Twenty-two host protocol checks pass and the Mac suite retains all 82 prior cases
+plus one new case (83 records, 2114-byte result capacity). Exact #551 CI and
+independent implementation review are pending at this checkpoint. No guest run
+or runtime merge is claimed. Writable-stream implementation is stocked next.
+
+The desktop remains locked according to Computer Use. No app-agent submission
+or shared-guest control occurred. Main includes the reviewed design notes; Mac
+and Solaris acceptance remain outstanding.
+
 ## October 4 work checkpoint
 
 Main `0ab8bbf` includes the independently reviewed dependency study and backlog,
