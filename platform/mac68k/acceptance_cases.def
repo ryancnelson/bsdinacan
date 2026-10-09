@@ -76,3 +76,4 @@ CB_MAC_CASE("formatprobe q A", "0 18446744073709551615 -9223372036854775808 9223
 CB_MAC_CASE("formatprobe z P", "0|4294967295|7|end|    42|123|   9", 0)
 CB_MAC_CASE("formatprobe a A", "", 0)
 CB_MAC_CASE("fileprobe write-probe", "", 0)
+CB_MAC_CASE("fileprobe line-probe", "", 0)

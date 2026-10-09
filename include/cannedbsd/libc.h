@@ -140,6 +140,9 @@ extern struct cb_libc_file *const cb_libc_stdin_stream;
 extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
 struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode);
+/* Borrowed bytes include newline; copy before the next I/O on this stream.
+ * Length is authoritative (embedded NUL is allowed); never free this pointer. */
+char *cb_libc_fgetln(struct cb_libc_file *stream, size_t *length);
 int cb_libc_fclose(struct cb_libc_file *stream);
 int cb_libc_ferror(struct cb_libc_file *stream);
 size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count,

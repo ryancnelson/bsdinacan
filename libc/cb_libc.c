@@ -8,17 +8,24 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+struct line_storage {
+    char *buffer;
+    size_t capacity;
+    size_t length;
+};
+
 struct cb_libc_file {
     int descriptor;
     int eof;
     int error;
     int writable;
     struct cb_libc_file *next;
+    struct line_storage line;
 };
 
-static struct cb_libc_file stdin_file = {0, 0, 0, 0, NULL};
-static struct cb_libc_file stdout_file = {1, 0, 0, 1, NULL};
-static struct cb_libc_file stderr_file = {2, 0, 0, 1, NULL};
+static struct cb_libc_file stdin_file = {0, 0, 0, 0, NULL, {NULL, 0, 0}};
+static struct cb_libc_file stdout_file = {1, 0, 0, 1, NULL, {NULL, 0, 0}};
+static struct cb_libc_file stderr_file = {2, 0, 0, 1, NULL, {NULL, 0, 0}};
 struct cb_libc_file *const cb_libc_stdin_stream = &stdin_file;
 struct cb_libc_file *const cb_libc_stdout_stream = &stdout_file;
 struct cb_libc_file *const cb_libc_stderr_stream = &stderr_file;
@@ -1002,6 +1009,8 @@ static struct cb_libc_file *find_input_stream(struct cb_input_state_v1 *state,
 }
 
 struct input_reference {
+    struct cb_input_state_v1 *state;
+    struct line_storage *line;
     int descriptor;
     int *eof;
     int *error;
@@ -1022,11 +1031,13 @@ static int resolve_stream(struct cb_libc_file *stream, struct input_reference *r
         bound_api->set_errno(CB_ENOSYS);
         return -1;
     }
+    ref->state = state;
     if (stream == cb_libc_stdin_stream) {
         if (input_streams_available(state) && state->stdin_closed) {
             bound_api->set_errno(CB_EINVAL);
             return -1;
         }
+        ref->line = NULL;
         ref->descriptor = 0;
         ref->eof = &state->stdin_eof;
         ref->error = &state->stdin_error;
@@ -1038,6 +1049,7 @@ static int resolve_stream(struct cb_libc_file *stream, struct input_reference *r
         bound_api->set_errno(CB_EINVAL);
         return -1;
     }
+    ref->line = &node->line;
     ref->descriptor = node->descriptor;
     ref->eof = &node->eof;
     ref->error = &node->error;
@@ -1091,6 +1103,8 @@ struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode)
     stream->eof = stream->error = 0;
     stream->next = state->input_streams;
     state->input_streams = stream;
+    stream->line.buffer = NULL;
+    stream->line.capacity = stream->line.length = 0;
     bound_api->set_errno(saved_errno);
     return stream;
 }
@@ -1178,6 +1192,14 @@ int cb_libc_fclose(struct cb_libc_file *stream)
             return EOF;
         }
         state->stdin_closed = 1;
+        if (state->struct_size >= CB_INPUT_LINE_V1_MIN_SIZE) {
+            struct line_storage *line = state->stdin_line_storage;
+            state->stdin_line_storage = NULL;
+            if (line != NULL) {
+                if (line->buffer != NULL) bound_api->release(line->buffer);
+                bound_api->release(line);
+            }
+        }
         result = bound_api->close(0);
         error = bound_api->get_errno();
     } else {
@@ -1192,6 +1214,7 @@ int cb_libc_fclose(struct cb_libc_file *stream)
             previous->next = node->next;
         result = bound_api->close(node->descriptor);
         error = bound_api->get_errno();
+        if (node->line.buffer != NULL) bound_api->release(node->line.buffer);
         bound_api->release(node);
     }
     bound_api->set_errno(result < 0 ? error : saved_errno);
@@ -1220,6 +1243,89 @@ static cb_ssize_t read_input(struct input_reference *ref, void *buffer, size_t c
         *ref->eof = 1;
     bound_api->set_errno(saved_errno);
     return result;
+}
+
+/* Check the capacity requirement before reading, including the spare NUL. */
+static int line_requirement(size_t length, size_t *required)
+{
+    if (length > SIZE_MAX - 2) return -1;
+    *required = length + 2;
+    return 0;
+}
+
+char *cb_libc_fgetln(struct cb_libc_file *stream, size_t *length)
+{
+    struct input_reference ref;
+    struct cb_input_state_v1 *state;
+    struct line_storage *line;
+    int saved_errno = bound_api->get_errno();
+    if (length == NULL) {
+        bound_api->set_errno(CB_EINVAL);
+        return NULL;
+    }
+    *length = 0;
+    if (resolve_stream(stream, &ref, 0) < 0) return NULL;
+    state = ref.state;
+    if (stream == cb_libc_stdin_stream) {
+        if (state->struct_size < CB_INPUT_LINE_V1_MIN_SIZE) {
+            bound_api->set_errno(CB_ENOSYS);
+            return NULL;
+        }
+        line = state->stdin_line_storage;
+    } else {
+        line = ref.line;
+    }
+    if (*ref.eof) {
+        bound_api->set_errno(saved_errno);
+        return NULL;
+    }
+    if (line == NULL) {
+        line = bound_api->allocate(sizeof(*line));
+        if (line == NULL) {
+            *ref.error = 1;
+            return NULL;
+        }
+        line->buffer = NULL;
+        line->capacity = line->length = 0;
+        state->stdin_line_storage = line;
+    }
+    line->length = 0;
+    for (;;) {
+        size_t required;
+        unsigned char byte;
+        cb_ssize_t result;
+        if (line_requirement(line->length, &required) < 0) {
+            *ref.error = 1;
+            bound_api->set_errno(CB_EOVERFLOW);
+            return NULL;
+        }
+        if (required > line->capacity) {
+            size_t capacity = line->capacity == 0 ? 64 : line->capacity;
+            char *buffer;
+            while (capacity < required) {
+                if (capacity > SIZE_MAX / 2) { capacity = required; break; }
+                capacity *= 2;
+            }
+            buffer = bound_api->resize(line->buffer, capacity);
+            if (buffer == NULL) {
+                *ref.error = 1;
+                return NULL;
+            }
+            line->buffer = buffer;
+            line->capacity = capacity;
+        }
+        result = read_input(&ref, &byte, 1);
+        if (result < 0) return NULL;
+        if (result == 0) break;
+        line->buffer[line->length++] = (char)byte;
+        if (byte == '\n') break;
+    }
+    if (line->length != 0) {
+        line->buffer[line->length] = '\0';
+        *length = line->length;
+    }
+    bound_api->set_errno(saved_errno);
+    return line->length == 0 ? NULL : line->buffer;
 }
 
 int cb_libc_getc(struct cb_libc_file *stream)

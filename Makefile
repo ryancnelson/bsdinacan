@@ -1199,3 +1199,10 @@ check-stdio-write: $(BUILD)/test_stdio_write_unit
 	$(BUILD)/test_stdio_write_unit
 
 test: check-stdio-write
+
+$(BUILD)/test_fgetln_unit: tests/test_fgetln_unit.c libc/cb_libc.c $(LIBC_ARCHIVE) | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_fgetln_unit.c $(LIBC_ARCHIVE) $(LDFLAGS) -o $@
+.PHONY: check-fgetln
+check-fgetln: $(BUILD)/test_fgetln_unit
+	$(BUILD)/test_fgetln_unit
+test: check-fgetln

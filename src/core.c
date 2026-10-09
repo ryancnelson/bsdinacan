@@ -585,6 +585,7 @@ static void task_release_allocations(struct cb_task *task)
     struct cb_task_allocation *allocation = task->allocations;
     /* Libc alone knows wrapper layout. Never retain a list into reclaimed heap. */
     task->input_state.input_streams = NULL;
+    task->input_state.stdin_line_storage = NULL;
     while (allocation != NULL) {
         struct cb_task_allocation *next = allocation->next;
         cb_release(task->kernel, allocation->pointer);

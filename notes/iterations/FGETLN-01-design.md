@@ -3,7 +3,7 @@
 Design candidate only. Base is immutable
 `7faa968fd4bae1c8d33d5b4e784f06f8774b7884` (STDIO-WRITE-01 candidate),
 not an acceptance claim for that runtime. Branch `work/FGETLN-01-design`,
-worktree `/Users/ryan/devel/bsdinacan-FGETLN-01-design`. Only this note changes;
+sibling worktree `bsdinacan-FGETLN-01-design`. Only this note changes;
 no headers, runtime implementation or full uniq import. The coordinator remains
 owner of shared FILE representation and dispatch until final review.
 

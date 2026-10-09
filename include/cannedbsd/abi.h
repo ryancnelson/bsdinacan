@@ -200,6 +200,7 @@ struct cb_input_state_v1 {
     int stdin_error;
     int stdin_closed;
     void *input_streams; /* Opaque libc-owned read/write FILE list; cleared before heap reclaim. */
+    void *stdin_line_storage; /* Optional libc-owned line cache; cleared before heap reclaim. */
 };
 #define CB_INPUT_STATE_V1_MIN_SIZE \
     (offsetof(struct cb_input_state_v1, stdin_error) + \
@@ -208,6 +209,10 @@ struct cb_input_state_v1 {
 #define CB_INPUT_STREAMS_V1_MIN_SIZE \
     (offsetof(struct cb_input_state_v1, input_streams) + \
      sizeof(((struct cb_input_state_v1 *)0)->input_streams))
+
+#define CB_INPUT_LINE_V1_MIN_SIZE \
+    (offsetof(struct cb_input_state_v1, stdin_line_storage) + \
+     sizeof(((struct cb_input_state_v1 *)0)->stdin_line_storage))
 
 /* SIG-02: integer dispositions for the cooperative SIGINT setter. */
 #define CB_INTERRUPT_DEFAULT 0

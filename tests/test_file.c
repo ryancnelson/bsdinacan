@@ -19,6 +19,8 @@ static int opened[2], open_count, close_count, allocation_count, read_count;
 static size_t allocated_before;
 static int use_fixture_clock, writable_lifecycle;
 static uint64_t fixture_time;
+static int line_lifecycle;
+static size_t line_start, line_end;
 static uint64_t fixture_clock(void) { return fixture_time; }
 enum { PAYLOAD, BOOKKEEPING, CLOSE_ERROR, READ_ERROR, DENIED, EXHAUST,
        EXEC, FAILED_EXEC, FAILED_PREPARE, EXIT, LIVE };
@@ -54,6 +56,9 @@ static void release(void *pointer)
     size_t index;
     if (pointer == NULL) return;
     index = block_index(pointer);
+    if (require_clear && index >= line_start && index < line_end &&
+        owner->input_state.stdin_line_storage != NULL)
+        fail("stdin line reference not cleared before release");
     if (require_clear && (index == wrappers[0] || index == wrappers[1]) &&
         owner->input_state.input_streams != NULL)
         fail("list not cleared before wrapper release");
@@ -119,6 +124,9 @@ static int denied_open(struct cb_vfs_node *node, struct cb_task *task, int flags
 { (void)node; (void)task; (void)flags; (void)file; return -CB_EACCES; }
 static void expect_wrappers(unsigned count)
 {
+    size_t i;
+    for (i = line_start; i < line_end; ++i)
+        if (blocks[i].releases != count) fail("line storage release count");
     if (blocks[wrappers[0]].releases != count || blocks[wrappers[1]].releases != count)
         fail("wrapper release count");
 }
@@ -210,7 +218,7 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
     (void)argc;
     if (strcmp(argv[1], "after") == 0) {
         expect_wrappers(1);
-        if (state->input_streams != NULL || state->stdin_closed ||
+        if (state->stdin_line_storage != NULL || state->input_streams != NULL || state->stdin_closed ||
             state->stdin_eof || state->stdin_error ||
             blocks[files[0]].releases != 0 || blocks[files[1]].releases != 1 ||
             (writable_lifecycle ? api->write(opened[0], "a", 1) != 1 :
@@ -222,12 +230,19 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
     real_api = api; owner = kernel->current; copy.open = spy_open;
     if (writable_lifecycle) copy.write = yielding_write;
     if (cb_file_call(&copy, writable_lifecycle ? "open-two-write" : "open-two") != 0 || open_count != 2 ||
-        cb_file_call(api, "close-stdin") != 0) return 87;
+        (!line_lifecycle && cb_file_call(api, "close-stdin") != 0)) return 87;
     wrappers[0] = block_index(stream_probe_handle(0));
     wrappers[1] = block_index(stream_probe_handle(1));
     require_clear = 1;
-    if (api->open("/tmp/stream-input", CB_O_RDONLY, 0) != 0 ||
+    if ((line_lifecycle && api->close(0) != 0) ||
+        api->open("/tmp/stream-input", CB_O_RDONLY, 0) != 0 ||
         api->set_cloexec(opened[1], 1) != 0) return 88;
+    if (line_lifecycle) {
+        line_start = block_count;
+        if (cb_file_call(api, "prime-lines") != 0) return 101;
+        line_end = block_count;
+        if (line_end <= line_start || state->stdin_line_storage == NULL) return 102;
+    }
     head = state->input_streams;
     if (mode == EXEC) { api->exec("filechild", next, envp); return 89; }
     if (mode == FAILED_EXEC || mode == FAILED_PREPARE) {
@@ -235,7 +250,7 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
         if (mode == FAILED_PREPARE) fail_after = exec_fail_at;
         if (api->exec(mode == FAILED_EXEC ? "missing-file-child" : "filechild", next, envp) != -1 ||
             api->get_errno() != (mode == FAILED_EXEC ? CB_ENOENT : CB_ENOMEM)) return 91;
-        if (state->input_streams != head || !state->stdin_closed || live_count() != before ||
+        if (state->input_streams != head || state->stdin_closed != !line_lifecycle || live_count() != before ||
             (mode == FAILED_PREPARE && fail_after != -1)) return 92;
         expect_wrappers(0);
         if (cb_file_call(&copy, writable_lifecycle ? "write-two" : "read-two") != 0) return 93;
@@ -278,7 +293,7 @@ static void run(const struct cb_program_v1 *descriptor, const char *command)
     int status;
     size_t i;
     base = cb_linux_host_ops(); host.allocate = allocate; host.resize = resize; host.release = release;
-    block_count = 0; fail_after = -1; phase = require_clear = 0;
+    block_count = 0; fail_after = -1; phase = require_clear = 0; line_start = line_end = 0;
     open_count = close_count = allocation_count = read_count = 0;
     if (use_fixture_clock) host.wall_clock_millis = fixture_clock;
     kernel = cb_kernel_create(&host);
@@ -312,6 +327,14 @@ void cb_test_file(void)
         } else run(&program, "filetest");
     }
     writable_lifecycle = 0;
+    line_lifecycle = 1;
+    for (mode = EXEC; mode <= LIVE; ++mode) {
+        if (mode == FAILED_PREPARE) {
+            for (exec_fail_at = 0; exec_fail_at < 7; ++exec_fail_at) run(&program, "filetest");
+        } else run(&program, "filetest");
+    }
+    line_lifecycle = 0;
+    run(&cb_file_probe_program, "fileprobe line-probe");
     run(&cb_file_probe_program, "fileprobe");
     run(&cb_file_compat_program, "filecompat");
     run(&cb_file_probe_program, "fileprobe write-probe");

@@ -10,6 +10,7 @@
 typedef struct cb_libc_file FILE;
 
 FILE *cb_libc_fopen(const char *path, const char *mode);
+char *cb_libc_fgetln(struct cb_libc_file *stream, size_t *length);
 int cb_libc_fclose(FILE *stream);
 size_t cb_libc_fread(void *buffer, size_t size, size_t count, FILE *stream);
 int cb_libc_getc(FILE *stream);
@@ -33,6 +34,7 @@ int cb_libc_rename(const char *oldpath, const char *newpath);
 #define fopen cb_libc_fopen
 #define fclose cb_libc_fclose
 #define fread cb_libc_fread
+#define fgetln cb_libc_fgetln
 #define getc cb_libc_getc
 #define getchar cb_libc_getchar
 #define feof cb_libc_feof

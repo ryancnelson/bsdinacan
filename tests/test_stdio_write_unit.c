@@ -7,7 +7,7 @@
 static int err, next_fd, opens, closes, allocations, releases, writes, plan, fail_alloc, fail_open;
 static char bytes[64];
 static size_t used;
-static struct cb_input_state_v1 input = {CB_ABI_VERSION_V1, sizeof(input), 0, 0, 0, NULL};
+static struct cb_input_state_v1 input = {CB_ABI_VERSION_V1, sizeof(input), 0, 0, 0, NULL, NULL};
 static struct cb_stdio_state_v1 output;
 static struct cb_input_state_v1 *supplied = &input;
 static int get_error(void) { return err; }

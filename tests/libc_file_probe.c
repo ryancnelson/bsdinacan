@@ -18,6 +18,43 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "prime-lines") == 0) {
+        size_t n;
+        if (fgetln(first, &n) == NULL || n != 3 ||
+            fgetln(second, &n) == NULL || n != 3 ||
+            fgetln(stdin, &n) == NULL || n != 3) return 210;
+        if (lseek(fileno(first), 0, SEEK_SET) != 0 ||
+            lseek(fileno(second), 0, SEEK_SET) != 0 || lseek(0, 0, SEEK_SET) != 0)
+            return 211;
+        clearerr(first); clearerr(second); clearerr(stdin);
+        return 0;
+    }
+    if (strcmp(mode, "line-probe") == 0) {
+        static const unsigned char bytes[] = {'a',0,255,'\n','\n','z'};
+        char copy[4], tail[2], *p, *q;
+        size_t n, m;
+        FILE *out = fopen("/tmp/line-input", "w"), *in, *other;
+        if (!out || fwrite(bytes,1,sizeof(bytes),out) != sizeof(bytes) || fclose(out)) return 200;
+        in=fopen("/tmp/line-input","r"); other=fopen("/tmp/line-input","r");
+        if (!in || !other) return 201;
+        errno=ERANGE; p=fgetln(in,&n);
+        if (!p || n!=4 || memcmp(p,bytes,4) || errno!=ERANGE) return 202;
+        memcpy(copy,p,n); /* Same copy-before-next-read pattern as pinned uniq. */
+        q=fgetln(other,&m);
+        if (!q || m!=4 || memcmp(p,copy,4) || q==p || memcmp(q,bytes,4)) return 203;
+        p=fgetln(in,&n); if (!p || n!=1 || p[0]!='\n' || feof(in)) return 204;
+        if (fread(tail,1,1,in)!=1 || tail[0]!='z' || fgetln(in,&n)!=NULL || n || !feof(in)) return 205;
+        if (getc(other)!='\n') return 206;
+        p=fgetln(other,&n); if (!p || n!=1 || p[0]!='z' || !feof(other) || ferror(other)) return 207;
+        if (fclose(in) || fclose(other)) return 208;
+        out=fopen("/tmp/line-long","w"); if (!out) return 209;
+        for (m=0;m<300;++m) if (fwrite("Q",1,1,out)!=1) return 212;
+        if (fclose(out)) return 213;
+        in=fopen("/tmp/line-long","r"); if (!in) return 214;
+        p=fgetln(in,&n); if (!p || n!=300 || !feof(in)) return 215;
+        for (m=0;m<n;++m) if (p[m]!='Q') return 216;
+        return fclose(in) ? 217 : 0;
+    }
     if (strcmp(mode, "write-probe") == 0) {
         char bytes[16];
         FILE *out = fopen("/tmp/stream-output", "w");

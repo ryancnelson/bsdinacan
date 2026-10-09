@@ -63,6 +63,39 @@ static int writable_entry(const struct cb_api_v1 *api, const char *mode,
     api->exec("fileprobe", after, envp);
     return 199;
 }
+static struct cb_libc_file *parent_line_file;
+static void *parent_stdin_line;
+static int line_entry(const struct cb_api_v1 *api, const char *mode, char *const envp[])
+{
+    struct cb_input_state_v1 *state = api->input_state_location();
+    struct cb_libc_file *file;
+    char *line, *standard;
+    size_t n;
+    int fd, status;
+    cb_pid_t child;
+    char *peer[] = {(char *)"fileprobe", (char *)"line-peer", NULL};
+    if (strcmp(mode, "line-peer") == 0 && state->stdin_line_storage != NULL) return 218;
+    if (cb_file_call(api, "line-probe") != 0) return 219;
+    if (strcmp(mode, "line-peer") == 0 &&
+        (cb_libc_fgetln(parent_line_file, &n) != NULL || api->get_errno() != CB_EINVAL)) return 220;
+    file = cb_libc_fopen("/tmp/line-input", "r");
+    fd = api->open("/tmp/line-input", CB_O_RDONLY, 0);
+    if (!file || fd < 0 || api->dup2(fd, 0) != 0 || api->close(fd) != 0) return 221;
+    line = cb_libc_fgetln(file, &n);
+    if (!line || n != 4) return 222;
+    standard = cb_libc_fgetln(cb_libc_stdin_stream, &n);
+    if (!standard || n != 4 || standard == line) return 223;
+    if (strcmp(mode, "line-peer") == 0) {
+        if (state->stdin_line_storage == parent_stdin_line) return 224;
+    } else {
+        parent_line_file = file; parent_stdin_line = state->stdin_line_storage;
+        if (api->spawn("fileprobe", peer, envp, NULL, 0, &child) != 0 ||
+            api->waitpid(child, &status) != child || status != 0 ||
+            memcmp(line, "a\0\377\n", 4) != 0 || memcmp(standard, "a\0\377\n", 4) != 0 ||
+            state->stdin_line_storage != parent_stdin_line) return 225;
+    }
+    return cb_libc_fclose(file) != 0 || cb_libc_fclose(cb_libc_stdin_stream) != 0 ? 226 : 0;
+}
 static int entry(const struct cb_api_v1 *api, int argc,
                   char *const argv[], char *const envp[])
 {
@@ -78,6 +111,8 @@ static int entry(const struct cb_api_v1 *api, int argc,
                       strcmp(argv[1], "write-peer") == 0 ||
                       strcmp(argv[1], "write-after") == 0))
         return writable_entry(api, argv[1], envp);
+    if (argc == 2 && (strcmp(argv[1], "line-probe") == 0 || strcmp(argv[1], "line-peer") == 0))
+        return line_entry(api, argv[1], envp);
     if (argc == 2 && (strcmp(argv[1], "timestamp-zero") == 0 ||
                       strcmp(argv[1], "timestamp-known") == 0))
         return cb_file_call(api, argv[1]);
