@@ -87,7 +87,7 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FGETLN-01 — per-stream line storage for uniq
 
-- Status: Implementation waits for writable-stream final review. A separate
+- Status: Implementation remains unassigned. A separate
   FGETLN-01-design worker is assigned from `7faa968`; no shared edits yet.
 - Base: future reviewed writable-stream candidate selected by coordinator.
 - Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
