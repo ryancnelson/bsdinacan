@@ -87,9 +87,9 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FGETLN-01 — per-stream line storage for uniq
 
-- Status: Implementation remains unassigned. A separate
-  FGETLN-01-design worker is assigned from `7faa968`; no shared edits yet.
-- Base: future reviewed writable-stream candidate selected by coordinator.
+- Status: Design `d4cb606` independently reviewed clean; FGETLN-01
+  implementation explicitly assigned in a separate worktree.
+- Base: reviewed design `d4cb606` on writable candidate `7faa968`.
 - Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
 - Red: empty/long/unterminated/NUL input, partial/error reads, allocation failure
   and interleaved streams; pin the borrowed-buffer lifetime to real stream events.

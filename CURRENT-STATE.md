@@ -14,8 +14,9 @@ checks; the proposed Mac suite has 84 records and 2141-byte result capacity.
 Exact #554 CI is in progress; final independent review is clean. These runtime
 candidates remain off main pending fresh Mac and Solaris qualification.
 
-FGETLN-01 design preparation is assigned in an isolated worktree. No full uniq
-import is authorized yet. Sprint qualification order remains ls, tee, quality.
+FGETLN-01 design `d4cb606` is independently reviewed and incorporated here.
+Implementation is assigned in a new isolated worktree from that candidate; no
+implementation or full uniq execution is claimed. No full uniq import is authorized yet. Sprint qualification order remains ls, tee, quality.
 Computer Use again reports the Mac locked, so no Claude/Antigravity UI submission
 is claimed. Ryan's reserved interactive guest remains untouched.
 
