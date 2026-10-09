@@ -21,6 +21,7 @@ static int use_fixture_clock, writable_lifecycle;
 static uint64_t fixture_time;
 static int line_lifecycle;
 static size_t line_start, line_end;
+static unsigned line_yields, root_turns;
 static uint64_t fixture_clock(void) { return fixture_time; }
 enum { PAYLOAD, BOOKKEEPING, CLOSE_ERROR, READ_ERROR, DENIED, EXHAUST,
        EXEC, FAILED_EXEC, FAILED_PREPARE, EXIT, LIVE };
@@ -118,6 +119,17 @@ static cb_ssize_t yielding_write(int fd, const void *buffer, size_t count)
 {
     real_api->yield();
     return real_api->write(fd, buffer, count > 1 ? 1 : count);
+}
+/* Suspend inside fgetln's byte read, while its buffer/reference are live. */
+static cb_ssize_t yielding_line_read(int fd, void *buffer, size_t count)
+{
+    unsigned before = root_turns;
+    if (kernel->current != owner || count != 1) fail("line read task/count");
+    real_api->yield();
+    if (kernel->current != owner || root_turns == before)
+        fail("line callback did not switch and restore task");
+    ++line_yields;
+    return real_api->read(fd, buffer, count);
 }
 static int denied_open(struct cb_vfs_node *node, struct cb_task *task, int flags,
                        struct cb_open_file **file)
@@ -239,7 +251,8 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
         api->set_cloexec(opened[1], 1) != 0) return 88;
     if (line_lifecycle) {
         line_start = block_count;
-        if (cb_file_call(api, "prime-lines") != 0) return 101;
+        copy.read = yielding_line_read;
+        if (cb_file_call(&copy, "prime-lines") != 0) return 101;
         line_end = block_count;
         if (line_end <= line_start || state->stdin_line_storage == NULL) return 102;
     }
@@ -275,7 +288,10 @@ static int entry(const struct cb_api_v1 *api, int argc,
     if (mode <= EXHAUST) return simple(api);
     if (cb_file_prepare(api) != 0 || api->spawn("filechild", args, envp, NULL, 0, &child) != 0)
         return 94;
-    for (spins = 0; phase == 0 && spins < 30; ++spins) api->yield();
+    for (spins = 0; phase == 0 && spins < 30; ++spins) {
+        ++root_turns;
+        api->yield();
+    }
     if (mode == LIVE) { expect_wrappers(0); return phase == 1 ? 0 : 95; }
     if (phase != 2 || owner->state != CB_TASK_ZOMBIE) return 96;
     expect_wrappers(1); /* Observe exit cleanup before wait can reap the task. */
@@ -294,6 +310,7 @@ static void run(const struct cb_program_v1 *descriptor, const char *command)
     size_t i;
     base = cb_linux_host_ops(); host.allocate = allocate; host.resize = resize; host.release = release;
     block_count = 0; fail_after = -1; phase = require_clear = 0; line_start = line_end = 0;
+    root_turns = line_yields = 0;
     open_count = close_count = allocation_count = read_count = 0;
     if (use_fixture_clock) host.wall_clock_millis = fixture_clock;
     kernel = cb_kernel_create(&host);
@@ -307,6 +324,7 @@ static void run(const struct cb_program_v1 *descriptor, const char *command)
         fprintf(stderr, "%s mode%d failure%d status%d\n", command, mode, exec_fail_at, status);
         fail("ordinary/lifecycle status");
     }
+    if (line_lifecycle && line_yields == 0) fail("no suspended line reads");
     if (descriptor == &program && mode == LIVE) expect_wrappers(0);
     cb_kernel_destroy(kernel);
     if (descriptor == &program && mode >= EXEC) expect_wrappers(1);

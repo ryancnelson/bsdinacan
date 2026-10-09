@@ -53,7 +53,10 @@ program registry slot is consumed. Native ownership tests prime two dynamic
 buffers plus stdin storage and observe every resulting allocation's release
 inside successful exec replacement, after exit before wait/reap, and at live
 kernel teardown. Failed lookup/preparation exec preserves them and existing
-fd/CLOEXEC assertions remain active.
+fd/CLOEXEC assertions remain active. A read callback explicitly yields inside
+fgetln with the buffer/reference live; the waiting root advances an epoch, and
+every callback asserts that another task ran and the owning task was restored.
+The focused lifecycle cases require a nonzero suspension count.
 
 Focused `make -j4 LDLIBS=-lucontext test` passed in a network-disabled container
 using `tribblix-woodpecker-agent:3.18.0` with an explicit shell entrypoint on
