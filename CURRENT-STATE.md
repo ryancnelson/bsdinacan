@@ -4,6 +4,19 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 9 prerequisite handoff
+
+Writable-stream candidate `7faa968` passed exact #554 ci/mac68k/mac-automation
+and independent review. Its Mac artifact is checksum verified and cached,
+unstaged and unaccepted. FGETLN-01 candidate `39e4528` passed focused Linux
+make test and independent review, with real suspension inside byte-read callbacks
+and ownership/cleanup observations. Exact #562 CI remains in progress.
+
+UNIQ-ADMISSION-01 recompiled unchanged pinned uniq: accepted main still fails
+with four missing-interface diagnostics; the candidate compiles strictly with
+zero diagnostics and only private libc object dependencies. This does not claim
+linking or command execution. UNIQ-01 remains blocked on qualification.
+
 ## October 9 writable-stream checkpoint
 
 ASPRINTF-01 `0ea2461` passed exact #551 all-three CI and independent review.

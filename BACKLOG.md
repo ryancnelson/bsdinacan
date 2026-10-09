@@ -9,6 +9,19 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ## Ready worker queue
 
+### UNIQ-ADMISSION-01 — compile after measured prerequisites
+
+- Status: Coordinator measurement complete, documentation review/CI pending.
+- Base: accepted main `a520a06`, compared with candidate `39e4528`.
+- Hypothesis: measured prerequisite candidates close unchanged uniq's strict
+  private-header compilation gap without more speculative libc additions.
+- Evidence: main reproduces four errors; candidate compiles unchanged pinned
+  source with zero diagnostics and only cb_libc-prefixed object dependencies.
+- Acceptance: hash verified, strict flags retained, compilation distinguished
+  from linking/execution. No full import or runtime acceptance claim.
+- Scope: own measurement note and queue/status rollup only.
+
+
 The order is intentional. Choose the first ready item unless a coordinator
 assigns an ID. Items whose dependencies are Done may proceed in parallel when
 their paths do not overlap.
@@ -70,9 +83,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### STDIO-WRITE-01 — bounded writable streams for uniq
 
-- Status: Candidate `7faa968` pushed; Linux make test passed. Exact #554
-  CI is in progress; final independent review is clean. Mac/Solaris
-  acceptance remains pending.
+- Status: Candidate `7faa968` has Linux make test, exact #554 all-three CI
+  success and clean independent review. Fresh Mac/Solaris acceptance is pending.
 - Base: selected ASPRINTF-01 candidate `0ea2461`, subject to review corrections.
 - Dependencies: reviewed STDIO-WRITE-01-design `14c46dd`; serialize shared edits.
 - Hypothesis: real writable FILE dispatch can reuse existing descriptor/ownership
@@ -87,8 +99,9 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FGETLN-01 — per-stream line storage for uniq
 
-- Status: Design `d4cb606` independently reviewed clean; FGETLN-01
-  implementation explicitly assigned in a separate worktree.
+- Status: Candidate `39e4528` implemented; focused Linux tests and independent
+  review pass, including forced suspension inside reads. Exact #562 CI and
+  fresh Mac/Solaris acceptance remain pending.
 - Base: reviewed design `d4cb606` on writable candidate `7faa968`.
 - Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
 - Red: empty/long/unterminated/NUL input, partial/error reads, allocation failure
