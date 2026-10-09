@@ -18,6 +18,51 @@ int cb_file_prepare(const struct cb_api_v1 *api)
     }
     return api->close(fd);
 }
+static struct cb_libc_file *foreign_output;
+static int writable_entry(const struct cb_api_v1 *api, const char *mode,
+                          char *const envp[])
+{
+    struct cb_libc_file *out, *clo;
+    struct cb_input_state_v1 *state = api->input_state_location();
+    char *peer[] = {(char *)"fileprobe", (char *)"write-peer", NULL};
+    char *after[] = {(char *)"fileprobe", (char *)"write-after", NULL};
+    cb_pid_t child;
+    int status, fd, clo_fd;
+    if (strcmp(mode, "write-after") == 0) {
+        if (state->input_streams != NULL || api->write(3, "z", 1) != 1 ||
+            api->write(4, "z", 1) != -1 || api->get_errno() != CB_EBADF ||
+            api->close(3) != 0) return 190;
+        return 0;
+    }
+    /* Bind the ordinary libc entry before using its private veneers. */
+    if (cb_file_call(api, "write-probe") != 0) return 191;
+    if (strcmp(mode, "write-peer") == 0) {
+        if (cb_libc_fprintf(foreign_output, "bad") != -1 ||
+            api->get_errno() != CB_EINVAL) return 192;
+        out = cb_libc_fopen("/tmp/peer-output", "w");
+        if (out == NULL || cb_libc_fprintf(out, "peer") != 4 ||
+            cb_libc_ferror(out) || cb_libc_fclose(out) != 0) return 193;
+        return 0;
+    }
+    out = cb_libc_fopen("/tmp/lifecycle-output", "w");
+    clo = cb_libc_fopen("/tmp/lifecycle-cloexec", "wb");
+    if (out == NULL || clo == NULL) return 194;
+    fd = cb_libc_fileno(out); clo_fd = cb_libc_fileno(clo);
+    if (fd != 3 || clo_fd != 4 || api->set_cloexec(clo_fd, 1) != 0) return 195;
+    foreign_output = out;
+    api->set_errno(CB_ERANGE);
+    if (api->spawn("fileprobe", peer, envp, NULL, 0, &child) != 0 ||
+        api->waitpid(child, &status) != child || status != 0) return 196;
+    api->set_errno(CB_ERANGE);
+    if (cb_libc_fprintf(out, "parent") != 6 || api->get_errno() != CB_ERANGE ||
+        cb_libc_ferror(out) || cb_libc_ferror(clo)) return 197;
+    if (api->exec("missing-writable-image", after, envp) != -1 ||
+        api->get_errno() != CB_ENOENT ||
+        cb_libc_fwrite("x", 1, 1, out) != 1 || cb_libc_fwrite("y", 1, 1, clo) != 1)
+        return 198;
+    api->exec("fileprobe", after, envp);
+    return 199;
+}
 static int entry(const struct cb_api_v1 *api, int argc,
                   char *const argv[], char *const envp[])
 {
@@ -29,6 +74,10 @@ static int entry(const struct cb_api_v1 *api, int argc,
     int status, fd;
     void *head;
     unsigned char byte;
+    if (argc == 2 && (strcmp(argv[1], "write-probe") == 0 ||
+                      strcmp(argv[1], "write-peer") == 0 ||
+                      strcmp(argv[1], "write-after") == 0))
+        return writable_entry(api, argv[1], envp);
     if (argc == 2 && (strcmp(argv[1], "timestamp-zero") == 0 ||
                       strcmp(argv[1], "timestamp-known") == 0))
         return cb_file_call(api, argv[1]);
@@ -65,6 +114,7 @@ static int entry(const struct cb_api_v1 *api, int argc,
         api->unlink("/tmp/default-mode") != 0 ||
         api->stat("/tmp/default-mode", &metadata) != -1 ||
         api->get_errno() != CB_ENOENT) return 56;
+    if (cb_file_call(api, "write-probe") != 0) return 58;
     if (cb_file_prepare(api) != 0 || cb_file_call(api, "stat-probe") != 0 ||
         cb_file_call(api, "stdio-probe") != 0 ||
         cb_file_call(api, "invalid") != 0 ||

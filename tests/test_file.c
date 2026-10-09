@@ -17,7 +17,7 @@ static struct cb_task *owner;
 static int fail_after, mode, exec_fail_at, phase, require_clear;
 static int opened[2], open_count, close_count, allocation_count, read_count;
 static size_t allocated_before;
-static int use_fixture_clock;
+static int use_fixture_clock, writable_lifecycle;
 static uint64_t fixture_time;
 static uint64_t fixture_clock(void) { return fixture_time; }
 enum { PAYLOAD, BOOKKEEPING, CLOSE_ERROR, READ_ERROR, DENIED, EXHAUST,
@@ -72,7 +72,8 @@ static void *resize(void *pointer, size_t size)
 static int spy_open(const char *path, int flags, uint32_t permissions)
 {
     int fd;
-    if (flags != CB_O_RDONLY || permissions != 0) fail("fopen open flags");
+    if (flags != (writable_lifecycle ? CB_O_WRONLY | CB_O_CREAT | CB_O_TRUNC : CB_O_RDONLY) ||
+        permissions != (writable_lifecycle ? 0666u : 0u)) fail("fopen open flags");
     fd = real_api->open(path, flags, permissions);
     if (fd >= 0) {
         if (open_count < 2) {
@@ -107,6 +108,11 @@ static cb_ssize_t spy_read(int fd, void *buffer, size_t count)
     if (call == 0) return -1;
     if (call == 1) { *(unsigned char *)buffer = 'R'; return 1; }
     return 0;
+}
+static cb_ssize_t yielding_write(int fd, const void *buffer, size_t count)
+{
+    real_api->yield();
+    return real_api->write(fd, buffer, count > 1 ? 1 : count);
 }
 static int denied_open(struct cb_vfs_node *node, struct cb_task *task, int flags,
                        struct cb_open_file **file)
@@ -207,13 +213,15 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
         if (state->input_streams != NULL || state->stdin_closed ||
             state->stdin_eof || state->stdin_error ||
             blocks[files[0]].releases != 0 || blocks[files[1]].releases != 1 ||
-            api->read(opened[0], &byte, 1) != 1 || byte != 0 ||
+            (writable_lifecycle ? api->write(opened[0], "a", 1) != 1 :
+             api->read(opened[0], &byte, 1) != 1 || byte != 0) ||
             api->read(opened[1], &byte, 1) != -1 || api->get_errno() != CB_EBADF ||
             api->close(opened[0]) != 0) return 86;
         phase = 2; return 0;
     }
     real_api = api; owner = kernel->current; copy.open = spy_open;
-    if (cb_file_call(&copy, "open-two") != 0 || open_count != 2 ||
+    if (writable_lifecycle) copy.write = yielding_write;
+    if (cb_file_call(&copy, writable_lifecycle ? "open-two-write" : "open-two") != 0 || open_count != 2 ||
         cb_file_call(api, "close-stdin") != 0) return 87;
     wrappers[0] = block_index(stream_probe_handle(0));
     wrappers[1] = block_index(stream_probe_handle(1));
@@ -230,7 +238,7 @@ static int child_entry(const struct cb_api_v1 *api, int argc,
         if (state->input_streams != head || !state->stdin_closed || live_count() != before ||
             (mode == FAILED_PREPARE && fail_after != -1)) return 92;
         expect_wrappers(0);
-        if (cb_file_call(api, "read-two") != 0) return 93;
+        if (cb_file_call(&copy, writable_lifecycle ? "write-two" : "read-two") != 0) return 93;
     }
     if (mode == LIVE) {
         phase = 1;
@@ -297,8 +305,16 @@ void cb_test_file(void)
             for (exec_fail_at = 0; exec_fail_at < 7; ++exec_fail_at) run(&program, "filetest");
         } else run(&program, "filetest");
     }
+    writable_lifecycle = 1;
+    for (mode = EXEC; mode <= LIVE; ++mode) {
+        if (mode == FAILED_PREPARE) {
+            for (exec_fail_at = 0; exec_fail_at < 7; ++exec_fail_at) run(&program, "filetest");
+        } else run(&program, "filetest");
+    }
+    writable_lifecycle = 0;
     run(&cb_file_probe_program, "fileprobe");
     run(&cb_file_compat_program, "filecompat");
+    run(&cb_file_probe_program, "fileprobe write-probe");
     /* Classic Mac intentionally has no UTC wall-clock source. Exercise its
        zero sentinel and a deterministic nonzero clock without changing the
        monotonic scheduler clock or relying on host uptime/current time. */

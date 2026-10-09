@@ -18,6 +18,25 @@ int main(int argc, char **argv)
     const char *mode;
     if (argc != 2) return 90;
     mode = argv[1];
+    if (strcmp(mode, "write-probe") == 0) {
+        char bytes[16];
+        FILE *out = fopen("/tmp/stream-output", "w");
+        FILE *in;
+        if (out == NULL) return 180;
+        errno = ERANGE;
+        if (fprintf(out, "%4d %s", 12, "abc") != 8 || errno != ERANGE ||
+            fwrite("\0Z", 1, 2, out) != 2 || fflush(out) != 0 || ferror(out) ||
+            fileno(out) < 0 || fclose(out) != 0) return 181;
+        in = fopen("/tmp/stream-output", "rb");
+        if (in == NULL || fread(bytes, 1, sizeof(bytes), in) != 10 ||
+            memcmp(bytes, "  12 abc\0Z", 10) != 0 || fclose(in) != 0) return 182;
+        out = fopen("/tmp/stream-output", "wb");
+        if (out == NULL || fprintf(out, "x") != 1 || fclose(out) != 0) return 183;
+        in = fopen("/tmp/stream-output", "r");
+        if (in == NULL || fread(bytes, 1, sizeof(bytes), in) != 1 ||
+            bytes[0] != 'x' || fclose(in) != 0) return 184;
+        return 0;
+    }
     if (strcmp(mode, "timestamp-zero") == 0 ||
         strcmp(mode, "timestamp-known") == 0) {
         struct stat sb;
@@ -241,6 +260,14 @@ int main(int argc, char **argv)
 
         return 0;
     }
+    if (strcmp(mode, "open-two-write") == 0) {
+        first = fopen("/tmp/stream-out-a", "w");
+        second = fopen("/tmp/stream-out-b", "wb");
+        return first != NULL && second != NULL && first != second ? 0 : 185;
+    }
+    if (strcmp(mode, "write-two") == 0) {
+        return fprintf(first, "a") == 1 && fwrite("b", 1, 1, second) == 1 ? 0 : 186;
+    }
     if (strcmp(mode, "open-one") == 0 || strcmp(mode, "open-two") == 0) {
         errno = EPIPE;
         first = fopen("/tmp/stream-input", "r");
@@ -279,7 +306,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (strcmp(mode, "invalid") == 0) {
-        static const char *modes[] = {"", "w", "a", "r+", "rb+", "rbb", "R"};
+        static const char *modes[] = {"", "we", "a", "r+", "rb+", "rbb", "R"};
         unsigned i;
         for (i = 0; i < sizeof(modes)/sizeof(modes[0]); ++i)
             if (fopen("/tmp/stream-input", modes[i]) != NULL || errno != EINVAL)

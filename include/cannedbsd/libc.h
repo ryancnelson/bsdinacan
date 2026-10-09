@@ -139,6 +139,11 @@ char *cb_libc_ctime(const uint32_t *timer);
 extern struct cb_libc_file *const cb_libc_stdin_stream;
 extern struct cb_libc_file *const cb_libc_stdout_stream;
 extern struct cb_libc_file *const cb_libc_stderr_stream;
+struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode);
+int cb_libc_fclose(struct cb_libc_file *stream);
+int cb_libc_ferror(struct cb_libc_file *stream);
+size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count,
+                      struct cb_libc_file *stream);
 void cb_libc_clearerr(struct cb_libc_file *stream);
 int cb_libc_fileno(struct cb_libc_file *stream);
 void cb_libc_setbuf(struct cb_libc_file *stream, char *buf);

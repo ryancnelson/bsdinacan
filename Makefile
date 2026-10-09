@@ -1190,3 +1190,12 @@ $(BUILD)/test_asprintf_unit: tests/test_asprintf_unit.c libc/cb_libc.c tests/fix
 .PHONY: check-asprintf
 check-asprintf: $(BUILD)/test_asprintf_unit
 	$(BUILD)/test_asprintf_unit
+
+$(BUILD)/test_stdio_write_unit: tests/test_stdio_write_unit.c libc/cb_libc.c $(LIBC_ARCHIVE) | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_stdio_write_unit.c $(LIBC_ARCHIVE) $(LDFLAGS) -o $@
+
+.PHONY: check-stdio-write
+check-stdio-write: $(BUILD)/test_stdio_write_unit
+	$(BUILD)/test_stdio_write_unit
+
+test: check-stdio-write

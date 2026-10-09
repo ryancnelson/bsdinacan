@@ -12,12 +12,13 @@ struct cb_libc_file {
     int descriptor;
     int eof;
     int error;
+    int writable;
     struct cb_libc_file *next;
 };
 
-static struct cb_libc_file stdin_file = {0, 0, 0, NULL};
-static struct cb_libc_file stdout_file = {1, 0, 0, NULL};
-static struct cb_libc_file stderr_file = {2, 0, 0, NULL};
+static struct cb_libc_file stdin_file = {0, 0, 0, 0, NULL};
+static struct cb_libc_file stdout_file = {1, 0, 0, 1, NULL};
+static struct cb_libc_file stderr_file = {2, 0, 0, 1, NULL};
 struct cb_libc_file *const cb_libc_stdin_stream = &stdin_file;
 struct cb_libc_file *const cb_libc_stdout_stream = &stdout_file;
 struct cb_libc_file *const cb_libc_stderr_stream = &stderr_file;
@@ -1006,7 +1007,7 @@ struct input_reference {
     int *error;
 };
 
-static int resolve_input(struct cb_libc_file *stream, struct input_reference *ref)
+static int resolve_stream(struct cb_libc_file *stream, struct input_reference *ref, int access)
 {
     struct cb_input_state_v1 *state;
     struct cb_libc_file *node, *previous;
@@ -1033,7 +1034,7 @@ static int resolve_input(struct cb_libc_file *stream, struct input_reference *re
     }
     /* Only traverse owned nodes. Never dereference the supplied identity. */
     node = find_input_stream(state, stream, &previous);
-    if (node == NULL) {
+    if (node == NULL || (access >= 0 && node->writable != access)) {
         bound_api->set_errno(CB_EINVAL);
         return -1;
     }
@@ -1049,7 +1050,8 @@ struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode)
     struct cb_libc_file *stream;
     int descriptor, saved_errno = bound_api->get_errno();
     if (path == NULL || mode == NULL ||
-        (cb_libc_strcmp(mode, "r") != 0 && cb_libc_strcmp(mode, "rb") != 0)) {
+        (cb_libc_strcmp(mode, "r") != 0 && cb_libc_strcmp(mode, "rb") != 0 &&
+         cb_libc_strcmp(mode, "w") != 0 && cb_libc_strcmp(mode, "wb") != 0)) {
         bound_api->set_errno(CB_EINVAL);
         return NULL;
     }
@@ -1059,15 +1061,32 @@ struct cb_libc_file *cb_libc_fopen(const char *path, const char *mode)
         return NULL;
     }
     /* Startup's mandatory prefix guarantees open/close/allocate/release. */
-    descriptor = bound_api->open(path, CB_O_RDONLY, 0);
-    if (descriptor < 0)
-        return NULL;
-    stream = bound_api->allocate(sizeof(*stream));
-    if (stream == NULL) {
-        bound_api->close(descriptor);
-        bound_api->set_errno(CB_ENOMEM);
-        return NULL;
+    /* Allocate before destructive writable open. Read acquisition retains its
+       established rollback ordering and never mutates the filesystem. */
+    if (mode[0] == 'w') {
+        stream = bound_api->allocate(sizeof(*stream));
+        if (stream == NULL) {
+            bound_api->set_errno(CB_ENOMEM);
+            return NULL;
+        }
+        descriptor = bound_api->open(path, CB_O_WRONLY | CB_O_CREAT | CB_O_TRUNC, 0666);
+        if (descriptor < 0) {
+            int error = bound_api->get_errno();
+            bound_api->release(stream);
+            bound_api->set_errno(error);
+            return NULL;
+        }
+    } else {
+        descriptor = bound_api->open(path, CB_O_RDONLY, 0);
+        if (descriptor < 0) return NULL;
+        stream = bound_api->allocate(sizeof(*stream));
+        if (stream == NULL) {
+            bound_api->close(descriptor);
+            bound_api->set_errno(CB_ENOMEM);
+            return NULL;
+        }
     }
+    stream->writable = mode[0] == 'w';
     stream->descriptor = descriptor;
     stream->eof = stream->error = 0;
     stream->next = state->input_streams;
@@ -1090,17 +1109,6 @@ static struct cb_stdio_state_v1 *stdio_state(void)
         state->struct_size < sizeof(*state))
         return NULL;
     return state;
-}
-
-static void mark_stdio_error(int descriptor)
-{
-    struct cb_stdio_state_v1 *state = stdio_state();
-    if (state != NULL) {
-        if (descriptor == 1)
-            state->stdout_error = 1;
-        else if (descriptor == 2)
-            state->stderr_error = 1;
-    }
 }
 
 /* CAT-01: an old runtime whose stdio_state predates stdout_closed/
@@ -1218,7 +1226,7 @@ int cb_libc_getc(struct cb_libc_file *stream)
 {
     struct input_reference ref;
     unsigned char byte;
-    if (resolve_input(stream, &ref) < 0)
+    if (resolve_stream(stream, &ref, 0) < 0)
         return EOF;
     return read_input(&ref, &byte, 1) <= 0 ? EOF : (int)byte;
 }
@@ -1235,7 +1243,7 @@ size_t cb_libc_fread(void *buffer, size_t size, size_t count,
     size_t total, done = 0;
     if (size == 0 || count == 0)
         return 0;
-    if (resolve_input(stream, &ref) < 0)
+    if (resolve_stream(stream, &ref, 0) < 0)
         return 0;
     if (size > SIZE_MAX / count) {
         bound_api->set_errno(CB_EOVERFLOW);
@@ -1273,7 +1281,7 @@ int cb_libc_feof(struct cb_libc_file *stream)
     struct input_reference ref;
     if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream)
         return 0;
-    if (resolve_input(stream, &ref) < 0)
+    if (resolve_stream(stream, &ref, -1) < 0)
         return 0;
     return *ref.eof;
 }
@@ -1320,32 +1328,78 @@ long cb_libc_strtol(const char *nptr, char **endptr, int base)
     return (long)val;
 }
 
-static int write_all(int descriptor, const char *text, size_t length)
+struct output_reference {
+    int descriptor;
+    int *error;
+};
+
+static int resolve_output_checked(struct cb_libc_file *stream,
+                          struct output_reference *ref, int require_state,
+                          int check_closed)
 {
-    int saved_incoming_errno = bound_api->get_errno();
-    if ((descriptor == 1 || descriptor == 2) &&
-        stdio_stream_closed(descriptor)) {
-        bound_api->set_errno(CB_EBADF);
-        return -1;
-    }
-    while (length != 0) {
-        cb_ssize_t written = bound_api->write(descriptor, text, length);
-        if (written < 0) {
-            int actual_error = bound_api->get_errno();
-            mark_stdio_error(descriptor);
-            bound_api->set_errno(actual_error);
+    if (stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream) {
+        struct cb_stdio_state_v1 *state = stdio_state();
+        ref->descriptor = stream == cb_libc_stdout_stream ? 1 : 2;
+        if (require_state && state == NULL) {
+            bound_api->set_errno(CB_ENOSYS);
             return -1;
         }
-        if (written == 0) {
-            mark_stdio_error(descriptor);
-            bound_api->set_errno(CB_EIO);
+        if (check_closed && stdio_stream_closed(ref->descriptor)) {
+            bound_api->set_errno(CB_EBADF);
             return -1;
+        }
+        ref->error = state == NULL ? NULL :
+            (ref->descriptor == 1 ? &state->stdout_error : &state->stderr_error);
+    } else {
+        struct input_reference input;
+        if (stream == cb_libc_stdin_stream) {
+            bound_api->set_errno(CB_EINVAL);
+            return -1;
+        }
+        if (resolve_stream(stream, &input, 1) < 0) return -1;
+        ref->descriptor = input.descriptor;
+        ref->error = input.error;
+    }
+    return 0;
+}
+
+static int resolve_output(struct cb_libc_file *stream,
+                          struct output_reference *ref, int require_state)
+{
+    return resolve_output_checked(stream, ref, require_state, 1);
+}
+
+/* One checked transfer primitive for formatted and element output. */
+static size_t write_output(struct output_reference *ref, const char *text,
+                           size_t length)
+{
+    size_t remaining = length;
+    int saved_errno = bound_api->get_errno();
+    while (remaining != 0) {
+        size_t chunk = remaining;
+        cb_ssize_t written;
+#if SIZE_MAX > INT64_MAX
+        if ((uint64_t)chunk > (uint64_t)INT64_MAX) chunk = (size_t)INT64_MAX;
+#endif
+        written = bound_api->write(ref->descriptor, text, chunk);
+        if (written <= 0 || (uint64_t)written > (uint64_t)chunk) {
+            if (ref->error != NULL) *ref->error = 1;
+            if (written >= 0) bound_api->set_errno(CB_EIO);
+            return length - remaining;
         }
         text += (size_t)written;
-        length -= (size_t)written;
+        remaining -= (size_t)written;
     }
-    bound_api->set_errno(saved_incoming_errno);
-    return 0;
+    bound_api->set_errno(saved_errno);
+    return length;
+}
+
+static int write_all(int descriptor, const char *text, size_t length)
+{
+    struct output_reference ref;
+    if (resolve_output(descriptor == 1 ? cb_libc_stdout_stream :
+                       cb_libc_stderr_stream, &ref, 0) < 0) return -1;
+    return write_output(&ref, text, length) == length ? 0 : -1;
 }
 
 int cb_libc_puts(const char *text)
@@ -1356,20 +1410,20 @@ int cb_libc_puts(const char *text)
     return 0;
 }
 
-static int add_output(int descriptor, const char *text, size_t length,
+static int add_output(struct output_reference *ref, const char *text, size_t length,
                       int *total)
 {
     if (length > (size_t)(INT_MAX - *total)) {
         bound_api->set_errno(CB_EINVAL);
         return -1;
     }
-    if (write_all(descriptor, text, length) < 0)
+    if (write_output(ref, text, length) != length)
         return -1;
     *total += (int)length;
     return 0;
 }
 
-static int format_output(int descriptor, const char *format,
+static int format_stream(struct output_reference *ref, const char *format,
                          va_list arguments)
 {
     const char *cursor = format;
@@ -1383,14 +1437,14 @@ static int format_output(int descriptor, const char *format,
         const char *literal = cursor;
         while (*cursor != '\0' && *cursor != '%')
             ++cursor;
-        if (add_output(descriptor, literal, (size_t)(cursor - literal),
+        if (add_output(ref, literal, (size_t)(cursor - literal),
                        &total) < 0)
             return -1;
         if (*cursor == '\0')
             break;
         ++cursor;
         if (*cursor == '%') {
-            if (add_output(descriptor, "%", 1, &total) < 0)
+            if (add_output(ref, "%", 1, &total) < 0)
                 return -1;
             ++cursor;
         } else {
@@ -1509,11 +1563,11 @@ static int format_output(int descriptor, const char *format,
                     *--digits = '-';
                 length = (size_t)(end - digits);
                 while (width > length) {
-                    if (add_output(descriptor, " ", 1, &total) < 0)
+                    if (add_output(ref, " ", 1, &total) < 0)
                         return -1;
                     --width;
                 }
-                if (add_output(descriptor, digits, length, &total) < 0)
+                if (add_output(ref, digits, length, &total) < 0)
                     return -1;
                 ++cursor;
             } else if (*cursor == 's') {
@@ -1531,15 +1585,15 @@ static int format_output(int descriptor, const char *format,
                    padding after the text instead. */
                 if (!left_justify) {
                     while (width > length) {
-                        if (add_output(descriptor, " ", 1, &total) < 0)
+                        if (add_output(ref, " ", 1, &total) < 0)
                             return -1;
                         --width;
                     }
                 }
-                if (add_output(descriptor, text, length, &total) < 0)
+                if (add_output(ref, text, length, &total) < 0)
                     return -1;
                 while (width > length) {
-                    if (add_output(descriptor, " ", 1, &total) < 0)
+                    if (add_output(ref, " ", 1, &total) < 0)
                         return -1;
                     --width;
                 }
@@ -1551,6 +1605,14 @@ static int format_output(int descriptor, const char *format,
         }
     }
     return total;
+}
+
+static int format_output(int descriptor, const char *format, va_list arguments)
+{
+    struct output_reference ref;
+    if (resolve_output(descriptor == 1 ? cb_libc_stdout_stream :
+                       cb_libc_stderr_stream, &ref, 0) < 0) return -1;
+    return format_stream(&ref, format, arguments);
 }
 
 int cb_libc_printf(const char *format, ...)
@@ -1566,13 +1628,11 @@ int cb_libc_printf(const char *format, ...)
 int cb_libc_fprintf(struct cb_libc_file *stream, const char *format, ...)
 {
     va_list arguments;
+    struct output_reference ref;
     int result;
-    if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
-        bound_api->set_errno(CB_EINVAL);
-        return -1;
-    }
+    if (resolve_output(stream, &ref, 0) < 0) return -1;
     va_start(arguments, format);
-    result = format_output(stream->descriptor, format, arguments);
+    result = format_stream(&ref, format, arguments);
     va_end(arguments);
     return result;
 }
@@ -2348,21 +2408,11 @@ int cb_libc_putchar(int character)
 
 int cb_libc_fflush(struct cb_libc_file *stream)
 {
-    if (stream != NULL && stream != cb_libc_stdout_stream &&
-        stream != cb_libc_stderr_stream) {
-        bound_api->set_errno(CB_EINVAL);
-        return EOF;
-    }
+    struct output_reference ref;
+    if (stream != NULL) return resolve_output(stream, &ref, 1) < 0 ? EOF : 0;
     if (stdio_state() == NULL) {
         bound_api->set_errno(CB_ENOSYS);
         return EOF;
-    }
-    if (stream != NULL) {
-        int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
-        if (stdio_stream_closed(descriptor)) {
-            bound_api->set_errno(CB_EBADF);
-            return EOF;
-        }
     }
     return 0;
 }
@@ -2372,7 +2422,7 @@ int cb_libc_ferror(struct cb_libc_file *stream)
     struct cb_stdio_state_v1 *state;
     if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
         struct input_reference ref;
-        if (resolve_input(stream, &ref) < 0)
+        if (resolve_stream(stream, &ref, -1) < 0)
             return 1;
         return *ref.error;
     }
@@ -2399,7 +2449,7 @@ void cb_libc_clearerr(struct cb_libc_file *stream)
         return;
     }
     struct input_reference ref;
-    if (resolve_input(stream, &ref) == 0) {
+    if (resolve_stream(stream, &ref, -1) == 0) {
         *ref.eof = 0;
         *ref.error = 0;
     }
@@ -2419,7 +2469,7 @@ int cb_libc_fileno(struct cb_libc_file *stream)
     if (stream == cb_libc_stderr_stream)
         return 2;
     struct input_reference ref;
-    if (resolve_input(stream, &ref) < 0) {
+    if (resolve_stream(stream, &ref, -1) < 0) {
         if (bound_api != NULL && bound_api->set_errno != NULL)
             bound_api->set_errno(CB_EBADF);
         return -1;
@@ -2442,7 +2492,7 @@ void cb_libc_setbuf(struct cb_libc_file *stream, char *buf)
     if (stream != cb_libc_stdin_stream && stream != cb_libc_stdout_stream &&
         stream != cb_libc_stderr_stream) {
         struct input_reference ref;
-        if (resolve_input(stream, &ref) < 0) {
+        if (resolve_stream(stream, &ref, -1) < 0) {
             if (bound_api != NULL && bound_api->set_errno != NULL)
                 bound_api->set_errno(CB_EBADF);
             return;
@@ -2451,72 +2501,27 @@ void cb_libc_setbuf(struct cb_libc_file *stream, char *buf)
 }
 
 
-size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count, struct cb_libc_file *stream)
+size_t cb_libc_fwrite(const void *buffer, size_t size, size_t count,
+                      struct cb_libc_file *stream)
 {
-    if (size == 0 || count == 0)
-        return 0;
-
-    if (stream != cb_libc_stdout_stream && stream != cb_libc_stderr_stream) {
-        if (bound_api != NULL) bound_api->set_errno(CB_EINVAL);
-        return 0;
-    }
-
-    struct cb_stdio_state_v1 *state = stdio_state();
-    if (state == NULL || bound_api == NULL || bound_api->write == NULL) {
-        if (bound_api != NULL) bound_api->set_errno(CB_ENOSYS);
-        return 0;
-    }
-
+    struct output_reference ref;
+    if (size == 0 || count == 0) return 0;
+    if (resolve_output_checked(stream, &ref, 1, 0) < 0) return 0;
     if (size > SIZE_MAX / count) {
         bound_api->set_errno(CB_EOVERFLOW);
         return 0;
     }
-
     if (buffer == NULL) {
         bound_api->set_errno(CB_EINVAL);
         return 0;
     }
-
-    int descriptor = (stream == cb_libc_stderr_stream) ? 2 : 1;
-    if (stdio_stream_closed(descriptor)) {
+    /* Preserve the existing overflow/NULL-before-closure precedence. */
+    if ((stream == cb_libc_stdout_stream || stream == cb_libc_stderr_stream) &&
+        stdio_stream_closed(ref.descriptor)) {
         bound_api->set_errno(CB_EBADF);
         return 0;
     }
-    int saved_incoming_errno = bound_api->get_errno();
-    size_t total_bytes = size * count;
-    size_t remaining = total_bytes;
-    const char *text = (const char *)buffer;
-
-    while (remaining != 0) {
-        size_t chunk = remaining;
-#if SIZE_MAX > INT64_MAX
-        if ((uint64_t)chunk > (uint64_t)INT64_MAX) {
-            chunk = (size_t)INT64_MAX;
-        }
-#endif
-
-        cb_ssize_t written = bound_api->write(descriptor, text, chunk);
-        if (written < 0) {
-            int actual_error = bound_api->get_errno();
-            mark_stdio_error(descriptor);
-            bound_api->set_errno(actual_error);
-            break;
-        }
-        if (written == 0 || (uint64_t)written > (uint64_t)chunk) {
-            mark_stdio_error(descriptor);
-            bound_api->set_errno(CB_EIO);
-            break;
-        }
-
-        text += (size_t)written;
-        remaining -= (size_t)written;
-    }
-
-    if (remaining == 0) {
-        bound_api->set_errno(saved_incoming_errno);
-    }
-
-    return (total_bytes - remaining) / size;
+    return write_output(&ref, buffer, size * count) / size;
 }
 
 int cb_libc_iswspace(unsigned int wc)

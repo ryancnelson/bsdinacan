@@ -199,7 +199,7 @@ struct cb_input_state_v1 {
     int stdin_eof;
     int stdin_error;
     int stdin_closed;
-    void *input_streams; /* Opaque libc-owned list; cleared before heap reclaim. */
+    void *input_streams; /* Opaque libc-owned read/write FILE list; cleared before heap reclaim. */
 };
 #define CB_INPUT_STATE_V1_MIN_SIZE \
     (offsetof(struct cb_input_state_v1, stdin_error) + \

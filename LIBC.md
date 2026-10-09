@@ -101,10 +101,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   task-owned EOF/error indicators. Bytes are returned unsigned; read failure
   and EOF both return `EOF`, with distinct indicators. Successful reads preserve
   incoming errno. Optional input state is version/size guarded.
-- `stdio.h`: read-only `fopen`/`fclose` own dynamic input wrappers and descriptors.
+- `stdio.h`: `fopen`/`fclose` support exactly r/rb/w/wb and own dynamic wrappers and descriptors.
   Acquisition failures roll back immediately; successful close, exec and task
   exit reclaim owned wrappers. Stream identity is checked before dereferencing
-  caller pointers. Writable fopen modes and buffered streams remain absent.
+  caller pointers. Writable opens create/truncate with mode 0666 after wrapper allocation succeeds; buffering remains absent.
 - `stdio.h`: `fread` accumulates positive short reads and returns complete element
   counts. Bytes from a final partial element remain consumed on EOF/error.
   Zero size/count returns before callbacks; multiplication overflow reports
@@ -112,14 +112,14 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   and malformed oversized read returns become sticky `EIO` before narrowing.
   Native and actual Mac probes cover byte prefixes, canaries, dynamic stream
   offsets, partial EOF/error and old capability layouts.
-- `stdio.h`: `fwrite` supports only stdout/stderr, accumulating positive short
+- `stdio.h`: `fwrite` supports stdout/stderr and writable dynamic FILEs, accumulating positive short
   writes and returning completed elements. Zero size/count invokes no callbacks;
   nonzero requests validate the stream/state before overflow and NULL-buffer
   checks. Partial output is not replayed. Negative writes preserve their errno;
   zero progress and oversized returns become sticky `EIO` on the selected stream.
   Full success preserves incoming errno and prior sticky flags. The optional
   output-state accessor remains independently guarded; input state is unnecessary.
-  This does not add writable fopen modes or buffered output.
+  Dynamic fprintf/fwrite route sticky errors by FILE identity, even for fd 1/2. Dynamic metadata accepts either direction; wrong-direction I/O fails EINVAL. Writable fflush is an unbuffered no-op.
 - `inttypes.h`: unchanged pinned NetBSD `strtoimax` uses private link names;
   base zero and bases 2 through 36, endptr, signed limits and `ERANGE` are tested.
   Invalid bases report `EINVAL`. `ctype.h` supplies bounded C-locale `isdigit`
