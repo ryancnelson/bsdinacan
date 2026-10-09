@@ -28,8 +28,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### STDIO-WRITE-01-design — writable FILE ownership before uniq
 
-- Status: Design `14c46dd` has exact all-three CI success; independent review
-  pending. No implementation or shared FILE representation change yet.
+- Status: Design `14c46dd` has exact all-three CI success and clean independent
+  review. Writable implementation is a separate, unaccepted candidate.
 - Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
 - Hypothesis: fopen(w) alone cannot serve uniq because fprintf currently rejects
   nonstandard streams, and stream state must survive task switches and cleanup.
@@ -42,8 +42,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### ASPRINTF-01-design — bounded allocating formatting for uniq
 
-- Status: Design `a4048b9` has exact all-three CI success and coordinator
-  scope approval; independent review is in progress. Implementation assigned.
+- Status: Design `a4048b9` has exact all-three CI success and clean independent
+  review. Implementation candidate `0ea2461` is reviewed; guest gates remain.
 - Base: exact runtime candidate `f4e3f25`; dependencies: NEXT-UTIL-03 evidence.
 - Hypothesis: uniq's actual "-%c%s" legacy-option conversion needs allocating
   formatting absent from both main and candidate snprintf.
@@ -56,7 +56,7 @@ remains pending. Sprint order stays ls, tee, quality review.
 ### ASPRINTF-01 — measured allocating-format implementation
 
 - Status: Implemented candidate `0ea2461`, focused Linux tests passed; exact
-  #551 CI and independent implementation review pending. Guest gates remain.
+  #551 all-three CI and independent review passed. Guest gates remain.
 - Base: exact design candidate `a4048b9`; dependencies: reviewed design.
 - Hypothesis: actual uniq legacy-option conversion can use bounded allocating
   literal/%c/%s output without depending on the narrower snprintf parser.
@@ -70,7 +70,9 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### STDIO-WRITE-01 — bounded writable streams for uniq
 
-- Status: Ready for coordinator assignment after ASPRINTF-01 handoff/review.
+- Status: Candidate `7faa968` pushed; Linux make test passed. Exact #554
+  CI is in progress; final independent review is clean. Mac/Solaris
+  acceptance remains pending.
 - Base: selected ASPRINTF-01 candidate `0ea2461`, subject to review corrections.
 - Dependencies: reviewed STDIO-WRITE-01-design `14c46dd`; serialize shared edits.
 - Hypothesis: real writable FILE dispatch can reuse existing descriptor/ownership
@@ -85,7 +87,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### FGETLN-01 — per-stream line storage for uniq
 
-- Status: Blocked on agreed STDIO-WRITE-01 FILE design and explicit assignment.
+- Status: Implementation waits for writable-stream final review. A separate
+  FGETLN-01-design worker is assigned from `7faa968`; no shared edits yet.
 - Base: future reviewed writable-stream candidate selected by coordinator.
 - Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
 - Red: empty/long/unterminated/NUL input, partial/error reads, allocation failure

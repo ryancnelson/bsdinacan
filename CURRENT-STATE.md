@@ -4,6 +4,21 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 9 writable-stream checkpoint
+
+ASPRINTF-01 `0ea2461` passed exact #551 all-three CI and independent review.
+Writable-stream candidate `7faa968` builds on it with task-owned w/wb FILEs,
+dynamic formatted/block output, identity-based sticky errors, checked partial
+writes and lifecycle coverage. Linux make test passed, as did 23 host protocol
+checks; the proposed Mac suite has 84 records and 2141-byte result capacity.
+Exact #554 CI is in progress; final independent review is clean. These runtime
+candidates remain off main pending fresh Mac and Solaris qualification.
+
+FGETLN-01 design preparation is assigned in an isolated worktree. No full uniq
+import is authorized yet. Sprint qualification order remains ls, tee, quality.
+Computer Use again reports the Mac locked, so no Claude/Antigravity UI submission
+is claimed. Ryan's reserved interactive guest remains untouched.
+
 ## October 5 implementation checkpoint
 
 ASPRINTF-01 candidate `0ea2461` implements the reviewed bounded allocating format.
