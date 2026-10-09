@@ -3,7 +3,7 @@
 Design candidate only. Base is immutable
 `7faa968fd4bae1c8d33d5b4e784f06f8774b7884` (STDIO-WRITE-01 candidate),
 not an acceptance claim for that runtime. Branch `work/FGETLN-01-design`,
-worktree `/Users/ryan/devel/bsdinacan-FGETLN-01-design`. Only this note changes;
+sibling worktree `bsdinacan-FGETLN-01-design`. Only this note changes;
 no headers, runtime implementation or full uniq import. The coordinator remains
 owner of shared FILE representation and dispatch until final review.
 
@@ -214,6 +214,9 @@ does not itself prevent a later read; sticky EOF does until clearerr.
 
 Source and cached uniq hash inspection only; no implementation red/green,
 runtime execution, complete local gate or guest acceptance is claimed.
-`git diff --check` and `make check-publication` are the local note checks.
+The worker ran `make check-publication` before the note was tracked, so that
+run did not cover this file. The coordinator subsequently caught and removed
+a personal worktree path, then reran publication on the tracked composition.
+`git diff --check` is also required.
 Exact commit/CI status is reported in the handoff rather than guessed here.
 No shared symbols touched. No merge performed.
