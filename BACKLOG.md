@@ -126,8 +126,13 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### UNIQ-01 — unchanged uniq after measured prerequisites
 
-- Status: Blocked on ls/tee qualification, writable FILE, fgetln and asprintf.
-- Base: coordinator-selected qualified composition; no import authorized yet.
+- Status: Coordinator authorizes candidate implementation after reviewed design
+  and exact prerequisite CI. Integration remains blocked on fresh ls/tee/quality
+  and Mac/Solaris qualification; no runtime merge is authorized by this assignment.
+- Base: exact candidate `39e4528`, plus reviewed UNIQ-STATE design `46a4255`.
+- Dependencies: implemented prerequisites `0ea2461`, `7faa968`, `39e4528` have
+  clean reviews and exact all-three CI. Guest qualification is an integration
+  dependency, retained for this candidate and every prerequisite.
 - Hypothesis: the six static integer fields need task isolation across yields.
 - Red: repeated conflicting flags/counts and overlapping pipelines, plus files,
   empty/long/unterminated/NUL input, numeric boundaries and injected I/O faults.
