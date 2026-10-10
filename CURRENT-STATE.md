@@ -1,3 +1,21 @@
+## Coordinator checkpoint — 2026-10-10
+
+Accepted main is 0edb41f: reviewed comm dependency study and stocked queue,
+exact #571 all-three success before merge. Runtime candidates remain unaccepted.
+C-only strcoll fb0b543 (#575) and strcasecmp 6abe7f1 (#576) have clean independent
+reviews and all-three exact CI success. LINE-LIMIT-01 1559aed closes the remaining
+strict compilation gap for unchanged comm; review and exact CI pending. This
+is not comm link or execution evidence. Existing ls/tee/quality integration order
+and required fresh guest/Solaris gates remain intact.
+
+UNIQ-01 32dc4cb has clean review and exact #573 all-three success, but a later
+test-only correction is in progress: probe exit status masking could conceal a
+failure. The final correction must receive fresh review and exact gates.
+
+Native app control is still blocked by the locked Mac; no Claude or Antigravity
+submission is claimed. Ryan's reserved guest session remains untouched. Isolated
+Codex workers continue in their own worktrees.
+
 # Current State — cannedBSD
 
 **Last repository/CI audit:** 2026-09-30 (guest evidence is dated separately below)

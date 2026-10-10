@@ -11,7 +11,7 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### NEXT-UTIL-04 — measured comm dependency study
 
-- Status: Coordinator study prepared; independent review and exact CI pending.
+- Status: Done: merged as 0edb41f after clean review and exact #571 all-three CI success.
 - Base: main `5865993`, compared with candidate `39e4528`.
 - Hypothesis: comm needs a small independent comparison/line-limit boundary.
 - Evidence: unchanged pinned source produces nine diagnostics for three distinct
@@ -22,7 +22,7 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### COLLATE-C-01 — measured C-locale strcoll
 
-- Status: Ready for coordinator assignment; one shared symbol owner required.
+- Status: Candidate fb0b543, clean review and exact #575 all-three CI success; fresh Mac/Solaris pending.
 - Base: main; dependencies: NEXT-UTIL-04 source evidence and existing C-only locale.
 - Hypothesis: real C collation can reuse existing unsigned lexical comparison.
 - Red: ordinary private-header call is absent; exact order, equal/prefix/high-bit
@@ -32,7 +32,7 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### STRCASECMP-C-01 — measured C-locale case comparison
 
-- Status: Ready for coordinator assignment; serialize shared libc/header edits.
+- Status: Candidate 6abe7f1, root review clean and exact #576 all-three CI success; fresh Mac/Solaris pending.
 - Base: coordinator-selected comparison candidate after COLLATE-C-01 handoff.
 - Hypothesis: ASCII case folding must use unsigned input and retain high-bit bytes.
 - Red: ordinary interface absent; cases, prefixes and 0x80/0xff ordering.
@@ -41,7 +41,7 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### LINE-LIMIT-01 — measured comm input limit
 
-- Status: Ready for coordinator assignment; no comm import yet.
+- Status: Root candidate 1559aed; strict unchanged comm compilation green; review/exact CI pending. No comm import.
 - Base: main; dependencies: NEXT-UTIL-04 pinned syslimits evidence.
 - Hypothesis: exposing LINE_MAX=2048 closes the measured constant gap while
   retaining the upstream finite-line policy and adequate stack allocation.
