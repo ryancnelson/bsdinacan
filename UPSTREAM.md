@@ -920,3 +920,18 @@ Fixture SHA256:
 `bd271ac5943202280d9f3dd6f22f5776a835789709c12263f9f641e5ff70beff`.
 The function body was compared byte-for-byte with the pinned source range ending
 before `usage`; only the source license and this function are included.
+
+## uniq — UNIQ-01 candidate
+
+Repository: `https://github.com/NetBSD/src`.
+
+Unchanged `usr.bin/uniq/uniq.c` at NetBSD revision
+`b890038f7ae5831ab0b6eda87cb0a2d4aee00c2c`, SHA256
+`78d561c8817b3476713c23d76235a19aad726b7b22794ad11443c4f91462a195`.
+The file retains its BSD license. Main is renamed at compilation; objcopy
+renames/globalizes only cflag, dflag, uflag, numchars, numfields and repeats
+for typed per-execution slots. Trailing -O0 preserves their actual int storage
+against optimizer narrowing before external slot copies, following ls.
+The ordinary module uses the private libc veneer and existing static-reset
+executor. No upstream edits or new libc/ABI interfaces. Candidate runtime
+qualification, including fresh Mac and Solaris, remains pending.

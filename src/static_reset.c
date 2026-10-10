@@ -593,3 +593,27 @@ const struct cb_executor_ops *cb_tee_static_reset_executor(void)
 {
     return &tee_static_reset_ops.common;
 }
+
+/* UNIQ-01: exact native int declarations from the pinned uniq source. */
+extern int cb_uniq_cflag;
+extern int cb_uniq_dflag;
+extern int cb_uniq_uflag;
+extern int cb_uniq_numchars;
+extern int cb_uniq_numfields;
+extern int cb_uniq_repeats;
+static const struct cb_static_slot uniq_slots[] = {
+    { &cb_uniq_cflag, sizeof(cb_uniq_cflag) },
+    { &cb_uniq_dflag, sizeof(cb_uniq_dflag) },
+    { &cb_uniq_uflag, sizeof(cb_uniq_uflag) },
+    { &cb_uniq_numchars, sizeof(cb_uniq_numchars) },
+    { &cb_uniq_numfields, sizeof(cb_uniq_numfields) },
+    { &cb_uniq_repeats, sizeof(cb_uniq_repeats) }
+};
+static const struct cb_static_reset_ops uniq_static_reset_ops = {
+    { CB_STATIC_RESET_OPS_COMMON, CB_EXECUTOR_COOPERATIVE_INTERRUPT },
+    uniq_slots, sizeof(uniq_slots) / sizeof(uniq_slots[0])
+};
+const struct cb_executor_ops *cb_uniq_static_reset_executor(void)
+{
+    return &uniq_static_reset_ops.common;
+}

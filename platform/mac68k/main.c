@@ -6,6 +6,7 @@
 
 int cb_terminal_engine_probe(void);
 int cb_signal_probe(const struct cb_host_ops_v1 *host);
+int cb_uniq_probe(const struct cb_host_ops_v1 *host);
 int cb_tee_probe(const struct cb_host_ops_v1 *host);
 int cb_tee_state_probe(const struct cb_host_ops_v1 *host);
 int cb_console_write_probe(const struct cb_host_ops_v1 *host);
@@ -94,6 +95,11 @@ int main(void)
         passed = cb_tee_probe(cb_mac_host_ops()) == 0;
         cb_mac_text(passed ? "PASS: tee command\n" : "FAIL: tee command\n");
         strcat(result, passed ? "PASS teecommand\n" : "FAIL teecommand\n");
+    }
+    if (passed) {
+        passed = cb_uniq_probe(cb_mac_host_ops()) == 0;
+        cb_mac_text(passed ? "PASS: uniq command\n" : "FAIL: uniq command\n");
+        strcat(result, passed ? "PASS uniqcommand\n" : "FAIL uniqcommand\n");
     }
     for (index = 0; passed && index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int status = -1;

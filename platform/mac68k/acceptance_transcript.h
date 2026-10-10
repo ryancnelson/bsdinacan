@@ -15,6 +15,7 @@ enum {
         "PASS teestate\n"
         "PASS interrupts\n"
         "PASS teecommand\n"
+        "PASS uniqcommand\n"
 #define CB_MAC_CASE(command, expected, status) "PASS " command "\n"
 #include "acceptance_cases.def"
 #undef CB_MAC_CASE

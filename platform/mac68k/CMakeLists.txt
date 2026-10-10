@@ -222,6 +222,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/commands/printenv_module.c ${ROOT}/commands/echo_module.c
     ${ROOT}/commands/head_module.c
     ${ROOT}/commands/tee_module.c
+    ${ROOT}/commands/uniq_module.c
     ${ROOT}/commands/ls_module.c
     ${ROOT}/commands/rm_module.c
     ${ROOT}/commands/mv_module.c
@@ -233,6 +234,7 @@ add_application(CannedBSD CREATOR "CnBD"
     ${ROOT}/tests/signal_libc_probe.c
     ${ROOT}/tests/tee_state_probe.c
     ${ROOT}/tests/tee_probe.c
+    ${ROOT}/tests/uniq_probe.c
     ${ROOT}/tests/console_write_probe.c
     ${ROOT}/tests/head_probe.c
     ${ROOT}/libc/cb_libc.c
@@ -361,3 +363,12 @@ foreach(target cb_ls_print cb_humanize_number)
     target_compile_options(${target} PRIVATE -Wformat -Werror
         -include ${ROOT}/tests/printf64_attributes.h)
 endforeach()
+
+add_library(cb_uniq OBJECT ${ROOT}/upstream/netbsd/usr.bin/uniq/uniq.c)
+target_include_directories(cb_uniq PRIVATE ${ROOT}/libc/include)
+target_compile_definitions(cb_uniq PRIVATE main=cb_uniq_main)
+target_compile_options(cb_uniq PRIVATE -O0)
+add_custom_command(TARGET CannedBSD PRE_LINK
+    COMMAND sh ${ROOT}/tools/globalize-uniq-statics.sh ${CMAKE_OBJCOPY} ${CMAKE_NM} $<TARGET_OBJECTS:cb_uniq>
+    COMMAND_EXPAND_LISTS)
+target_sources(CannedBSD PRIVATE $<TARGET_OBJECTS:cb_uniq>)

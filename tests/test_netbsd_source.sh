@@ -509,3 +509,24 @@ if nm -u "$tee_object" | awk '$1 == "U" { print $2 }' |
 fi
 
 echo 'pinned unmodified NetBSD source boundary passed'
+
+# UNIQ-01: unchanged import, veneer closure and six exact exposed ints.
+# This pinned Linux compiler inserts __stack_chk_fail at -O0; that compiler
+# safety instrumentation is not an ordinary application libc dependency.
+uniq_source=upstream/netbsd/usr.bin/uniq/uniq.c
+uniq_object=$build_path/netbsd_uniq.o
+uniq_hash=78d561c8817b3476713c23d76235a19aad726b7b22794ad11443c4f91462a195
+[[ $(sha256sum "$uniq_source" | awk '{print $1}') == "$uniq_hash" ]] || {
+    echo 'FAIL: pinned uniq source changed' >&2; exit 1;
+}
+matches "$uniq_hash" UPSTREAM.md
+nm "$uniq_object" | matches '[[:space:]]T[[:space:]]+cb_uniq_main$'
+if nm -u "$uniq_object" | awk '$1 == "U" { print $2 }' |
+        grep -vE '^(_GLOBAL_OFFSET_TABLE_|__stack_chk_fail|__(asan|ubsan)_[[:alnum:]_]+|cb_libc_[[:alnum:]_]+)$' | matches '.'; then
+    echo 'FAIL: uniq has an unprefixed external dependency' >&2; exit 1
+fi
+for name in cflag dflag uflag numchars numfields repeats; do
+    count=$(nm -P "$uniq_object" | awk -v name="cb_uniq_$name" '$1 == name && $2 ~ /^[BDS]$/ {n++} END {print n+0}')
+    [[ $count == 1 ]] || { echo "FAIL: missing uniq int slot $name" >&2; exit 1; }
+done
+echo 'uniq pinned source and private symbol boundary passed'

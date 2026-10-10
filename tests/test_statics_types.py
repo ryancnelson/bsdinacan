@@ -44,4 +44,13 @@ for original, renamed, source in [
         print(result.stderr, file=sys.stderr, end='')
     else:
         print(f'{renamed}: compatible with pinned source')
+uniq = (ROOT / 'upstream/netbsd/usr.bin/uniq/uniq.c').read_text()
+for group in ('cflag, dflag, uflag', 'numchars, numfields, repeats'):
+    if f'static int {group};' not in uniq:
+        sys.exit('uniq: pinned native int declaration changed')
+    for name in group.split(', '):
+        declaration = f'extern int cb_uniq_{name};'
+        if owned.count(declaration) != 1:
+            sys.exit(f'uniq {name}: missing exact typed declaration')
+        print(f'cb_uniq_{name}: compatible with pinned source')
 sys.exit(1 if failed else 0)

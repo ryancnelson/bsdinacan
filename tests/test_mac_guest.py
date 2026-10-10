@@ -14,6 +14,10 @@ import unittest
 sys.dont_write_bytecode = True
 SCRIPT = Path(__file__).resolve().parents[1] / 'platform/mac68k/guest.py'
 
+def without_uniq(text):
+    return ''.join(line for line in text.splitlines(keepends=True)
+                   if line != 'PASS uniqcommand\n' and not ('uniq ' in line))
+
 class GuestTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -57,7 +61,7 @@ class GuestTests(unittest.TestCase):
         run = self.stage()
         expected = (run / 'expected-result.txt').read_text()
         self.assertEqual(expected, guest.expected_result())
-        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 85)
+        self.assertEqual(sum(line.startswith('PASS ') for line in expected.splitlines()), 88)
         self.assertIn('PASS normalpollprobe\n', expected)
         self.assertIn('PASS contexts\nPASS terminalengine\nPASS consolewrite\nPASS teestate\nPASS interrupts\nPASS teecommand\n', expected)
         for probe in ['formatprobe a A', 'formatprobe q A', 'formatprobe z P', 'libcmemoryprobe', 'libcgetoptprobe E 1 0 -z', 'libctruncateprobe',
@@ -94,9 +98,18 @@ class GuestTests(unittest.TestCase):
             guest.check(self.state)
         self.assertFalse((run / 'acceptance.json').exists())
 
+    def test_previous_85_pass_transcript_cannot_satisfy_uniq(self):
+        run = self.stage()
+        old = without_uniq(guest.expected_result())
+        self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 85)
+        (run / 'shared/cannedbsd-result.txt').write_text(old)
+        with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
+            guest.check(self.state)
+        self.assertFalse((run / 'acceptance.json').exists())
+
     def test_previous_84_pass_transcript_cannot_satisfy_line_input(self):
         run = self.stage()
-        old = guest.expected_result().replace('PASS fileprobe line-probe\n', '')
+        old = without_uniq(guest.expected_result()).replace('PASS fileprobe line-probe\n', '')
         self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 84)
         (run / 'shared/cannedbsd-result.txt').write_text(old)
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
@@ -105,7 +118,7 @@ class GuestTests(unittest.TestCase):
 
     def test_previous_83_pass_transcript_cannot_satisfy_writable_file(self):
         run = self.stage()
-        old = guest.expected_result().replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '')
+        old = without_uniq(guest.expected_result()).replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '')
         self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 83)
         (run / 'shared/cannedbsd-result.txt').write_text(old)
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
@@ -114,7 +127,7 @@ class GuestTests(unittest.TestCase):
 
     def test_previous_82_pass_transcript_cannot_satisfy_asprintf(self):
         run = self.stage()
-        old = guest.expected_result().replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '').replace('PASS formatprobe a A\n', '')
+        old = without_uniq(guest.expected_result()).replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '').replace('PASS formatprobe a A\n', '')
         self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 82)
         (run / 'shared/cannedbsd-result.txt').write_text(old)
         with self.assertRaisesRegex(guest.Rejection, 'ALL PASS'):
@@ -123,7 +136,7 @@ class GuestTests(unittest.TestCase):
 
     def test_previous_80_pass_transcript_cannot_satisfy_format_cases(self):
         run = self.stage()
-        old = (guest.expected_result().replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '').replace('PASS formatprobe q A\n', '')
+        old = (without_uniq(guest.expected_result()).replace('PASS fileprobe line-probe\n', '').replace('PASS fileprobe write-probe\n', '').replace('PASS formatprobe q A\n', '')
                .replace('PASS formatprobe z P\n', '').replace('PASS formatprobe a A\n', ''))
         self.assertEqual(sum(line.startswith('PASS ') for line in old.splitlines()), 80)
         (run / 'shared/cannedbsd-result.txt').write_text(old)
