@@ -122,6 +122,7 @@ int cb_libc_fileno(struct cb_libc_file *stream);
 void cb_libc_setbuf(struct cb_libc_file *stream, char *buf);
 size_t cb_libc_strlen(const char *text);
 int cb_libc_strcmp(const char *left, const char *right);
+int cb_libc_strcoll(const char *left, const char *right);
 char *cb_libc_strcpy(char *dest, const char *src);
 void *cb_libc_memcpy(void *destination, const void *source, size_t count);
 void *cb_libc_memmove(void *destination, const void *source, size_t count);

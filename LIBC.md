@@ -149,7 +149,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   next name fails with `ENAMETOOLONG` and leaves the read position
   unchanged, so a retry with a larger buffer observes the same entry. On a
   runtime that predates this feature, all three calls fail with `ENOSYS`.
-- `string.h`: `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
+- `string.h`: `strcoll` implements the existing C/POSIX-only profile by
+  unsigned-byte lexical comparison through private `strcmp`; other locales
+  remain unsupported. It needs no bound task API and preserves errno. Also
+  `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, `strchr`, and `strcpy` under private link names; memcpy and memmove use the
   size-optimized shared implementation.
 - `libgen.h`: `dirname` and `basename`, importing NetBSD's pinned

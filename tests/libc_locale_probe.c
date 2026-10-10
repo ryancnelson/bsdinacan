@@ -7,13 +7,31 @@ static int is_c(const char *name)
     return name != NULL && strcmp(name, "C") == 0;
 }
 
+static int collate_checks(void)
+{
+    static const char high[] = {(char)0x80, 0};
+    static const char highest[] = {(char)0xff, 0};
+    static const char low[] = {(char)0x7f, 0};
+    errno = EIO;
+    if (strcoll("", "") != 0 || strcoll("same", "same") != 0 ||
+        strcoll("", "a") >= 0 || strcoll("a", "") <= 0 ||
+        strcoll("a", "aa") >= 0 || strcoll("aa", "a") <= 0 ||
+        strcoll("Z", "a") >= 0 || strcoll(high, low) <= 0 ||
+        strcoll(highest, high) <= 0 || errno != EIO) return 40;
+    if (setlocale(LC_ALL, "unsupported") != NULL ||
+        strcoll("Z", "a") >= 0 || errno != EIO) return 41;
+    if (!is_c(setlocale(LC_ALL, "POSIX")) ||
+        strcoll("prefix", "prefix-more") >= 0 || errno != EIO) return 42;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *held;
     const char *unsupported[] = {"C.UTF-8", "en_US.UTF-8", "c", "POSIX.UTF-8",
                                  "LC_CTYPE=C;LC_NUMERIC=C"};
     size_t index;
-    (void)argc; (void)argv;
+    if (argc == 2 && strcmp(argv[1], "collate") == 0) return collate_checks();
     errno = EIO;
     held = setlocale(LC_ALL, NULL);
     if (!is_c(held) || !is_c(setlocale(LC_ALL, "C")) ||

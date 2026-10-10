@@ -1630,6 +1630,13 @@ int cb_libc_tcsetattr(int descriptor, int action,
     return bound_api->tcsetattr(descriptor, action, attributes);
 }
 
+/* The only supported locale profile is C/POSIX, whose collation is the
+ * unsigned-byte lexical ordering of strcmp. No host locale state is used. */
+int cb_libc_strcoll(const char *left, const char *right)
+{
+    return cb_libc_strcmp(left, right);
+}
+
 static int locale_is_c(const char *name)
 {
     return cb_libc_strcmp(name, "C") == 0 || cb_libc_strcmp(name, "POSIX") == 0;
