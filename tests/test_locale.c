@@ -104,11 +104,12 @@ static const struct cb_program_v1 peer = {
 
 void cb_test_locale(void)
 {
-    const char *commands[] = {"libclocaleprobe", "libclocaleprobe collate", "localecontract"};
+    const char *commands[] = {"libclocaleprobe", "libclocaleprobe collate", "libclocaleprobe casecmp", "localecontract"};
     struct cb_kernel *kernel;
     size_t index;
     int status;
     if (cb_libc_strcoll("prefix", "prefix-more") >= 0) abort();
+    if (cb_libc_strcasecmp("MiXeD", "mixed") != 0) abort();
     for (index = 0; index < sizeof(commands)/sizeof(commands[0]); ++index) {
         kernel = cb_kernel_create(cb_linux_host_ops());
         if (kernel == NULL) abort();
@@ -120,6 +121,7 @@ void cb_test_locale(void)
         status = cb_kernel_run(kernel);
         cb_kernel_destroy(kernel);
         if (cb_libc_strcoll("Z", "a") >= 0) abort();
+        if (cb_libc_strcasecmp("PREFIX", "prefix-more") >= 0) abort();
         if (status != 0) {
             fprintf(stderr, "locale test %s returned %d\n", commands[index], status);
             exit(1);

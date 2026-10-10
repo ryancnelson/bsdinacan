@@ -2,6 +2,7 @@
 #define CANNEDBSD_STRING_H
 
 #include "cannedbsd/libc.h"
+#include "strings.h"
 
 #define strerror cb_libc_strerror
 #define strlen cb_libc_strlen

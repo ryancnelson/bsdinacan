@@ -1,6 +1,7 @@
 #include <locale.h>
 #include <errno.h>
 #include <string.h>
+#include "libc_strcasecmp_cases.h"
 
 static int is_c(const char *name)
 {
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
                                  "LC_CTYPE=C;LC_NUMERIC=C"};
     size_t index;
     if (argc == 2 && strcmp(argv[1], "collate") == 0) return collate_checks();
+    if (argc == 2 && strcmp(argv[1], "casecmp") == 0) return casecmp_checks();
     errno = EIO;
     held = setlocale(LC_ALL, NULL);
     if (!is_c(held) || !is_c(setlocale(LC_ALL, "C")) ||

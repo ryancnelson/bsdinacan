@@ -1637,6 +1637,18 @@ int cb_libc_strcoll(const char *left, const char *right)
     return cb_libc_strcmp(left, right);
 }
 
+/* C/POSIX folding affects only ASCII uppercase; high bytes remain unsigned. */
+int cb_libc_strcasecmp(const char *left, const char *right)
+{
+    for (;;) {
+        unsigned char a = (unsigned char)*left++;
+        unsigned char b = (unsigned char)*right++;
+        if (a >= 'A' && a <= 'Z') a = (unsigned char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z') b = (unsigned char)(b + ('a' - 'A'));
+        if (a != b || a == 0) return (int)a - (int)b;
+    }
+}
+
 static int locale_is_c(const char *name)
 {
     return cb_libc_strcmp(name, "C") == 0 || cb_libc_strcmp(name, "POSIX") == 0;

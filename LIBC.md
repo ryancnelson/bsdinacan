@@ -151,7 +151,10 @@ descriptor translation unit adapts an ordinary `main(int, char **)` to
   runtime that predates this feature, all three calls fail with `ENOSYS`.
 - `string.h`: `strcoll` implements the existing C/POSIX-only profile by
   unsigned-byte lexical comparison through private `strcmp`; other locales
-  remain unsupported. It needs no bound task API and preserves errno. Also
+  remain unsupported. It needs no bound task API and preserves errno.
+  `strings.h` (and the BSD `string.h` surface) maps `strcasecmp` to unsigned-byte
+  comparison with ASCII-only case folding; high bytes are unchanged and errno
+  is preserved without task state. This adds no broader locale support. Also
   `strerror` plus NetBSD's generic `strlen`, `strcmp`, `memcpy`,
   `memmove`, `memcmp`, `strchr`, and `strcpy` under private link names; memcpy and memmove use the
   size-optimized shared implementation.

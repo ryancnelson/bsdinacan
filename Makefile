@@ -640,7 +640,8 @@ $(LIBC_EXEC_ERRNO_TEST_OBJECT): tests/libc_exec_errno_probe.c include/cannedbsd/
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_exec_errno_probe_main -c $< -o $@
 
 $(LIBC_LOCALE_TEST_OBJECT): tests/libc_locale_probe.c include/cannedbsd/libc.h \
-		libc/include/locale.h libc/include/errno.h libc/include/string.h | $(BUILD)
+        libc/include/locale.h libc/include/errno.h libc/include/string.h \
+        libc/include/strings.h tests/libc_strcasecmp_cases.h | $(BUILD)
 	$(CC) $(CPPFLAGS) -Ilibc/include $(CFLAGS) -Dmain=cb_locale_probe_main -c $< -o $@
 
 $(LIBC_TERMINAL_TEST_OBJECT): tests/libc_terminal_probe.c include/cannedbsd/abi.h \
