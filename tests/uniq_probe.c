@@ -246,8 +246,9 @@ static int controller(const struct cb_api_v1 *api, int argc, char *const argv[],
     INTER(24,count,"a\na\n","a\nb\n","   3 a\n   1 b\n");
     INTER(25,duplicate,"a\na\n","b\n","a\n");
     INTER(26,unique,"a\na\n","b\n","b\n");
-    INTER(27,field,"x a\ny a\n","z b\n","x a\nz b\n");
-    INTER(28,chars,"xa\nya\n","zb\n","xa\nzb\n");
+    /* First tail line still compares equal only with the resumed offset. */
+    INTER(27,field,"x a\ny a\n","z a\nw b\n","x a\nw b\n");
+    INTER(28,chars,"xa\nya\n","za\nwb\n","xa\nwb\n");
 #undef INTER
     r=write_block(api,envp); return r ? 2900+r : 0;
 }

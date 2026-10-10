@@ -114,3 +114,8 @@ the local probe/helper. Incremental overlay builds are not used as verification
 because remote build timestamps can exceed local source timestamps.
 Host protocol: 25 tests pass; build parity and publication hygiene pass.
 Final serial full gate and hosted exact-commit workflows remain pending at push.
+
+Offset suspension fixtures also put an equivalent skipped-prefix line in the
+resume tail before a distinct line. This requires restoration of the resumed
+comparison offset itself, in addition to keeping the default peer isolated.
+Fresh Linux focused build/test_core --uniq passes this strengthened fixture.
