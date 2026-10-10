@@ -112,7 +112,7 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### UNIQ-STATE-01-design — source-preserving execution isolation
 
-- Status: Design `46a4255` prepared; independent review in progress.
+- Status: Design `46a4255` independently reviewed clean.
   No implementation or import.
 - Base: accepted main `d80eec8`, with pinned uniq source and candidate `39e4528`
   used as read-only references. Dependencies: UNIQ-ADMISSION-01 measurement.
