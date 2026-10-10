@@ -119,3 +119,16 @@ Offset suspension fixtures also put an equivalent skipped-prefix line in the
 resume tail before a distinct line. This requires restoration of the resumed
 comparison offset itself, in addition to keeping the default peer isolated.
 Fresh Linux focused build/test_core --uniq passes this strengthened fixture.
+
+The root task masks exit status to eight bits. RUN/INTER therefore return their
+bounded nonzero scenario IDs rather than id*100+reason: the latter could turn
+write-fault case 23, reason 4 (child exit/cleanup mismatch) into 2304 -> 0.
+The original red205 above is a historical pre-correction diagnostic for case2;
+the corrected selector reports case2 directly and never hides a failed assertion.
+
+Dropped-slot mutation checks each remove one registration from the otherwise
+complete adapter. cflag/dflag/uflag/numchars/numfields/repeats produce expected
+nonzero scenario diagnostics 2/6/8/12/10/4 and host exit 1; restoring all six
+registrations passes. A deliberate child-status mismatch in the write-fault
+fixture now reports scenario 23 and host exit 1, directly falsifying the former
+2304-to-zero masking path. These mutations are validation-only and uncommitted.

@@ -199,7 +199,8 @@ static int controller(const struct cb_api_v1 *api, int argc, char *const argv[],
     static const char binary[] = {'a',0,'x','\n','a',0,'y','\n'};
     int r; unsigned i;
     (void)argc; (void)argv;
-#define RUN(id, args, text, expected) do { r=run(api,envp,args,text,sizeof(text)-1,expected,sizeof(expected)-1,0,0); if(r) return id*100+r; } while(0)
+/* Root exits are eight-bit: bounded scenario IDs cannot mask a failure to 0. */
+#define RUN(id, args, text, expected) do { r=run(api,envp,args,text,sizeof(text)-1,expected,sizeof(expected)-1,0,0); if(r) return (id); } while(0)
     RUN(1,count,"a\na\nb\n","   2 a\n   1 b\n"); RUN(2,plain,"a\na\nb\n","a\nb\n");
     RUN(3,count,"a\na\n","   2 a\n"); RUN(4,count,"a\na\n","   2 a\n");
     RUN(5,duplicate,"a\na\nb\n","a\n"); RUN(6,plain,"a\na\nb\n","a\nb\n");
@@ -242,7 +243,7 @@ static int controller(const struct cb_api_v1 *api, int argc, char *const argv[],
     fault=1; RUN(22,plain,"a\nb\n","a\n"); fault=0;
     fault=2; RUN(23,plain,"a\na\n",""); fault=0;
 #undef RUN
-#define INTER(id,args,input,tail,expected) do { r=interleave(api,envp,args,input,tail,expected); if(r) return id*100+r; } while(0)
+#define INTER(id,args,input,tail,expected) do { r=interleave(api,envp,args,input,tail,expected); if(r) return (id); } while(0)
     INTER(24,count,"a\na\n","a\nb\n","   3 a\n   1 b\n");
     INTER(25,duplicate,"a\na\n","b\n","a\n");
     INTER(26,unique,"a\na\n","b\n","b\n");
