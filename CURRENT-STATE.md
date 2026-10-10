@@ -4,6 +4,13 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 10 next-tool study
+
+NEXT-UTIL-04 measures comm behind the active uniq candidate: both main and the
+prerequisite candidate still lack LINE_MAX, strcoll and strcasecmp. Three small
+owned prerequisites are stocked; no comm import or execution is claimed. This
+future queue does not change the ls/tee/quality integration order or guest gates.
+
 ## October 10 qualification checkpoint
 
 Main `d80eec8` contains reviewed strict uniq compilation evidence; exact #563

@@ -9,6 +9,45 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ## Ready worker queue
 
+### NEXT-UTIL-04 — measured comm dependency study
+
+- Status: Coordinator study prepared; independent review and exact CI pending.
+- Base: main `5865993`, compared with candidate `39e4528`.
+- Hypothesis: comm needs a small independent comparison/line-limit boundary.
+- Evidence: unchanged pinned source produces nine diagnostics for three distinct
+  missing names on both trees: LINE_MAX, strcoll and strcasecmp.
+- Acceptance: strict private-header compile, source hash and concrete prerequisite
+  queue; distinguish measurement from import/link/execution.
+- Scope: own note and queue/status only; uniq remains the current utility task.
+
+### COLLATE-C-01 — measured C-locale strcoll
+
+- Status: Ready for coordinator assignment; one shared symbol owner required.
+- Base: main; dependencies: NEXT-UTIL-04 source evidence and existing C-only locale.
+- Hypothesis: real C collation can reuse existing unsigned lexical comparison.
+- Red: ordinary private-header call is absent; exact order, equal/prefix/high-bit
+  bytes, context independence and errno preservation must be observed.
+- Acceptance: mapped private function, no host locale calls or false support for
+  other locales; required CI/review/fresh Mac/Solaris before integration.
+
+### STRCASECMP-C-01 — measured C-locale case comparison
+
+- Status: Ready for coordinator assignment; serialize shared libc/header edits.
+- Base: coordinator-selected comparison candidate after COLLATE-C-01 handoff.
+- Hypothesis: ASCII case folding must use unsigned input and retain high-bit bytes.
+- Red: ordinary interface absent; cases, prefixes and 0x80/0xff ordering.
+- Acceptance: actual comparison and private mapping, no general locale claim;
+  required runtime gates. Do not shadow an in-flight implementation.
+
+### LINE-LIMIT-01 — measured comm input limit
+
+- Status: Ready for coordinator assignment; no comm import yet.
+- Base: main; dependencies: NEXT-UTIL-04 pinned syslimits evidence.
+- Hypothesis: exposing LINE_MAX=2048 closes the measured constant gap while
+  retaining the upstream finite-line policy and adequate stack allocation.
+- Acceptance: documented private constant, unchanged-source compile remeasurement
+  and honest truncation/stack limits. No other comparison interfaces invented.
+
 ### UNIQ-ADMISSION-01 — compile after measured prerequisites
 
 - Status: Done: documentation merged as `d80eec8`, independent review clean,
