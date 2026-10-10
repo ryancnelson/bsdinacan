@@ -112,7 +112,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### UNIQ-STATE-01-design — source-preserving execution isolation
 
-- Status: Assigned to isolated design worker; no implementation or import.
+- Status: Design `46a4255` prepared; independent review in progress.
+  No implementation or import.
 - Base: accepted main `d80eec8`, with pinned uniq source and candidate `39e4528`
   used as read-only references. Dependencies: UNIQ-ADMISSION-01 measurement.
 - Hypothesis: uniq's six static integer fields must be isolated and reset per

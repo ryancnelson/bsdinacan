@@ -13,8 +13,8 @@ ASPRINTF-01 `0ea2461` (#551), STDIO-WRITE-01 `7faa968` (#554) and FGETLN-01
 review. FGETLN's serial local full gate also passed. No new guest acceptance
 or runtime merge is claimed. Cached archives are verified but remain unstaged.
 
-UNIQ-STATE-01-design is assigned to prepare typed execution isolation and
-falsifiable command fixtures. No full uniq import is authorized. The desktop
+UNIQ-STATE-01-design `46a4255` prepares typed execution isolation and
+falsifiable command fixtures; independent review is in progress. No full uniq import is authorized. The desktop
 is still locked according to Computer Use, so no Claude/Antigravity submission
 is claimed. Ryan's reserved Mac session remains untouched; Solaris qualification
 also remains pending. The sprint still requires ls, then tee, then quality
