@@ -4,6 +4,22 @@
 **Historical loop tally:** the early numbered log below ends at iteration 27;
 subsequent accepted work is tracked by backlog ID and exact evidence.
 
+## October 10 qualification checkpoint
+
+Main `d80eec8` contains reviewed strict uniq compilation evidence; exact #563
+and main #564 ci/mac68k/mac-automation passed. The runtime remains unchanged.
+ASPRINTF-01 `0ea2461` (#551), STDIO-WRITE-01 `7faa968` (#554) and FGETLN-01
+`39e4528` (#562) each have exact all-three CI success and clean independent
+review. FGETLN's serial local full gate also passed. No new guest acceptance
+or runtime merge is claimed. Cached archives are verified but remain unstaged.
+
+UNIQ-STATE-01-design is assigned to prepare typed execution isolation and
+falsifiable command fixtures. No full uniq import is authorized. The desktop
+is still locked according to Computer Use, so no Claude/Antigravity submission
+is claimed. Ryan's reserved Mac session remains untouched; Solaris qualification
+also remains pending. The sprint still requires ls, then tee, then quality
+qualification before future utility integration.
+
 ## October 9 prerequisite handoff
 
 Writable-stream candidate `7faa968` passed exact #554 ci/mac68k/mac-automation

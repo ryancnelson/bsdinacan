@@ -11,7 +11,8 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### UNIQ-ADMISSION-01 — compile after measured prerequisites
 
-- Status: Coordinator measurement complete, documentation review/CI pending.
+- Status: Done: documentation merged as `d80eec8`, independent review clean,
+  exact #563 all-three CI passed.
 - Base: accepted main `a520a06`, compared with candidate `39e4528`.
 - Hypothesis: measured prerequisite candidates close unchanged uniq's strict
   private-header compilation gap without more speculative libc additions.
@@ -100,14 +101,27 @@ remains pending. Sprint order stays ls, tee, quality review.
 ### FGETLN-01 — per-stream line storage for uniq
 
 - Status: Candidate `39e4528` implemented; focused Linux tests and independent
-  review pass, including forced suspension inside reads. Exact #562 CI and
-  fresh Mac/Solaris acceptance remain pending.
+  review pass, including forced suspension inside reads. Exact #562 all-three
+  CI and serial local make ci passed. Fresh Mac/Solaris acceptance is pending.
 - Base: reviewed design `d4cb606` on writable candidate `7faa968`.
 - Hypothesis: a single shared line buffer cannot preserve independent streams/tasks.
 - Red: empty/long/unterminated/NUL input, partial/error reads, allocation failure
   and interleaved streams; pin the borrowed-buffer lifetime to real stream events.
 - Acceptance: exact lengths/newlines, honest EOF/error state and cleanup before
   reclaim; preserve stdin task state and old-size failures. Required runtime gates.
+
+### UNIQ-STATE-01-design — source-preserving execution isolation
+
+- Status: Assigned to isolated design worker; no implementation or import.
+- Base: accepted main `d80eec8`, with pinned uniq source and candidate `39e4528`
+  used as read-only references. Dependencies: UNIQ-ADMISSION-01 measurement.
+- Hypothesis: uniq's six static integer fields must be isolated and reset per
+  execution, while legacy-option allocations follow task heap ownership.
+- Evidence: trace exact source types/lifetimes, existing ls/head/tee registration
+  conventions and ordinary-source boundary. Hash unchanged pinned source.
+- Acceptance: typed slot ownership, initialization/reset/cleanup/reentry design,
+  concrete conflicting flags and pipeline fixtures, build/provenance wiring.
+- Scope: own design note only. Full import still waits for runtime qualification.
 
 ### UNIQ-01 — unchanged uniq after measured prerequisites
 
@@ -122,8 +136,8 @@ remains pending. Sprint order stays ls, tee, quality review.
 
 ### NEXT-UTIL-03 — remeasure the next utility after the ls/tee candidate
 
-- Status: Investigation candidate `6054f77`, exact CI all three passed;
-  independent review pending. Recommends uniq; no new import accepted.
+- Status: Done: investigation `6054f77` independently reviewed and documented
+  on main, exact #542 all-three CI passed. Recommends uniq; no import accepted.
 - Base: exact reviewed runtime candidate `f4e3f25`; accepted-main comparison `3ca4993`.
 - Dependencies: existing NEXT-UTIL-02 inventory; runtime adoption still depends on
   ls/tee guest qualification. Read-only measurement can proceed independently.
