@@ -27,4 +27,10 @@
 #define UINT_MAX 0xffffffffU
 #endif
 
+/* Pinned NetBSD comm uses two LINE_MAX+1 stack buffers. This is the
+ * import's finite input-line policy, not a general runtime string bound. */
+#ifndef LINE_MAX
+#define LINE_MAX 2048
+#endif
+
 #endif
