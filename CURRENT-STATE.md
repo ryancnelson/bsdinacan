@@ -1,3 +1,14 @@
+## Coordinator checkpoint — 2026-10-11
+
+LINE-LIMIT-01 1559aed now has clean review and exact #577 all-three success.
+Unchanged comm passes strict compilation with the candidate comparison helpers;
+COMM-ADMISSION-01 is assigned for scratch object/link closure only.
+Final uniq 6412152 corrects probe failures that could wrap to zero; all six
+state-slot omission mutants and a deliberate write-status mismatch fail, with
+restored tests green. Immutable serial full CI and exact #579 all-three checks
+passed. Final delta review is pending; guest and Solaris qualification remain
+pending for every runtime candidate. No runtime integration occurred.
+
 ## Coordinator checkpoint — 2026-10-10
 
 Accepted main is 0edb41f: reviewed comm dependency study and stocked queue,

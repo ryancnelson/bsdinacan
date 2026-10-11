@@ -41,12 +41,22 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### LINE-LIMIT-01 — measured comm input limit
 
-- Status: Root candidate 1559aed; strict unchanged comm compilation green; review/exact CI pending. No comm import.
+- Status: Candidate 1559aed, clean review and exact #577 all-three CI success. Strict unchanged comm compilation green; no comm import.
 - Base: main; dependencies: NEXT-UTIL-04 pinned syslimits evidence.
 - Hypothesis: exposing LINE_MAX=2048 closes the measured constant gap while
   retaining the upstream finite-line policy and adequate stack allocation.
 - Acceptance: documented private constant, unchanged-source compile remeasurement
   and honest truncation/stack limits. No other comparison interfaces invented.
+
+### COMM-ADMISSION-01 — strict object and link closure
+
+- Status: Assigned to isolated Codex worker; study only.
+- Base: candidate 1559aed; comparisons and line-limit prerequisites reviewed.
+- Hypothesis: unchanged comm can link through the actual private archive.
+- Red: enumerate undefined object symbols and concrete link failures.
+- Acceptance: pinned hash, strict object compile and minimal private wrapper link;
+  distinguish link success from command execution. No import or registration yet.
+- Scope: own iteration note; no speculative libc additions or guest control.
 
 ### UNIQ-ADMISSION-01 — compile after measured prerequisites
 
