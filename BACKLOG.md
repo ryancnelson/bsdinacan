@@ -50,13 +50,22 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### COMM-ADMISSION-01 — strict object and link closure
 
-- Status: Assigned to isolated Codex worker; study only.
+- Status: Study candidate 4c11e43, clean independent review and exact #581 all-three CI success; no execution.
 - Base: candidate 1559aed; comparisons and line-limit prerequisites reviewed.
 - Hypothesis: unchanged comm can link through the actual private archive.
 - Red: enumerate undefined object symbols and concrete link failures.
 - Acceptance: pinned hash, strict object compile and minimal private wrapper link;
   distinguish link success from command execution. No import or registration yet.
 - Scope: own iteration note; no speculative libc additions or guest control.
+
+### COMM-STATE-01 — execution fixture and ownership design
+
+- Status: Assigned to isolated Codex worker; design only.
+- Base: 4c11e43 admission study; no full import authorization yet.
+- Hypothesis: existing task-owned libc can isolate concurrent comm invocations.
+- Acceptance: concrete red/green fixture plan for columns, two FILEs, stdin
+  aliasing, suspension/reentry, error handling and cleanup before reap; target
+  stack and inherited truncation/NUL boundaries. Own note only.
 
 ### UNIQ-ADMISSION-01 — compile after measured prerequisites
 

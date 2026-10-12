@@ -1,3 +1,15 @@
+## Coordinator checkpoint — 2026-10-12
+
+Qualification rollup 9488af1 is accepted main after clean review and exact #580
+all-three CI success. Final uniq 6412152 delta review is clean; fresh guest and
+Solaris acceptance still pending. No runtime candidate was merged.
+
+COMM-ADMISSION-01 4c11e43 has clean review and exact #581 all-three success.
+Worker evidence establishes unchanged strict object compilation and native
+archive link closure, with 17 private command dependencies. It does not prove
+execution or target link/stack closure. COMM-STATE-01 is assigned for a concrete
+execution/ownership fixture design before a full command candidate.
+
 ## Coordinator checkpoint — 2026-10-11
 
 LINE-LIMIT-01 1559aed now has clean review and exact #577 all-three success.
