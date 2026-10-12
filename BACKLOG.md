@@ -60,12 +60,28 @@ test, and acceptance boundary. `Base: main` means the freshly fetched
 
 ### COMM-STATE-01 — execution fixture and ownership design
 
-- Status: Assigned to isolated Codex worker; design only.
+- Status: Design candidate 4b71113, clean review; composed documentation CI pending. No runtime import yet.
 - Base: 4c11e43 admission study; no full import authorization yet.
 - Hypothesis: existing task-owned libc can isolate concurrent comm invocations.
 - Acceptance: concrete red/green fixture plan for columns, two FILEs, stdin
   aliasing, suspension/reentry, error handling and cleanup before reap; target
   stack and inherited truncation/NUL boundaries. Own note only.
+
+### COMM-MAC-LINK-01 — target closure and stack measurement
+
+- Status: Assigned to isolated Codex worker; scratch study only.
+- Base: exact 1559aed prerequisites; pinned Retro68 toolchain.
+- Acceptance: unchanged object, private unresolved-symbol inspection, retained
+  descriptor/archive link and compiler stack usage. Distinguish frame evidence
+  from full call-chain/guest stack acceptance. No execution or registration.
+
+### COMM-01 — unchanged upstream command candidate
+
+- Status: Queued after reviewed design and target study; coordinator assignment required.
+- Base: coordinator-selected prerequisite composition with accepted lifecycle fixes.
+- Acceptance: unchanged source/hash, actual command matrix and concurrent pipe
+  fixtures from COMM-STATE-01, cleanup before reap, exact CI/review and fresh
+  Mac/Solaris qualification. No speculative API or mutable-state wrapper.
 
 ### UNIQ-ADMISSION-01 — compile after measured prerequisites
 

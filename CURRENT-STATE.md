@@ -1,3 +1,14 @@
+## Coordinator checkpoint — 2026-10-12 evening
+
+Main 7536336 includes reviewed native comm admission and queue documentation,
+exact #583 all-three success. Reviewed design 4b71113 is incorporated here
+unchanged; no command import or execution is claimed. COMM-MAC-LINK-01 is
+assigned for scratch Retro68 link/frame evidence. COMM-01 remains queued
+pending coordinator selection of the prerequisite composition and study.
+The desktop remains locked; no Claude/Antigravity submission is claimed.
+Biggie SSH/API reachability is intermittent; GitHub exact commit statuses
+provided the #583 checks. Required runtime guest/Solaris gates remain pending.
+
 ## Coordinator checkpoint — 2026-10-12
 
 Qualification rollup 9488af1 is accepted main after clean review and exact #580
